@@ -1580,39 +1580,42 @@ class ThemeTile(QPushButton):
     def __init__(self, key: str, t: dict, parent=None):
         super().__init__(parent)
         self.key = key
-        self.setFixedSize(118, 78)
+        self.setFixedSize(136, 84)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(t["name"])
+        self.setStyleSheet("")
         bg = (f"background-color: {t['bg']};" if t["type"] == "solid"
               else f"background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 {t['c1']}, stop:1 {t['c2']});")
         self._bg = bg
-        self._fg = "#ffffff" if t["is_dark"] else "#0f172a"
+        self._fg = t.get("text") or ("#ffffff" if t["is_dark"] else "#1C1C1E")
         self._accent = t["accent"]
-        self.setText(t["name"])
+        # название в две строки — целиком помещается в плитку
+        words = t["name"].split(" ")
+        self.setText(t["name"] if len(words) < 2 else " ".join(words[:len(words) // 2 or 1]) + "\n" + " ".join(words[len(words) // 2 or 1:]))
         self.set_selected(False)
 
     def set_selected(self, on: bool):
         pal = app_palette()
         bd = f"3px solid {pal.title_accent}" if on else f"1.5px solid {pal.border}"
-        self.setStyleSheet(f"QPushButton {{ {self._bg} color: {self._fg}; font-weight: bold; border: {bd}; border-radius: 10px; "
-                           f"padding-top: 34px; border-top: 8px solid {self._accent}; }}"
+        self.setStyleSheet(f"QPushButton {{ {self._bg} color: {self._fg}; font-weight: bold; font-size: 9pt; border: {bd}; "
+                           f"border-radius: 10px; padding: 26px 4px 6px 4px; border-top: 8px solid {self._accent}; }}"
                            f"QPushButton:hover {{ border: 2px solid {pal.text}; border-top: 8px solid {self._accent}; }}")
 
 
 class DesignSettingsDialog(FramelessDialog):
     """Оформление: вкладки «Тема» (плитки + акцент + свои цвета), «Шрифт», «Интерфейс». Всё применяется сразу."""
 
-    ACCENTS = (("#38bdf8", "Небо"), ("#2563eb", "Синий"), ("#818cf8", "Индиго"), ("#a78bfa", "Фиолетовый"),
-               ("#e879f9", "Фуксия"), ("#fb7185", "Роза"), ("#f97316", "Оранжевый"), ("#f59e0b", "Янтарь"),
-               ("#4ade80", "Зелёный"), ("#34d399", "Изумруд"), ("#14b8a6", "Бирюза"), ("#94a3b8", "Серый"))
-    BACKGROUNDS = ("#0b132b", "#0f172a", "#111827", "#131138", "#1c1917", "#242424", "#022019", "#181033",
-                   "#f8fafc", "#f1f5f9", "#fbf7ee", "#eef2ff", "#ecfdf5", "#fff7ed")
+    ACCENTS = (("#F59E0B", "Янтарь"), ("#F97316", "Коралл"), ("#C2410C", "Терракота"), ("#F43F5E", "Роза"),
+               ("#A855F7", "Лаванда"), ("#6366F1", "Индиго"), ("#007AFF", "Системный синий"), ("#2563EB", "Кобальт"),
+               ("#10B981", "Мята"), ("#15803D", "Лесной"), ("#14B8A6", "Бирюза"), ("#A1A1AA", "Серый"))
+    BACKGROUNDS = ("#1C1C1F", "#121E17", "#1D1622", "#18181B", "#1F1528", "#232326", "#1A1A1D", "#2A1B38",
+                   "#F5F5F7", "#FDFBF7", "#F1F6F3", "#F8FAFC", "#FFF7ED", "#FAFAFA")
 
     def __init__(self, app, parent=None):
         super().__init__("🎨 Оформление", parent, (760, 620))
         self.app = app
         self.design = dict(settings.design)
-        self._c1, self._c2 = "#0b132b", "#1c2541"
+        self._c1, self._c2 = "#18181B", "#27272A"
         self._mode = "solid"
         m = re.findall(r"#[0-9a-fA-F]{6}", self.design.get("bg_style", ""))
         if "qlineargradient" in self.design.get("bg_style", "") and len(m) >= 2:
@@ -1630,7 +1633,7 @@ class DesignSettingsDialog(FramelessDialog):
         self.lbl_state.setStyleSheet(f"color: {app_palette().subtext};")
         foot.addWidget(self.lbl_state, 1)
         reset = QPushButton("↺ Тема по умолчанию")
-        reset.clicked.connect(lambda: self.preset("ocean"))
+        reset.clicked.connect(lambda: self.preset("dark"))
         close = QPushButton("Закрыть")
         close.clicked.connect(self.accept)
         foot.addWidget(reset)
@@ -1786,15 +1789,13 @@ class DesignSettingsDialog(FramelessDialog):
         self.apply()
 
     def preset(self, key: str):
+        from .theme import theme_design
         t = PRESET_THEMES[key]
         if t["type"] == "solid":
-            self.design["bg_style"] = f"background-color: {t['bg']};"
             self._c1, self._mode = t["bg"], "solid"
         else:
-            self.design["bg_style"] = (f"background: qlineargradient(x1:0,y1:0,x2:1,y2:1, "
-                                       f"stop:0 {t['c1']}, stop:1 {t['c2']});")
             self._c1, self._c2, self._mode = t["c1"], t["c2"], "grad"
-        self.design["is_dark"], self.design["accent_color"] = t["is_dark"], t["accent"]
+        self.design.update(theme_design(t))
         self.apply()
 
     def set_accent(self, color: str):
@@ -1802,8 +1803,11 @@ class DesignSettingsDialog(FramelessDialog):
         self.apply()
 
     def set_solid(self, color: str):
+        from .theme import derive_panel
         self._c1, self._mode = color, "solid"
-        self.design.update(bg_style=f"background-color: {color};", is_dark=is_color_dark(color))
+        dark = is_color_dark(color)
+        self.design.update(bg_style=f"background-color: {color};", is_dark=dark, panel_color=derive_panel(color, dark),
+                           text_color="", border_color="")
         self.apply()
 
     def set_grad(self, n: int, color: str | None, swap: bool = True):
@@ -1813,10 +1817,12 @@ class DesignSettingsDialog(FramelessDialog):
             self._c2 = color
         elif n == 0 and swap:
             self._c1, self._c2 = self._c2, self._c1
+        from .theme import derive_panel
         self._mode = "grad"
+        dark = is_color_dark(self._c1)
         self.design.update(
             bg_style=f"background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 {self._c1}, stop:1 {self._c2});",
-            is_dark=is_color_dark(self._c1))
+            is_dark=dark, panel_color=derive_panel(self._c1, dark), text_color="", border_color="")
         self.apply()
 
     def _pick_into(self, setter, initial: str, title: str):

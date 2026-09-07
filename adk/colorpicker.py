@@ -15,9 +15,9 @@ from PyQt6.QtWidgets import (
 from .widgets import FramelessDialog, app_palette
 
 PRESETS = [
-    "#38bdf8", "#2563eb", "#818cf8", "#a78bfa", "#e879f9", "#fb7185", "#f97316", "#f59e0b", "#facc15", "#4ade80",
-    "#34d399", "#14b8a6", "#94a3b8", "#0f172a", "#1e293b", "#334155", "#0b1a2e", "#14213d", "#1f2937", "#111827",
-    "#f8fafc", "#e2e8f0", "#cbd5e1", "#ffffff",
+    "#F59E0B", "#F97316", "#C2410C", "#F43F5E", "#A855F7", "#6366F1", "#007AFF", "#2563EB", "#10B981", "#15803D",
+    "#14B8A6", "#A1A1AA", "#1C1C1F", "#26262A", "#121E17", "#1D1622", "#18181B", "#1F1528", "#322040", "#3F3F46",
+    "#F5F5F7", "#FDFBF7", "#F1F6F3", "#FFFFFF",
 ]
 
 

@@ -172,7 +172,8 @@ def test_user_card_reworked(qapp, fake_conn, monkeypatch):
     # шапка: ФИО, инициалы-аватар, бейдж состояния
     assert d.lbl_name.text() and d.badge_state.text() in ("Активна", "Не активна")
     # вкладок 4; ничего из быстрых действий инспектора
-    assert [d.tabs.tabText(i) for i in range(d.tabs.count())] == ["👤 Профиль", "👥 Группы", "🔐 Учётная запись", "💻 Характеристики ПК"]
+    assert [d.tabs.tabText(i) for i in range(d.tabs.count())] == ["Профиль", "Группы", "Учётная запись", "Характеристики ПК"]
+    assert all(not d.tabs.tabIcon(i).isNull() for i in range(d.tabs.count()))   # 3.4.0: эмодзи стали иконками
     assert not hasattr(d, "remote_action") and not hasattr(d, "printers")
     # поля профиля — все на месте, в двух колонках
     assert set(d.inputs) >= {"sAMAccountName", "mail", "department", "company", "title"}
@@ -184,7 +185,7 @@ def test_user_card_reworked(qapp, fake_conn, monkeypatch):
     d.close()
     d2 = UserCardDialog(ENTRIES[1], app)                          # petrov — отключена
     assert d2.badge_state.text() == "Не активна" and d2.account_vals["Состояние"].text() == "Не активна — отключена"
-    assert d2.btn_toggle.text().startswith("✅ Включить")
+    assert d2.btn_toggle.text().startswith("Включить") and d2.btn_toggle._adk_icon[0] == "checkmark.circle"
     d2.close()
 
 
@@ -236,13 +237,13 @@ def test_card_toggle_updates_state_without_closing(qapp, fake_conn, monkeypatch)
     monkeypatch.setattr(ad, "set_account_disabled", lambda conn, dn, uac, disabled: (uac | 2) if disabled else (uac & ~2))
     w = _main(qapp, fake_conn, monkeypatch)
     d = UserCardDialog(ENTRIES[0], w, w)
-    assert d.badge_state.text() == "Активна" and d.btn_toggle.text().startswith("⛔")
+    assert d.badge_state.text() == "Активна" and d.btn_toggle._adk_icon[0] == "nosign"
     d.toggle_disabled()
     assert d.result() == 0                       # окно не закрылось само (accept не вызывается)
     assert d.badge_state.text() == "Не активна" and d.account_vals["Состояние"].text() == "Не активна — отключена"
-    assert d.btn_toggle.text().startswith("✅ Включить")
+    assert d.btn_toggle.text().startswith("Включить") and d.btn_toggle._adk_icon[0] == "checkmark.circle"
     d.toggle_disabled()
-    assert d.badge_state.text() == "Активна" and d.btn_toggle.text().startswith("⛔")
+    assert d.badge_state.text() == "Активна" and d.btn_toggle._adk_icon[0] == "nosign"
     ENTRIES[0]._a["userAccountControl"] = type(ENTRIES[0]._a["userAccountControl"])([512])
     d.close()
     w.close()

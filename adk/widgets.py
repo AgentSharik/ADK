@@ -506,7 +506,9 @@ def wait_background_workers(owner, timeout_ms: int = 3000) -> None:
 
 def app_palette() -> Palette:
     from .config import settings
-    return Palette(bool(settings.design["is_dark"]), settings.design["accent_color"])
+    d = settings.design
+    return Palette(bool(d["is_dark"]), d["accent_color"], d.get("panel_color") or "", d.get("text_color") or "",
+                   d.get("border_color") or "")
 
 
 def apply_theme(design: dict) -> None:
@@ -520,8 +522,13 @@ def apply_theme(design: dict) -> None:
     if app is None:
         return
     app.setStyleSheet(build_stylesheet(design["bg_style"], design["is_dark"], design["font_family"],
-                                       design["font_size"], design["accent_color"]))
+                                       design["font_size"], design["accent_color"], design.get("panel_color") or "",
+                                       design.get("text_color") or "", design.get("border_color") or ""))
     app.setFont(QFont(design["font_family"], design["font_size"]))
+    from . import icons
+    icons.install()                      # 3.4.0: ведущие эмодзи → контурные иконки в цвете темы
+    for w in app.topLevelWidgets():
+        icons.refresh(w)
 
 
 # --------------------------------------------------------------------------- выбор тома (C:, D:, …)

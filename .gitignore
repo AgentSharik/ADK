@@ -22,3 +22,5 @@ node_modules/
 
 # --- временные кадры видео
 extras/demo/frames*/
+Documents/
+uploads/

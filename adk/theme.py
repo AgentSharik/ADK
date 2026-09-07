@@ -6,17 +6,57 @@ from dataclasses import dataclass
 from PyQt6.QtGui import QColor
 
 PRESET_THEMES = {
-    "light": {"name": "Светлая", "type": "solid", "bg": "#f8fafc", "is_dark": False, "accent": "#2563eb"},
-    "sand": {"name": "Песочная", "type": "solid", "bg": "#fbf7ee", "is_dark": False, "accent": "#d97706"},
-    "azure": {"name": "Лазурь", "type": "grad", "c1": "#f0f9ff", "c2": "#dbeafe", "is_dark": False, "accent": "#0284c7"},
-    "dark": {"name": "Тёмная", "type": "solid", "bg": "#0b132b", "is_dark": True, "accent": "#38bdf8"},
-    "graphite": {"name": "Графит", "type": "solid", "bg": "#242424", "is_dark": True, "accent": "#4ade80"},
-    "indigo": {"name": "Индиго", "type": "solid", "bg": "#131138", "is_dark": True, "accent": "#818cf8"},
-    "sunset": {"name": "Закат", "type": "grad", "c1": "#181033", "c2": "#4d0d2a", "is_dark": True, "accent": "#fb7185"},
-    "ocean": {"name": "Океан", "type": "grad", "c1": "#0b132b", "c2": "#1c2541", "is_dark": True, "accent": "#38bdf8"},
-    "neon": {"name": "Неон", "type": "grad", "c1": "#12002b", "c2": "#360018", "is_dark": True, "accent": "#e879f9"},
-    "forest": {"name": "Лес", "type": "grad", "c1": "#022019", "c2": "#064030", "is_dark": True, "accent": "#34d399"},
+    # 3.4.0 — десять уникальных тем: 5 тёмных (без чистого чёрного и без тёмно-синего) и 5 светлых.
+    # Ключи "dark"/"light" — те, что берутся в режиме «как в системе».
+    "dark": {"name": "Графит и титан", "type": "solid", "bg": "#1C1C1F", "panel": "#26262A", "text": "#F4F4F5",
+             "is_dark": True, "accent": "#F59E0B"},
+    "emerald": {"name": "Изумрудный лес", "type": "solid", "bg": "#121E17", "panel": "#1B2A20", "text": "#ECFDF5",
+                "is_dark": True, "accent": "#10B981"},
+    "plum": {"name": "Бархатная слива", "type": "solid", "bg": "#1D1622", "panel": "#281E2E", "text": "#FAF5FF",
+             "is_dark": True, "accent": "#A855F7"},
+    "zinc": {"name": "Цинковый сдвиг", "type": "grad", "c1": "#18181B", "c2": "#27272A", "panel": "#202023", "text": "#FAFAFA",
+             "is_dark": True, "accent": "#6366F1"},
+    "amethyst": {"name": "Сумеречный аметист", "type": "grad", "c1": "#1F1528", "c2": "#322040", "panel": "#2A1B38",
+                 "text": "#FDF2F8", "is_dark": True, "accent": "#F43F5E"},
+    "light": {"name": "Студийная светлая", "type": "solid", "bg": "#F5F5F7", "panel": "#FFFFFF", "text": "#1C1C1E",
+              "border": "#E5E5EA", "is_dark": False, "accent": "#007AFF"},
+    "sand": {"name": "Тёплый песок", "type": "solid", "bg": "#FDFBF7", "panel": "#F4EFE6", "text": "#292524",
+             "is_dark": False, "accent": "#C2410C"},
+    "sage": {"name": "Мягкий шалфей", "type": "solid", "bg": "#F1F6F3", "panel": "#E1ECE5", "text": "#14532D",
+             "is_dark": False, "accent": "#15803D"},
+    "frost": {"name": "Морозное серебро", "type": "grad", "c1": "#F8FAFC", "c2": "#E2E8F0", "panel": "#FFFFFF", "text": "#0F172A",
+              "is_dark": False, "accent": "#2563EB"},
+    "quartz": {"name": "Закатный кварц", "type": "grad", "c1": "#FFF7ED", "c2": "#FFEDD5", "panel": "#FFFFFF", "text": "#431407",
+               "border": "#FED7AA", "is_dark": False, "accent": "#F97316"},
 }
+DEFAULT_THEME = "dark"
+
+
+def theme_bg_style(t: dict) -> str:
+    """QSS-фон для пресета: сплошной цвет или диагональный градиент."""
+    if t["type"] == "solid":
+        return f"background-color: {t['bg']};"
+    return f"background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 {t['c1']}, stop:1 {t['c2']});"
+
+
+def theme_design(t: dict) -> dict:
+    """Поля design-словаря, которые задаёт пресет (шрифт не трогаем)."""
+    return {"bg_style": theme_bg_style(t), "is_dark": t["is_dark"], "accent_color": t["accent"],
+            "panel_color": t["panel"], "text_color": t["text"], "border_color": t.get("border", "")}
+
+
+def derive_panel(bg_hex: str, is_dark: bool) -> str:
+    """Цвет панели для произвольного фона («+ Свой…»): чуть светлее тёмного фона, белый — для светлого."""
+    c = QColor(bg_hex)
+    if not c.isValid():
+        return "#26262A" if is_dark else "#FFFFFF"
+    return c.lighter(118).name() if is_dark else "#FFFFFF"
+
+
+def _mix(a: str, b: str, k: float) -> str:
+    ca, cb = QColor(a), QColor(b)
+    return QColor(round(ca.red() * (1 - k) + cb.red() * k), round(ca.green() * (1 - k) + cb.green() * k),
+                  round(ca.blue() * (1 - k) + cb.blue() * k)).name()
 
 
 def luminance(hex_str: str) -> float:
@@ -29,13 +69,13 @@ def is_color_dark(hex_str: str) -> bool:
 
 
 def contrast_text(bg_hex: str) -> str:
-    return "#ffffff" if is_color_dark(bg_hex) else "#0f172a"
+    return "#ffffff" if is_color_dark(bg_hex) else "#1C1C1E"
 
 
 def readable_accent(accent: str, is_dark: bool) -> str:
     c = QColor(accent)
     if not c.isValid():
-        return "#38bdf8" if is_dark else "#2563eb"
+        return "#F59E0B" if is_dark else "#007AFF"
     lum = luminance(accent)
     if not is_dark and lum > 125:
         return c.darker(165).name()
@@ -46,49 +86,68 @@ def readable_accent(accent: str, is_dark: bool) -> str:
 
 @dataclass(frozen=True)
 class Palette:
+    """Цвета интерфейса. С 3.4.0 панели/рамки/поля выводятся из цвета панели темы, а не зашиты."""
     is_dark: bool
     accent: str
+    panel: str = ""
+    text_color: str = ""
+    border_color: str = ""
 
     @property
-    def text(self): return "#ffffff" if self.is_dark else "#0f172a"
+    def _panel(self) -> QColor:
+        c = QColor(self.panel) if self.panel else QColor()
+        return c if c.isValid() else QColor("#26262A" if self.is_dark else "#FFFFFF")
+
     @property
-    def subtext(self): return "#94a3b8" if self.is_dark else "#475569"
+    def text(self):
+        return self.text_color if QColor(self.text_color).isValid() else ("#F4F4F5" if self.is_dark else "#1C1C1E")
     @property
-    def card(self): return "#151e36" if self.is_dark else "#ffffff"
+    def subtext(self): return _mix(self.text, self._panel.name(), 0.42)
     @property
-    def border(self): return "#233055" if self.is_dark else "#cbd5e1"
+    def card(self): return self._panel.name()
     @property
-    def input(self): return "#0d1527" if self.is_dark else "#ffffff"
+    def border(self):
+        if QColor(self.border_color).isValid():
+            return self.border_color
+        return self._panel.lighter(150).name() if self.is_dark else self._panel.darker(112).name()
     @property
-    def header(self): return "#121a30" if self.is_dark else "#f1f5f9"
+    def input(self): return self._panel.darker(118).name() if self.is_dark else "#FFFFFF"
     @property
-    def hover(self): return "#1f2c4e" if self.is_dark else "#e2e8f0"
+    def header(self): return self._panel.darker(108).name() if self.is_dark else self._panel.darker(104).name()
     @property
-    def button(self): return "#19233e" if self.is_dark else "#ffffff"
+    def hover(self): return self._panel.lighter(128).name() if self.is_dark else self._panel.darker(108).name()
+    @property
+    def button(self): return self._panel.lighter(110).name() if self.is_dark else "#FFFFFF"
     @property
     def title_accent(self): return readable_accent(self.accent, self.is_dark)
     @property
     def on_accent(self): return contrast_text(self.accent)
 
-    # семантические цвета (текст / фон / рамка)
+    # семантические цвета (текст / фон / рамка) — фон полупрозрачный поверх панели, текст контрастный к ней
+    def _sem(self, light_text: str, base: str, dark_text: str, light_bg: str, light_bd: str) -> tuple[str, str, str]:
+        if self.is_dark:
+            return (light_text, _mix(self._panel.name(), base, 0.22), base)     # непрозрачно: одинаково на любой панели
+        return (dark_text, light_bg, light_bd)
+
     @property
-    def success(self): return ("#86efac", "rgba(34,197,94,0.28)", "#22c55e") if self.is_dark else ("#15803d", "#dcfce7", "#86efac")
+    def success(self): return self._sem("#86efac", "#22c55e", "#15803d", "#dcfce7", "#86efac")
     @property
-    def danger(self): return ("#fca5a5", "rgba(239,68,68,0.30)", "#ef4444") if self.is_dark else ("#991b1b", "#fee2e2", "#fca5a5")
+    def danger(self): return self._sem("#fca5a5", "#ef4444", "#991b1b", "#fee2e2", "#fca5a5")
     @property
-    def warning(self): return ("#fcd34d", "rgba(245,158,11,0.28)", "#f59e0b") if self.is_dark else ("#92400e", "#fef3c7", "#fde68a")
+    def warning(self): return self._sem("#fcd34d", "#f59e0b", "#92400e", "#fef3c7", "#fde68a")
     @property
-    def info(self): return ("#7dd3fc", "rgba(56,189,248,0.28)", "#0ea5e9") if self.is_dark else ("#1e40af", "#dbeafe", "#bfdbfe")
+    def info(self): return self._sem("#7dd3fc", "#0ea5e9", "#1e40af", "#dbeafe", "#bfdbfe")
     @property
-    def neutral(self): return ("#e2e8f0", "rgba(148,163,184,0.2)", "#64748b") if self.is_dark else ("#334155", "#f1f5f9", "#cbd5e1")
+    def neutral(self): return self._sem("#e4e4e7", "#71717a", "#3f3f46", "#f4f4f5", "#d4d4d8")
 
     def badge(self, kind: str) -> tuple[str, str, str]:
         return {"online": self.success, "offline": self.danger, "active": self.neutral,
                 "disabled": self.danger, "warning": self.warning, "info": self.info}.get(kind, self.neutral)
 
 
-def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: int, accent: str) -> str:
-    p = Palette(is_dark, accent)
+def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: int, accent: str,
+                     panel: str = "", text_color: str = "", border_color: str = "") -> str:
+    p = Palette(is_dark, accent, panel, text_color, border_color)
 
     def btn(name: str, colors: tuple[str, str, str]) -> str:
         fg, bg, bd = colors
@@ -230,5 +289,4 @@ def design_for_system(design: dict) -> dict:
     dark = system_prefers_dark()
     if dark is None:
         return design
-    t = PRESET_THEMES["dark" if dark else "light"]
-    return {**design, "bg_style": f"background-color: {t['bg']};", "is_dark": t["is_dark"], "accent_color": t["accent"]}
+    return {**design, **theme_design(PRESET_THEMES["dark" if dark else "light"])}

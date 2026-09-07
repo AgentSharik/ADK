@@ -1,13 +1,13 @@
 Не удалось сохранить учётные данные: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
-Найден пароль в открытом виде в /tmp/admgr_e2e_chitg30o/cred.json — файл удалён
+Найден пароль в открытом виде в /tmp/admgr_e2e_idhxnng5/cred.json — файл удалён
 SearchWorker: LDAP
 Traceback (most recent call last):
-  File "/home/user/adk/adk/workers.py", line 127, in run
+  File "/home/user/adk/workers.py", line 127, in run
     conn = self.conn_factory()
-  File "/home/user/adk/adk/main_window.py", line 292, in get_conn
+  File "/home/user/adk/main_window.py", line 299, in get_conn
     return ad.make_connection(self.username, self.password)
            ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/user/adk/tests/e2e_scenario.py", line 141, in boom
+  File "/home/user/tests/e2e_scenario.py", line 141, in boom
     def boom(*a,**k): raise RuntimeError("LDAP down")
                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 RuntimeError: LDAP down
@@ -19,7 +19,7 @@ PASS get_all_attribute_values (paging)
 === B. Главное окно (сценарий пользователя) ===
 PASS дашборд при старте
 PASS debounce: 5 нажатий → 1 LDAP-запрос  — запросов: 1
-PASS результаты и инспектор  — строк: 32, инспектор: 👤 Иванов Иван
+PASS результаты и инспектор  — строк: 32, инспектор: <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNSIgaGVpZ2h0PSIxNSIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIxLjc1IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNvbG9yPSIjRjRGNEY1Ij48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI5Ii8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMCIgcj0iMy4yIi8+PHBhdGggZD0iTTYuMiAxOC40YzEuNC0yLjMgMy40LTMuNCA1LjgtMy40czQuNCAxLjEgNS44IDMuNCIvPjwvc3ZnPg==" width="15" height="15">&nbsp;Иванов Иван
 PASS сортировка: онлайн первым
 PASS инспектор: ПК и IP
 PASS инспектор: статус В сети
@@ -48,7 +48,7 @@ PASS опись: организации загружены
 PASS участники группы через LDAP (не COM)
 PASS смена темы применяется
 PASS пинг: живой вывод парсится  — 3 строк
-PASS пинг: процесс убит при Esc/reject  — pid 5291
+PASS пинг: процесс убит при Esc/reject  — pid 6583
 PASS потоки не текут после диалогов  — 1 → 1
 
 === D. Безопасность ===
@@ -64,7 +64,7 @@ PASS html.escape в rich-text
 
 === E. Устойчивость ===
 PASS ошибка БД — исключение, не молчание
-PASS недоступный AD → сообщение, а не вечный «Поиск…»  — ⚠️ LDAP down
+PASS недоступный AD → сообщение, а не вечный «Поиск…»  — <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAw
 PASS closeEvent дожидается потоков
 
 === ИТОГ ===

@@ -440,7 +440,7 @@ def test_health_has_diagnostics_placeholder_tab(qapp):
     from adk.health_ui import HealthDialog, _diagnostics_placeholder
     from adk.widgets import app_palette
     hd = HealthDialog("WS-101", None)
-    assert hd.tabs.tabText(hd.tabs.count() - 1) == "🩻 Диагностика"
+    assert hd.tabs.tabText(hd.tabs.count() - 1) == "Диагностика" and not hd.tabs.tabIcon(hd.tabs.count() - 1).isNull()
     assert "пусто" in hd.lbl_diag.text().lower() or "ничего" in hd.lbl_diag.text().lower() or "выехал" in hd.lbl_diag.text()
     pm = _diagnostics_placeholder(app_palette())
     assert not pm.isNull() and pm.width() == 200

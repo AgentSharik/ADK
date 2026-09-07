@@ -62,6 +62,7 @@ adk/
   export.py       XLSX/CSV экспорт результатов
   updates.py      проверка version-файла на сетевом диске
   tray.py         иконка трея, глобальная горячая клавиша (RegisterHotKey)
+  icons.py        контурные SVG-иконки в стиле SF Symbols: ведущий эмодзи в тексте кнопки/вкладки/QLabel → QIcon/<img>
   i18n.py         словарь ru→en и tr()
   main_window.py  дашборд, единый поиск, таблица, инспектор
 run.py            точка входа без установки (PyCharm / PyInstaller)

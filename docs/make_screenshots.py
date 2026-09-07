@@ -21,10 +21,8 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 from adk.widgets import apply_theme  # noqa: E402
 
 app = QApplication([])
-from adk.theme import PRESET_THEMES  # noqa: E402
-_t = PRESET_THEMES["ocean"]
-apply_theme({**config.settings.design, "is_dark": True, "accent_color": _t["accent"],
-             "bg_style": f"background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 {_t['c1']}, stop:1 {_t['c2']});"})
+from adk.theme import PRESET_THEMES, theme_design  # noqa: E402
+apply_theme({**config.settings.design, **theme_design(PRESET_THEMES["emerald"])})   # тема «Изумрудный лес»
 now = datetime.now(timezone.utc)
 
 people = [

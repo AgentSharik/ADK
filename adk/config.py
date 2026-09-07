@@ -85,11 +85,15 @@ _DEFAULTS: dict[str, dict[str, str]] = {
         "dhcp_servers": "",
     },
     "Design": {
-        "bg_style": "background-color: #f1f5f9;",
-        "is_dark": "false",
+        # по умолчанию — тема «Графит и титан» (см. theme.PRESET_THEMES["dark"])
+        "bg_style": "background-color: #1C1C1F;",
+        "is_dark": "true",
         "font_family": "Segoe UI",
         "font_size": "10",
-        "accent_color": "#2563eb",
+        "accent_color": "#F59E0B",
+        "panel_color": "#26262A",
+        "text_color": "#F4F4F5",
+        "border_color": "",
         "follow_system": "false",     # тёмная/светлая — как в Windows (AppsUseLightTheme)
     },
     "UI": {
@@ -216,6 +220,9 @@ class Settings:
             "font_family": d.get("font_family"),
             "font_size": d.getint("font_size"),
             "accent_color": d.get("accent_color"),
+            "panel_color": d.get("panel_color", fallback=""),
+            "text_color": d.get("text_color", fallback=""),
+            "border_color": d.get("border_color", fallback=""),
             "follow_system": d.getboolean("follow_system", fallback=False),
         }
 

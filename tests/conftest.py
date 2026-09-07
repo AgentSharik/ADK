@@ -25,4 +25,6 @@ def qapp():
     from PyQt6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
+    from adk import icons
+    icons.install()          # как в приложении: эмодзи в текстах превращаются в иконки
     yield app

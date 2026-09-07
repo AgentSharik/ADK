@@ -174,7 +174,7 @@ def test_color_picker_sources_stay_in_sync(qapp):
     d._from_sv(0.0, 1.0)                                 # без насыщенности при полной яркости — белый
     assert d.color() == "#ffffff" and "светлый" in d.lbl_info.text()
     d.preset_btns[1].click()                             # пресет
-    assert d.color() == "#2563eb"
+    assert d.color() == "#f97316"                            # второй пресет палитры
     d.btn_reset.click()                                  # «Как было»
     assert d.color() == "#38bdf8"
     d._from_hex("#zzz")                                  # мусор игнорируется
@@ -276,3 +276,56 @@ def test_login_error_box_not_clipped_and_legend_beside_map(qapp):
     assert f.legend_box.x() > f.map.x() + f.map.width() - 1 and abs(f.legend_box.y() - f.map.y()) < 40
     assert SubnetMap.GAP >= 4
     f.close()
+
+
+def test_ten_unique_themes_without_navy_and_black():
+    """Ровно 10 тем (5 тёмных / 5 светлых), все цвета разные, нет чистого чёрного и тёмно-синих фонов."""
+    from PyQt6.QtGui import QColor
+    from adk.theme import PRESET_THEMES, theme_design
+    assert len(PRESET_THEMES) == 10
+    darks = [k for k, t in PRESET_THEMES.items() if t["is_dark"]]
+    assert len(darks) == 5
+    names = [t["name"] for t in PRESET_THEMES.values()]
+    assert len(set(names)) == 10
+    bgs = set()
+    for key, t in PRESET_THEMES.items():
+        cols = [t.get("bg") or t["c1"], t.get("c2") or "", t["panel"], t["accent"], t["text"]]
+        for c in cols:
+            assert c.lower() != "#000000", key
+        c = QColor(t.get("bg") or t["c1"])
+        # тёмно-синий: синий заметно доминирует над красным при тёмном фоне
+        assert not (t["is_dark"] and c.blue() > c.red() + 25 and c.blue() > c.green() + 15), key
+        bgs.add((t.get("bg") or t["c1"]).lower())
+        d = theme_design(t)
+        assert d["is_dark"] == t["is_dark"] and d["accent_color"] == t["accent"] and d["panel_color"] == t["panel"]
+    assert len(bgs) == 10                                    # фоны не повторяются
+
+
+def test_buttons_get_outline_icons_instead_of_emoji(qapp):
+    """Ведущий эмодзи в тексте кнопки/вкладки превращается в контурную иконку; сам текст остаётся."""
+    from PyQt6.QtWidgets import QPushButton, QTabWidget, QWidget, QLabel
+    from adk import icons
+    b = QPushButton("📡 Пинг")
+    assert b.text() == "Пинг" and not b.icon().isNull() and b._adk_icon == ("waveform.path.ecg", "info")
+    b.setText("🔄 Обновить")
+    assert b.text() == "Обновить" and b._adk_icon[0] == "arrow.clockwise"
+    b.setText("Без иконки")
+    assert b.text() == "Без иконки"
+    t = QTabWidget()
+    t.addTab(QWidget(), "🛡️ Безопасность")
+    assert t.tabText(0) == "Безопасность" and not t.tabIcon(0).isNull()
+    lbl = QLabel("👤 Иванов")
+    assert "<img" in lbl.text() and "Иванов" in lbl.text() and "👤" not in lbl.text()
+    assert icons.strip("🖨️ Принтеры") == "Принтеры"
+    svg = icons.svg("person.crop.circle", "#ffffff")
+    assert b"stroke-width" in svg and b"fill=\"none\"" in svg           # контур, а не заливка
+
+
+def test_subnet_map_cells_fit_three_digits(qapp):
+    from PyQt6.QtGui import QFontMetrics, QFont
+    from adk.freeip_ui import SubnetMap
+    m = SubnetMap()
+    m.resize(1100, 320)
+    assert SubnetMap.MAX_CELL >= 30 and SubnetMap.GAP >= 4
+    f = QFont(); f.setPointSizeF(max(7, min(11, SubnetMap.MAX_CELL * 0.29)))
+    assert QFontMetrics(f).horizontalAdvance("254") <= SubnetMap.MAX_CELL - SubnetMap.GAP - 1   # внутри ячейки

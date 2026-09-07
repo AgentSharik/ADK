@@ -189,8 +189,8 @@ def test_free_ip_dialog_bad_prefix_shows_error(qapp):
     d = FreeIPDialog(None)
     d.prefix.setText("bad")
     d.search()
-    _wait(lambda: "⚠️" in d.status.text(), qapp, 3000)
-    assert "⚠️" in d.status.text() and d.btn_start.isEnabled()
+    _wait(lambda: "Префикс" in d.status.text(), qapp, 3000)
+    assert "Префикс" in d.status.text() and d.btn_start.isEnabled()
     d.close()
 
 
@@ -389,7 +389,8 @@ def test_printer_badges_and_click_search(qapp, fake_conn, monkeypatch):
     assert _wait(lambda: w.table.rowCount() > 0, qapp, 3000)
     w.select_row(next(r for r in range(w.table.rowCount()) if w.table.item(r, 0).text() == "ivanov"))
     badges = w.printers_box.findChildren(BadgeButton)
-    assert [b.text() for b in badges] == ["🌐 HP LaserJet M404 · 10.0.2.50 ★", "🔌 Canon LBP"]
+    assert [b.text() for b in badges] == ["HP LaserJet M404 · 10.0.2.50 ★", "Canon LBP"]
+    assert [b._adk_icon[0] for b in badges] == ["wifi", "cable.connector"]     # 3.4.0: вид принтера — иконкой
     monkeypatch.setattr(netutils, "is_printer_alive", lambda ip, **kw: ip == "10.0.2.50")
     badges[0].click()                                   # → просто IP принтера, без префикса
     assert w.search_input.text() == "10.0.2.50"
@@ -481,7 +482,7 @@ def test_printers_dialog_summary_and_drilldown(qapp, fake_conn, monkeypatch, tmp
     dlg.table.selectRow(0)
     dlg.open_owners()                                             # → главное окно: printer: 10.0.2.50
     assert w.search_input.text() == "10.0.2.50"
-    assert _wait(lambda: w.table.rowCount() >= 1 and w.lbl_status.text().startswith("🖨️"), qapp, 3000)
+    assert _wait(lambda: w.table.rowCount() >= 1 and "Принтеров:" in w.lbl_status.text(), qapp, 3000)
     assert [w.table.item(r, 3).text() for r in range(w.table.rowCount())] == ["10.0.2.50"], w.lbl_status.text()
     assert "подключено ПК — 2" in w.lbl_status.text()
     w.close()
@@ -520,7 +521,7 @@ def test_disk_button_opens_c_or_offers_volume_menu(qapp, fake_conn, monkeypatch)
     w.remote_action("disk")
     menu = w._disk_menu
     items = [a for a in menu.actions() if a.isEnabled()]
-    assert [a.text()[:6] for a in items] == ["💽  C:$", "💽  D:$"] and "Data" in items[1].text()
+    assert [a.text()[:3] for a in items] == ["C:$", "D:$"] and "Data" in items[1].text() and not items[0].icon().isNull()
     assert len(calls) == n
     items[1].trigger()
     assert calls[-1][1].lower().endswith("\\d$")
@@ -547,7 +548,8 @@ def test_power_button_menu_and_actions(qapp, fake_conn, monkeypatch):
     assert "restart" not in w.action_buttons and "wol" not in w.action_buttons
     w.remote_action("power")
     items = [a.text() for a in w._power_menu.actions() if a.isEnabled() and not a.isSeparator()]
-    assert items == [netutils.POWER_ACTIONS[k][0] for k in ("wol", "lock", "logoff", "sleep", "restart", "shutdown")]
+    from adk import icons
+    assert items == [icons.strip(netutils.POWER_ACTIONS[k][0]) for k in ("wol", "lock", "logoff", "sleep", "restart", "shutdown")]
     w._power_menu.close()
     # блокировка экрана — без вопросов, три шага schtasks (создать → запустить → удалить)
     w.remote_action("lock")

@@ -504,6 +504,7 @@ class ADApp(FramelessMainWindow):
                 box.addWidget(v)
                 self.btn_ping = QPushButton("📡 Пинг")
                 self.btn_ping.setObjectName("btnInfo")
+                self.btn_ping.setMinimumWidth(110)
                 self.btn_ping.clicked.connect(self.ping_selected)
                 box.addWidget(self.btn_ping)
                 box.addStretch()

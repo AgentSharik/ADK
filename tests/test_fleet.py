@@ -396,7 +396,7 @@ def test_v31_dialogs_smoke(qapp, monkeypatch):
 
     d = LogonsDialog("PC-A", app)
     _spin(qapp)
-    assert "⚠️" in d.summary.text()  # не Windows — понятная ошибка, а не падение
+    assert "только с Windows" in d.summary.text()  # не Windows — понятная ошибка, а не падение
     d.close()
 
     d = ComparePCDialog("PC-A", "PC-B", app)
@@ -429,7 +429,7 @@ def test_register_dialog_templates(qapp, monkeypatch, tmp_path):
     d.surname.setText("Иванов"); d.name.setText("Иван"); d.generate()
     monkeypatch.setattr(config.settings, "use_ssl", True)
     d._refresh()
-    assert d.btn_create.isEnabled() and "✅" in d.checks["pwd"].text()
+    assert d.btn_create.isEnabled() and "Пароль" in d.checks["pwd"].text()
     d.close()
 
 

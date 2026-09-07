@@ -38,8 +38,8 @@ class SubnetMap(QWidget):
     в высоту; в ширину места больше, ячейки крупнее, цифры читаются). Клик по ячейке — сигнал ``picked(host)``."""
     picked = pyqtSignal(int)
     COLS, ROWS = 32, 8
-    MAX_CELL = 26   # шаг сетки, px
-    GAP = 5         # просвет между ячейками, px — блоки не сливаются
+    MAX_CELL = 36   # шаг сетки, px — трёхзначные номера помещаются с запасом
+    GAP = 6         # просвет между ячейками, px — блоки не сливаются
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -104,7 +104,7 @@ class SubnetMap(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         ox, oy, c = self._cell()
         font = QFont(self.font())
-        font.setPointSizeF(max(7.0, min(11.0, c * 0.4)))
+        font.setPointSizeF(max(7.0, min(11.0, c * 0.29)))   # «254» помещается с запасом
         p.setFont(font)
         base = QColor(pal.input)
         for h in range(256):
@@ -141,7 +141,7 @@ class FreeIPDialog(FramelessDialog):
     """Свободный IP: карта подсети, крупный результат, вердикт DHCP, таблица найденных за сеанс."""
 
     def __init__(self, parent=None):
-        super().__init__("🔍 Свободный IP-адрес", parent, (1100, 640))
+        super().__init__("🔍 Свободный IP-адрес", parent, (1320, 790))
         self.worker: FreeIPWorker | None = None
         self.found = ""
         self.history: list[str] = []
@@ -190,7 +190,7 @@ class FreeIPDialog(FramelessDialog):
         map_card.setObjectName("dashCard")
         map_card.setStyleSheet("#dashCard { padding: 4px; }")
         ml = QVBoxLayout(map_card)
-        ml.setContentsMargins(12, 6, 12, 6)
+        ml.setContentsMargins(12, 10, 12, 10)
         head = QHBoxLayout()
         self.lbl_map = QLabel("<b>Карта подсети</b> — клик по ячейке задаёт стартовый хост")
         head.addWidget(self.lbl_map, 1)
@@ -251,7 +251,7 @@ class FreeIPDialog(FramelessDialog):
         self.btn_ping = QPushButton("📡 Пинг")
         self.btn_ping.setEnabled(False)
         self.btn_ping.clicked.connect(lambda: PingDialog(self.found, self.found, None, self).exec())
-        self.btn_next = QPushButton("Следующий ➡️")
+        self.btn_next = QPushButton("➡️ Следующий")
         self.btn_next.setObjectName("btnSuccess")
         self.btn_next.setEnabled(False)
         self.btn_next.clicked.connect(self.next_)

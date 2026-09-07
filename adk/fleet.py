@@ -220,7 +220,7 @@ class SoftwareDialog(FramelessDialog):
         self.fleet = _table(["ПК", "Программа", "Версия", "Опрошен"])
         self.fleet.itemDoubleClicked.connect(lambda it: self.app.search_text(self.fleet.item(it.row(), 0).text()) if hasattr(self.app, "search_text") else None)
         lay.addWidget(self.fleet, 1)
-        self.fleet_lbl = QLabel("Поиск идёт по кэшу опрошенных ПК. Двойной клик — найти ПК в главном окне.")
+        self.fleet_lbl = QLabel("Поиск идёт по сохранённым данным опрошенных ПК. Двойной клик — найти ПК в главном окне.")
         lay.addWidget(self.fleet_lbl)
         self._fill_summary()
         return w
@@ -229,7 +229,7 @@ class SoftwareDialog(FramelessDialog):
         top = software.software_summary()
         if not top:
             return
-        self.fleet_lbl.setText("Топ программ по числу ПК (из кэша). Введите название для точного поиска.")
+        self.fleet_lbl.setText("Топ программ по числу ПК (по сохранённым данным). Введите название для точного поиска.")
         _fill(self.fleet, [(f"{n} ПК", name, "", "") for name, n in top[:100]])
 
     # --- данные
@@ -237,7 +237,7 @@ class SoftwareDialog(FramelessDialog):
         items, ts = software.cached_software(self.comp)
         self._items = items
         self._apply_filter()
-        self.lbl.setText(f"Из кэша ({ts})" if ts else "ПО ещё не опрашивалось — нажмите «Опросить ПК»")
+        self.lbl.setText(f"Сохранённые данные от {ts}" if ts else "ПО ещё не опрашивалось — нажмите «Опросить ПК»")
 
     def _apply_filter(self):
         f = self.filter.text().strip().casefold()
@@ -267,7 +267,7 @@ class SoftwareDialog(FramelessDialog):
         rows = software.find_software(self.q.text())
         _fill(self.fleet, [(r["comp"], r["name"], r["version"], r["ts"][:16]) for r in rows])
         comps = len({r["comp"] for r in rows})
-        self.fleet_lbl.setText(f"Найдено: {len(rows)} записей на {comps} ПК" if rows else "Ничего не найдено в кэше (опросите ПК или уточните запрос)")
+        self.fleet_lbl.setText(f"Найдено: {len(rows)} записей на {comps} ПК" if rows else "Ничего не найдено в сохранённых данных (опросите ПК или уточните запрос)")
 
 
 # ============================================================================ входы за сутки
