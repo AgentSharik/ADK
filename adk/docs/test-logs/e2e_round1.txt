@@ -1,0 +1,71 @@
+Не удалось сохранить учётные данные: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
+Найден пароль в открытом виде в /tmp/admgr_e2e_chitg30o/cred.json — файл удалён
+SearchWorker: LDAP
+Traceback (most recent call last):
+  File "/home/user/adk/adk/workers.py", line 127, in run
+    conn = self.conn_factory()
+  File "/home/user/adk/adk/main_window.py", line 292, in get_conn
+    return ad.make_connection(self.username, self.password)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/adk/tests/e2e_scenario.py", line 141, in boom
+    def boom(*a,**k): raise RuntimeError("LDAP down")
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: LDAP down
+=== A. LDAP-слой ===
+PASS paged_search обходит лимит 1000  — 1200 записей за 3 страниц
+PASS paged_search limit
+PASS get_all_attribute_values (paging)
+
+=== B. Главное окно (сценарий пользователя) ===
+PASS дашборд при старте
+PASS debounce: 5 нажатий → 1 LDAP-запрос  — запросов: 1
+PASS результаты и инспектор  — строк: 32, инспектор: 👤 Иванов Иван
+PASS сортировка: онлайн первым
+PASS инспектор: ПК и IP
+PASS инспектор: статус В сети
+PASS бейджи не рассинхронизируются при сортировке
+PASS устаревший ответ поиска отброшен
+PASS повторный поиск после первого (был RuntimeError)  — Найдено: 32
+PASS история поиска пишется  — ['петров', 'ивано']
+PASS drill-down «не в сети»
+PASS drill-down «все»
+PASS копирование карточки в буфер  — 👤 ivanov | 💻 ПК: WS-101 | 10.0.0.9
+PASS update_pc_status_in_ui меняет бейдж
+PASS очистка поля → дашборд
+PASS скрытие колонок сохраняется
+
+=== C. Диалоги ===
+PASS карточка: группы загрузились в фоне  — 1 записей
+PASS карточка: memberOf показан
+PASS карточка: копирование не падает (был AttributeError)
+PASS карточка: сохраняются только изменённые  — ['title']
+PASS регистрация: логин ≤20 и транслит  — konstantinopolskij_k
+PASS регистрация: пароль по политике
+PASS регистрация: подсказки в фоне
+PASS регистрация без LDAPS блокируется
+PASS свободный IP: валидация префикса
+PASS опись: организации загружены
+PASS участники группы через LDAP (не COM)
+PASS смена темы применяется
+PASS пинг: живой вывод парсится  — 3 строк
+PASS пинг: процесс убит при Esc/reject  — pid 5291
+PASS потоки не текут после диалогов  — 1 → 1
+
+=== D. Безопасность ===
+PASS SQL LIKE: '_' буквальный
+PASS инъекция в имя узла отклонена: 'WS-1; rm -rf /'
+PASS инъекция в имя узла отклонена: 'WS-1 && calc'
+PASS инъекция в имя узла отклонена: '$(x)'
+PASS инъекция в имя узла отклонена: 'WS-1\\..\\'
+PASS PingWorker отклоняет плохой target
+PASS пароль не попадает в файл открытым текстом  — файл: (не создан — нет keyring backend в песочнице)
+PASS старый plain-text файл отвергается и удаляется
+PASS html.escape в rich-text
+
+=== E. Устойчивость ===
+PASS ошибка БД — исключение, не молчание
+PASS недоступный AD → сообщение, а не вечный «Поиск…»  — ⚠️ LDAP down
+PASS closeEvent дожидается потоков
+
+=== ИТОГ ===
+46/46 проверок пройдено

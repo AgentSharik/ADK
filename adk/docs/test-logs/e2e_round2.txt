@@ -1,0 +1,135 @@
+FunctionWorker
+Traceback (most recent call last):
+  File "/home/user/adk/adk/workers.py", line 48, in run
+    self.done.emit(self._fn(*self._args, **self._kwargs))
+                   ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/adk/adk/main_window.py", line 859, in <lambda>
+    run_in_background(self, lambda: nettools.learn_mac(comp, u["ip"]), lambda m: None, lambda m: None)
+                                    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/home/user/adk/adk/nettools.py", line 72, in learn_mac
+    subprocess.run(["arp", "-a", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, creationflags=CREATE_NO_WINDOW)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/subprocess.py", line 554, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ~~~~~^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'FakeProc' object does not support the context manager protocol
+FunctionWorker
+Traceback (most recent call last):
+  File "/home/user/adk/adk/workers.py", line 48, in run
+    self.done.emit(self._fn(*self._args, **self._kwargs))
+                   ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/adk/adk/main_window.py", line 859, in <lambda>
+    run_in_background(self, lambda: nettools.learn_mac(comp, u["ip"]), lambda m: None, lambda m: None)
+                                    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/home/user/adk/adk/nettools.py", line 72, in learn_mac
+    subprocess.run(["arp", "-a", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, creationflags=CREATE_NO_WINDOW)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/subprocess.py", line 554, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ~~~~~^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'FakeProc' object does not support the context manager protocol
+Не удалось прочитать учётные данные: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+=== F. Утилиты ad.py ===
+PASS qualify_user: без домена  — EXAMPLE\admin
+PASS qualify_user: с доменом не трогаем
+PASS qualify_user: UPN → DOMAIN\user  — EXAMPLE\admin
+PASS dn_to_cn: простой
+PASS dn_to_cn: экранированная запятая  — Smith, John
+PASS transliterate: щ/ё/й  — shhyolkov jod
+PASS sanitize_sam: ≤20 и мусор  — ivanov-petrovsergej
+PASS sanitize_sam: пустой → ValueError
+PASS generate_secure_password: политика на 300 образцах
+PASS describe_ldap_error: 52e
+PASS describe_ldap_error: 775 lockout
+PASS describe_ldap_error: socket
+PASS describe_ldap_error: cert
+PASS escape_filter_chars  — a\2a\28b\29\5cc
+
+=== G. Создание пользователя (порядок операций и откат) ===
+PASS create_user: add → password → modify(512)  — ['add', 'pwd', 'modify']
+PASS create_user: создаётся ОТКЛЮЧЁННОЙ (514)  — 514
+PASS create_user: затем включается (512)
+PASS create_user: UPN и sAMAccountName  — sidorovs / sidorovs@example.local
+PASS create_user: displayName с инициалами  — Сидоров С.П.
+PASS create_user: пустые extra отбрасываются
+PASS create_user: DN в users_ou  — CN=Сидоров С.П.,OU=Employees,DC=example,DC=local
+PASS create_user: ошибка пароля → исключение наружу
+PASS create_user: ОТКАТ — объект удалён, не осталось «полусозданной» УЗ  — ['add', 'pwd', 'delete']
+PASS create_user: дубликат логина отклонён ДО add
+PASS create_user: RDN экранируется
+
+=== H. Карточка: реальные действия (argv, LDAP-операции, журнал) ===
+PASS карточка: ПК и IP определены в фоне  — WS-101 10.0.0.9
+PASS карточка 3.2.5: действий с ПК в ней больше нет (они в инспекторе)  — 4
+PASS карточка: шапка с бейджем состояния и вкладка «Учётная запись»
+PASS shutdown: /m и UNC отдельными аргументами, цель — IP  — ['shutdown', '/r', '/m', '\\\\10.0.0.9', '/t', '0', '/f']
+PASS mmc: /computer=\\host  — ['mmc.exe', 'compmgmt.msc', '/computer=\\\\10.0.0.9']
+PASS explorer: \\host\c$  — ['explorer.exe', '\\\\10.0.0.9\\c$']
+PASS RMS: -host по IP, -name по имени  — ['C:\\Program Files (x86)\\Remote Manipulator System - Viewer\\rutview.exe', '-create', '-name:WS-101', '-host:10.0.0.9', '-fullcontrol']
+PASS журнал действий: restart/compmgmt/disk_c записаны с именем ПК  — [('restart', 'WS-101'), ('compmgmt', 'WS-101'), ('disk_c', 'WS-101')]
+PASS отключение УЗ: UAC 512 → 514 одним MODIFY_REPLACE  — {'userAccountControl': [('MODIFY_REPLACE', [514])]}
+PASS включение УЗ: 514 → 512  — {'userAccountControl': [('MODIFY_REPLACE', [512])]}
+PASS после снятия блокировки предложено задать пароль; переключатели окна зафиксированы  — 1
+PASS unlock: только lockoutTime=0, UAC не трогается  — {'lockoutTime': [('MODIFY_REPLACE', [0])]}
+PASS группы: уже состоящие не предлагаются к добавлению
+PASS add_to_group: MODIFY_ADD member на DN группы  — ('CN=Admins,OU=g', {'member': [('MODIFY_ADD', ['CN=Иванов И.И.,OU=x'])]})
+PASS add_to_group: список групп обновлён
+PASS remove_from_group: MODIFY_DELETE
+PASS save_changes: только изменённое (description), пустое/равное не шлём  — {'description': [('MODIFY_REPLACE', ['VIP'])]}
+PASS привязка ПК: имя нормализуется (FQDN → WS-777)
+PASS карточка без ПК: вкладка характеристик говорит «ПК не привязан»
+
+=== I. Главное окно: остальное ===
+PASS главное окно: действие из строки → argv и журнал (ПК после перепривязки — WS-777)  — ('WS-777',)
+PASS история: клик по чипу запускает поиск  — 🔍 иванов2
+PASS лимит выдачи: пользователю СООБЩАЕТСЯ об усечении  — Найдено: 40 — показаны первые 40 учётных записей, уточните запрос
+PASS open_card без Entry: сообщение, а не падение
+PASS 15× открыть/закрыть карточку: потоки не копятся  — 1 → 1
+
+=== J. Сканер парка ===
+PASS фильтр рабочих станций: pattern + exclude + регистр + $  — ['WS-101', 'WS-102', 'PC-BUH1', 'WS-1']
+PASS сканер вне Windows: честное сообщение и finished_scan(n)  — ['ℹ️ Сканер парка доступен только на Windows (PowerShell)', 4]
+PASS upsert: пустой User/LastLogon не затирают прежние  — ('ivanov', '01.09.2026', '2026-09-04 10:00:00', 0)
+PASS upsert: last_seen_online сохраняется после ухода в offline  — ('ivanov', '01.09.2026', '2026-09-04 10:00:00', 0)
+PASS исчезнувший из AD ПК удаляется из инвентаря
+PASS пустой результат сканера НЕ стирает инвентарь
+
+=== K. Учётные данные: DPAPI-ветка (заглушка win32crypt) ===
+PASS DPAPI: файл создан, пароля в открытом виде нет  — {"username": "CORP\\admin", "dpapi": "RFBBUEk6VXdBekFHTUFjZ0JsQUhRQUlRQWZCREFFUU
+PASS DPAPI: чтение обратно
+PASS DPAPI: битый файл → (None, None), без исключения
+PASS clear_credentials удаляет файл
+
+=== L. CSV характеристик и сводка ===
+PASS CSV cp1251: ОС/CPU  — ОС: Windows 10 Pro 22H2 | CPU: Intel Core i5-10400 | ОЗУ: 16.0 ГБ (2667 МГц) | Диски: 465.8 ГБ SSD (Samsung SSD 870)
+PASS CSV: ОЗУ суммируется по планкам (16 ГБ, 2667 МГц)  — ОЗУ: 16.0 ГБ (2667 МГц)
+PASS CSV: диск байты → ГБ (465.8) + тип + модель  — Диски: 465.8 ГБ SSD (Samsung SSD 870)
+PASS CSV: принтеры  — ['HP LaserJet (локальный)']
+PASS нет CSV и specs → «не собраны», ничего не выдумывается
+PASS CSV: ОЗУ в байтах распознаётся как 8 ГБ  — ОЗУ: 8.0 ГБ
+
+=== M. Разбор ping / сеть ===
+PASS ping ru: успех  — {'ip': '10.0.0.9', 'bytes': '32', 'time': '1мс', 'ttl': '128', 'status': 'Успешно', 'success': True, 'is_info': False}
+PASS ping en: time<1ms  — {'ip': '10.0.0.9', 'bytes': '32', 'time': '1ms', 'ttl': '64', 'status': 'Успешно', 'success': True, 'is_info': False}
+PASS ping: unreachable от шлюза — НЕ успех
+PASS ping: таймаут
+PASS ping linux (dev-запуск): успех  — {'ip': '127.0.0.1:', 'bytes': '64', 'time': '0.030ms', 'ttl': '64', 'status': 'Успешно', 'success': True, 'is_info': False}
+PASS is_ip_query: 10.0.2 да, 2554567 нет, 255.4567 нет
+PASS is_valid_hostname: имя/IP да, FQDN и пробел нет
+
+=== N. БД: история, LIKE, дедуп ===
+PASS история: Cyrillic-дедуп без учёта регистра (LOWER() SQLite ASCII-only)  — ['Петров', 'иванов', 'пользователь', 'иванов2']
+PASS история: хранится ПОСЛЕДНИЙ вариант написания  — ['Петров', 'иванов', 'пользователь', 'иванов2']
+PASS LIKE: '%' в запросе экранируется  — {'kim'}
+PASS поиск по IP → логин нормализован (без домена, lower)
+PASS normalize_login/clean_computer_name
+
+=== O. Тема / конфиг ===
+PASS contrast_text: на светлом тёмный, на тёмном светлый
+PASS readable_accent: тёмный акцент на тёмной теме осветляется
+PASS stylesheet собирается и содержит акцент
+PASS config: пример без организационных данных
+PASS save_design → reload сохраняет акцент  — #123456
+
+=== ИТОГ ===
+82/82 проверок пройдено

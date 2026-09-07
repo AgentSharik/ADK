@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=8
+pyflakes>=3
+pillow>=10          # docs/make_screenshots.py — GIF-демо; e2e_round3 проверяет кадры (опционально)

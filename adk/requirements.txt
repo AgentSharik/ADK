@@ -1,0 +1,8 @@
+PyQt6>=6.6
+ldap3==2.9.1
+pyasn1>=0.4.8
+keyring>=24          # защищённое хранилище пароля (не Windows)
+openpyxl>=3.1        # Excel-опись
+pywin32>=306; sys_platform == "win32"     # DPAPI (win32crypt)
+winkerberos>=0.9; sys_platform == "win32" # SSO / Kerberos
+cryptography>=41     # channel binding для GSSAPI поверх LDAPS

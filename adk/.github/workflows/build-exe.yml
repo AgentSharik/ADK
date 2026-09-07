@@ -1,0 +1,41 @@
+name: build-exe
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Smoke import (Windows deps present)
+        run: python -c "import adk, PyQt6, ldap3, win32crypt, winkerberos; print(adk.__version__)"
+      - name: Build
+        run: pyinstaller --noconfirm --clean adk.spec
+      - name: Launch smoke (exe starts, creates config, exits)
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $p = Start-Process -FilePath "dist\ADK\ADK.exe" -PassThru
+          Start-Sleep -Seconds 8
+          if ($p.HasExited) { throw "exe exited early with $($p.ExitCode)" }
+          Stop-Process -Id $p.Id -Force
+          if (-not (Test-Path "$env:USERPROFILE\Documents\ADK\config.ini")) { throw "config.ini not created" }
+      - name: Zip
+        shell: pwsh
+        run: |
+          $v = (python -c "import adk; print(adk.__version__)")
+          Compress-Archive -Path "dist\ADK\*" -DestinationPath "ADK-$v-win64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ADK-win64
+          path: ADK-*-win64.zip

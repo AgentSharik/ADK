@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Tests (pytest)" type="tests" factoryName="py.test">
+    <module name="adk" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <envs>
+      <env name="QT_QPA_PLATFORM" value="offscreen" />
+    </envs>
+    <option name="_new_target" value="&quot;$PROJECT_DIR$/tests&quot;" />
+    <option name="_new_targetType" value="&quot;PATH&quot;" />
+    <method v="2" />
+  </configuration>
+</component>

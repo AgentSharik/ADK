@@ -1,0 +1,23 @@
+# служебное песочницы / кэши
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+.cache/
+.local/
+.config/
+.sudo_as_admin_successful
+node_modules/
+build/
+dist/
+
+# рабочие данные программы (БД, конфиги пользователя) и приватное
+Documents/
+*.db
+*.sqlite
+QA_ARCHITECTURE.md
+
+# кадры видео (временные), архив поставки собирается заново
+demo_video/frames*/
+adk.zip

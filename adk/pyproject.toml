@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adk"
+version = "3.1.0"
+description = "Desktop-инструмент администратора Active Directory: единый поиск, инвентарь ПК, удалённые действия"
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = ["PyQt6>=6.6", "ldap3==2.9.1", "keyring>=24", "openpyxl>=3.1", "cryptography>=41", "qrcode>=7.4", "pillow>=10"]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.1"]
+
+[project.scripts]
+adk = "adk.__main__:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.setuptools.packages.find]
+include = ["adk*"]

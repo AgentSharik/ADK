@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.idea/
+!.run/
+build/
+dist/
+*.egg-info/
+*.log
+config.ini
+cred_cache.json
+docs/test-logs/*.tmp
