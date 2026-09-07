@@ -5,15 +5,15 @@
 Начинался как мой однофайловый монолит, после аудита переработан в пакет `adk/`. Продукт называется **ADK** (везде так; о прежнем имени — только слово «ребрендинг»).
 
 ## Где что лежит
-- Проект: `/home/user/adk/` (пакет `adk/`, тесты `tests/`, документация `docs/`). **Версия 3.3.0** (`adk/__init__.py`).
-- Поставка: `/home/user/adk.zip` (3.3.0), отчёт `/home/user/ADK_TEST_REPORT.pdf` (4 стр.).
-- Актуальное видео: `/home/user/ADK_demo_14.mp4` (7:57, с фоновой музыкой). Сценарии видео — `/home/user/demo_video/make_demo14.py` (+ `make_music.py`). Каждое новое видео — **новый номер файла**, видео не упоминаются в README/CHANGELOG и не кладутся в zip.
-- Приватный файл `/home/user/QA_ARCHITECTURE.md` — не в проекте, не в zip, не в README.
+- Репозиторий: **https://github.com/AgentSharik/ADK** = весь воркплейс `/home/user/`. Проект лежит **в корне** (пакет `adk/`, тесты `tests/`, документация `docs/`, `README.md`, `CHANGELOG.md`). **Версия 3.3.0** (`adk/__init__.py`).
+- Поставка: `extras/adk.zip` (3.3.0), отчёт `docs/TEST_REPORT.pdf` (4 стр.). Рабочая база и конфиг программы — `extras/data/ADK/`; скриншоты автора — `extras/data/uploads/`.
+- Актуальное видео: `extras/videos/ADK_demo_14.mp4` (7:57, с фоновой музыкой). Сценарии видео — `extras/demo/make_demo14.py` (+ `extras/demo/make_music.py`). Каждое новое видео — **новый номер файла**, видео не упоминаются в README/CHANGELOG и не кладутся в zip.
+- `QA_ARCHITECTURE.md` и `HANDOVER.md` — в `extras/` по просьбе автора, но **не в zip** и не упоминаются в README.
 
 ## Состояние
-- pyflakes — 0; **213 тестов** (`QT_QPA_PLATFORM=offscreen pytest -v tests`); e2e: `tests/e2e_scenario.py` 46, `e2e_round2.py` 82, `e2e_round3.py` 44 (запуск: `PYTHONPATH=/home/user/adk QT_QPA_PLATFORM=offscreen python tests/<файл>` из корня проекта).
+- pyflakes — 0; **213 тестов** (`QT_QPA_PLATFORM=offscreen pytest -v tests`); e2e: `tests/e2e_scenario.py` 46, `e2e_round2.py` 82, `e2e_round3.py` 44 (запуск: `PYTHONPATH=/home/user QT_QPA_PLATFORM=offscreen python tests/<файл>` из корня).
 - Отчёт: `python docs/make_report.py` (требует лог `pytest -v` в `docs/test-logs/pytest.txt`); скриншоты: `python docs/make_screenshots.py`.
-- Песочница сбрасывается между сессиями: перед работой `pip install -q pyflakes pytest PyQt6 ldap3 keyring openpyxl cryptography pillow reportlab pypdf` и `apt-get install -y libxkbcommon0 libgl1 libegl1 libfontconfig1 libglib2.0-0 libdbus-1-3 fonts-noto-color-emoji fonts-symbola ffmpeg poppler-utils`.
+- Песочница сбрасывается между сессиями: перед работой (из корня `/home/user`) `pip install -q pyflakes pytest PyQt6 ldap3 keyring openpyxl cryptography pillow reportlab pypdf` и `apt-get install -y libxkbcommon0 libgl1 libegl1 libfontconfig1 libglib2.0-0 libdbus-1-3 fonts-noto-color-emoji fonts-symbola ffmpeg poppler-utils`.
 
 ## Что сделано в последней партии (3.3.0)
 Меню «Питание ПК» вместо «Перезагрузить»+WoL (разбудить, заблокировать экран, выйти, сон, перезагрузить, выключить); роль «ПК» в карточке — только просмотр (кнопки AD-изменений скрыты, поля readonly, чекбоксы заморожены, группы без ±); карточка «Роль» на дашборде; сохранение пароля исправлено (DPAPI через ctypes без pywin32, причина отказа показывается, данные не стираются при сетевой ошибке, пароль подставляется); вкладка «Диагностика» в «Здоровье ПК» (заглушка); карта подсети — просветы между ячейками, легенда справа; окно входа не режет текст ошибки; окно «Новый пользователь» компактнее.
@@ -55,8 +55,8 @@
 ```
 pyflakes adk tests docs/*.py                                  # должно быть пусто
 QT_QPA_PLATFORM=offscreen pytest -v tests > docs/test-logs/pytest.txt   # именно -v, отчёт читает лог
-for f in e2e_scenario e2e_round2 e2e_round3; do PYTHONPATH=/home/user/adk QT_QPA_PLATFORM=offscreen python tests/$f.py | tail -n 1; done
-python docs/make_report.py && cp docs/TEST_REPORT.pdf /home/user/ADK_TEST_REPORT.pdf
+for f in e2e_scenario e2e_round2 e2e_round3; do PYTHONPATH=/home/user QT_QPA_PLATFORM=offscreen python tests/$f.py | tail -n 1; done
+python docs/make_report.py
 ```
 Плюс визуальный смоук новых/изменённых окон: offscreen-скрипт, `apply_theme(...)` с `PRESET_THEMES["ocean"]`, `widget.grab().save(...)` и посмотреть картинку глазами (наезды, обрезанный текст, лишняя высота).
 
@@ -75,13 +75,14 @@ python docs/make_report.py && cp docs/TEST_REPORT.pdf /home/user/ADK_TEST_REPORT
 - После каждой партии перегенерировать: `QT_QPA_PLATFORM=offscreen python docs/make_screenshots.py` — чтобы картинки соответствовали версии.
 
 ## 4. Видео и его сценарии — ВНЕ проекта
-- Сценарии: `/home/user/demo_video/make_demoNN.py` (+ `make_music.py` — фоновая музыка). Результат: `/home/user/ADK_demo_NN.mp4`. Кадры рендерятся во временную папку `demo_video/framesNN` и **удаляются после рендера**.
-- Ничего из этого не лежит в `/home/user/adk/`, не упоминается в README/CHANGELOG/FEATURES и не попадает в zip.
+- Сценарии: `extras/demo/make_demoNN.py` (+ `make_music.py` — фоновая музыка). Результат: `extras/videos/ADK_demo_NN.mp4`. Кадры рендерятся во временную папку `extras/demo/framesNN` и **удаляются после рендера**.
+- Папка `extras/` (видео, сценарии, база, HANDOVER, QA, zip) не упоминается в README/CHANGELOG/FEATURES и не попадают в zip.
 - Новое видео = копия предыдущего сценария под новым номером + новые сцены (ничего не удалять); старый номер файла не перезаписывать.
 - Каждое видео показывает: пинг офлайн-ПК и онлайн-ПК, обе роли (AD и ПК — стартовый экран, инспектор, карточка), живые графики не «замерзают», без склеек/повторов, титульная карточка с номером версии и числом тестов.
 
 ## 5. Сборка поставки
 ```
-cd /home/user && rm -f adk.zip && zip -qr adk.zip adk -x "adk/__pycache__/*" "adk/*/__pycache__/*" "adk/*/*/__pycache__/*" "adk/.pytest_cache/*" "adk/*.db"
+cd /home/user && rm -f extras/adk.zip && zip -qr extras/adk.zip adk assets docs tests .github .run CHANGELOG.md README.md adk.spec build_exe.bat build_exe.ps1 config.example.ini pyproject.toml requirements.txt requirements-dev.txt run.py version_info.txt -x "*/__pycache__/*" "*.pyc" "*/.pytest_cache/*"
 ```
-Проверить, что в zip нет `.db`, кэшей, видео и `QA_ARCHITECTURE.md`. Итог пользователю — компактная русская сводка: что сделано (по пунктам его запроса), причины исправлений, цифры проверок, пути к файлам, что осталось незакрытым.
+В zip — только проект: без `extras/` и `.git`.
+После правок — `git add -A && git commit -m "…" && git push` (токен спросить у автора, в файлы не сохранять). Итог пользователю — компактная русская сводка: что сделано (по пунктам его запроса), причины исправлений, цифры проверок, пути к файлам, что осталось незакрытым.

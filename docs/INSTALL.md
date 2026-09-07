@@ -5,7 +5,7 @@
 ### Вариант 1 — из исходников (PyCharm / консоль)
 
 ```bash
-git clone <repo> adk && cd adk
+git clone https://github.com/AgentSharik/ADK.git && cd ADK
 python -m venv .venv && .venv\Scripts\activate      # Windows
 pip install -r requirements.txt
 python run.py                                        # или: python -m adk

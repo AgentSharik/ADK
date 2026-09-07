@@ -1,18 +1,24 @@
-# служебное песочницы / кэши
+# --- проект
 __pycache__/
 *.pyc
+.venv/
+venv/
 .pytest_cache/
 .ruff_cache/
-.venv/
+.idea/
+!.run/
+build/
+dist/
+*.egg-info/
+cred_cache.json
+docs/test-logs/*.tmp
+
+# --- песочница / служебное
 .cache/
 .local/
 .config/
 .sudo_as_admin_successful
 node_modules/
-build/
-dist/
 
-# приватное сюда не пишем — база, zip и QA_ARCHITECTURE.md залиты по просьбе автора
-
-# кадры видео (временные)
-demo_video/frames*/
+# --- временные кадры видео
+extras/demo/frames*/

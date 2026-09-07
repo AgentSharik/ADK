@@ -1,6 +1,6 @@
 # ⚡ ADK — Active Directory Kit
 
-![tests](https://github.com/OWNER/adk/actions/workflows/tests.yml/badge.svg)
+![tests](https://github.com/AgentSharik/ADK/actions/workflows/tests.yml/badge.svg)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue) ![Qt](https://img.shields.io/badge/PyQt-6-41cd52) ![license](https://img.shields.io/badge/license-MIT-lightgrey)
 
 **Набор инструментов системного администратора Active Directory в одном exe.**
@@ -38,7 +38,7 @@
 ## 🚀 Быстрый старт
 
 ```bash
-git clone <repo> adk && cd adk
+git clone https://github.com/AgentSharik/ADK.git && cd ADK
 python -m venv .venv && .venv\Scripts\activate
 pip install -r requirements.txt
 python run.py
