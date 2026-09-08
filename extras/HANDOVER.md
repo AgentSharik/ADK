@@ -126,7 +126,7 @@ python docs/make_report.py                                                     #
 - Эмодзи в заголовках README; никаких реальных доменов/UNC; видео/другие средства удалённого доступа/прежнее имя/QR/Telegram не упоминать.
 
 ### 4.4 Скриншоты и GIF
-- Только через `docs/make_screenshots.py` (offscreen, тема «Изумрудный лес» `emerald`, демо-данные как в тестах). Новое окно → добавить кадр `docs/<имя>.png` (по смыслу: `health_errors.png`, `user_card.png`…), описать в `docs/SCREENSHOTS.md`; «живое» — GIF `docs/demo_<тема>.gif`.
+- Только через `docs/make_screenshots.py` (offscreen, тема «Графит и титан» `dark`, демо-данные как в тестах). Новое окно → добавить кадр `docs/<имя>.png` (по смыслу: `health_errors.png`, `user_card.png`…), описать в `docs/SCREENSHOTS.md`; «живое» — GIF `docs/demo_<тема>.gif`.
 - В README — 2–3 самых показательных картинки таблицей, остальное в `SCREENSHOTS.md`/`FEATURES.md`.
 - Перегенерировать после каждой партии.
 

@@ -22,7 +22,7 @@ from adk.widgets import apply_theme  # noqa: E402
 
 app = QApplication([])
 from adk.theme import PRESET_THEMES, theme_design  # noqa: E402
-apply_theme({**config.settings.design, **theme_design(PRESET_THEMES["emerald"])})   # тема «Изумрудный лес»
+apply_theme({**config.settings.design, **theme_design(PRESET_THEMES["dark"])})   # тема по умолчанию «Графит и титан»
 now = datetime.now(timezone.utc)
 
 people = [
