@@ -117,6 +117,8 @@ class SubnetMap(QWidget):
                 p.drawRoundedRect(r, 2, 2)
                 continue
             st = self.status.get(h)
+            if st and st not in CELL:            # неизвестный статус не должен ронять отрисовку
+                st = None
             if st:
                 fill = self._color(pal, CELL[st][1])
                 fill.setAlpha(210 if st == "free" else 170)

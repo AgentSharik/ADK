@@ -1,3 +1,4 @@
+This plugin does not support propagateSizeHints()
 === P. Классификация принтеров ===
 PASS classify_printer_port: 10 типовых портов  — {}
 PASS виртуальные принтеры отфильтрованы (13 имён)  — []
@@ -8,7 +9,7 @@ PASS CSV WS-101: 2 реальных принтера, PDF отброшен, defa
 PASS карточка/инспектор пишут кэш pc_printers
 PASS get_computer_printers (устаревший API) даёт подписи  — ['HP LaserJet M404dn (сетевой · 10.0.2.50)', 'Canon LBP6030 (USB)']
 PASS сканер: индексирует принтеры всех ПК из CSV (4 ПК, 4 принтера)  — ['🖨️ Принтеры проиндексированы: 4 ПК с CSV']
-PASS сводка: HP на 2 ПК (2 в сети), Kyocera на 2 ПК (0 в сети)  — {'HP LaserJet M404dn': {'name': 'HP LaserJet M404dn', 'kind': 'network', 'ip': '10.0.2.50', 'pcs': 2, 'online': 2, 'updated': '2026-09-07 20:14:33', 'computers': 'WS-101, WS-105'}, 'Kyocera ECOSYS P3145dn': {'name': 'Kyocera ECOSYS P3145dn', 'kind': 'network', 'ip': '10.0.2.51', 'pcs': 2, 'online': 0, 'updated': '2026-09-07 20:14:33', 'computers': 'WS-133, WS-102'}, 'Canon LBP6030': {'name': 'Canon LBP6030', 'kind': 'usb', 'ip': '', 'pcs': 1, 'online': 1, 'updated': '2026-09-07 20:14:33', 'computers': 'WS-101'}, 'Epson L3150': {'name': 'Epson L3150', 'kind': 'usb', 'ip': '', 'pcs': 1, 'online': 0, 'updated': '2026-09-07 20:14:33', 'computers': 'WS-102'}}
+PASS сводка: HP на 2 ПК (2 в сети), Kyocera на 2 ПК (0 в сети)  — {'HP LaserJet M404dn': {'name': 'HP LaserJet M404dn', 'kind': 'network', 'ip': '10.0.2.50', 'pcs': 2, 'online': 2, 'updated': '2026-09-08 04:38:04', 'computers': 'WS-101, WS-105'}, 'Kyocera ECOSYS P3145dn': {'name': 'Kyocera ECOSYS P3145dn', 'kind': 'network', 'ip': '10.0.2.51', 'pcs': 2, 'online': 0, 'updated': '2026-09-08 04:38:04', 'computers': 'WS-133, WS-102'}, 'Canon LBP6030': {'name': 'Canon LBP6030', 'kind': 'usb', 'ip': '', 'pcs': 1, 'online': 1, 'updated': '2026-09-08 04:38:04', 'computers': 'WS-101'}, 'Epson L3150': {'name': 'Epson L3150', 'kind': 'usb', 'ip': '', 'pcs': 1, 'online': 0, 'updated': '2026-09-08 04:38:04', 'computers': 'WS-102'}}
 PASS замена CSV → старый принтер исчезает из кэша ПК
 
 === R. Режимы поиска: без телефонов, IP по октетам, printer: ===
@@ -48,8 +49,8 @@ PASS карточка 3.2.5: принтеры и действия с ПК убр
 PASS Esc/очистка → дашборд; секция принтеров не падает без выбора
 
 === T. Производительность ===
-PASS 30k ПК: load_inventory_maps 87 мс < 500
-PASS 30k ПК × 300 записей: _assemble 146 мс < 1500, все ПК сопоставлены
+PASS 30k ПК: load_inventory_maps 92 мс < 500
+PASS 30k ПК × 300 записей: _assemble 155 мс < 1500, все ПК сопоставлены
 PASS поиск по IP-префиксу с индексом: 0.4 мс/запрос < 50
 PASS кэш сети: 3 запроса подряд → 1 обращение к DNS  — 1
 PASS индексы pc_printers созданы  — {'sqlite_autoindex_pc_printers_1', 'ix_printers_name', 'ix_printers_ip'}

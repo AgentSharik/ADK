@@ -140,6 +140,15 @@ class Palette:
     @property
     def neutral(self): return self._sem("#e4e4e7", "#71717a", "#3f3f46", "#f4f4f5", "#d4d4d8")
 
+    def color_map(self) -> dict[str, str]:
+        """Все цвета палитры по именам — для перекраски inline-стилей при смене темы (см. widgets.retheme)."""
+        m = {k: getattr(self, k) for k in ("text", "subtext", "card", "border", "input", "header", "hover", "button",
+                                              "title_accent", "on_accent", "accent")}
+        for k in ("success", "danger", "warning", "info", "neutral"):
+            for i, v in enumerate(getattr(self, k)):
+                m[f"{k}{i}"] = v
+        return m
+
     def badge(self, kind: str) -> tuple[str, str, str]:
         return {"online": self.success, "offline": self.danger, "active": self.neutral,
                 "disabled": self.danger, "warning": self.warning, "info": self.info}.get(kind, self.neutral)
@@ -220,6 +229,8 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QHeaderView::section {{ background-color: {p.header}; color: {p.text}; padding: 8px 12px; border: none;
         border-right: 1.5px solid {p.border}; border-bottom: 1.5px solid {p.border}; font-weight: bold; }}
     QTableCornerButton::section {{ background-color: {p.header}; border: none; }}
+    QHeaderView {{ background-color: {p.header}; }}
+    QHeaderView::section:vertical {{ background-color: {p.header}; color: {p.subtext}; padding: 0 6px; border-right: 1px solid {p.border}; }}
     QScrollBar:vertical {{ background: {p.header}; width: 14px; margin: 0; border-left: 1px solid {p.border}; }}
     QScrollBar::handle:vertical {{ background: {p.title_accent}; min-height: 32px; border-radius: 4px; margin: 3px 3px; }}
     QScrollBar::handle:vertical:hover {{ background: {accent}; margin: 2px 2px; }}

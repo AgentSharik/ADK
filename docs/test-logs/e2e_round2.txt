@@ -1,9 +1,10 @@
+This plugin does not support propagateSizeHints()
 FunctionWorker
 Traceback (most recent call last):
   File "/home/user/adk/workers.py", line 48, in run
     self.done.emit(self._fn(*self._args, **self._kwargs))
                    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/user/adk/main_window.py", line 883, in <lambda>
+  File "/home/user/adk/main_window.py", line 887, in <lambda>
     run_in_background(self, lambda: nettools.learn_mac(comp, u["ip"]), lambda m: None, lambda m: None)
                                     ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
   File "/home/user/adk/nettools.py", line 72, in learn_mac
@@ -18,7 +19,7 @@ Traceback (most recent call last):
   File "/home/user/adk/workers.py", line 48, in run
     self.done.emit(self._fn(*self._args, **self._kwargs))
                    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/user/adk/main_window.py", line 883, in <lambda>
+  File "/home/user/adk/main_window.py", line 887, in <lambda>
     run_in_background(self, lambda: nettools.learn_mac(comp, u["ip"]), lambda m: None, lambda m: None)
                                     ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
   File "/home/user/adk/nettools.py", line 72, in learn_mac
@@ -28,6 +29,22 @@ Traceback (most recent call last):
     with Popen(*popenargs, **kwargs) as process:
          ~~~~~^^^^^^^^^^^^^^^^^^^^^^
 TypeError: 'FakeProc' object does not support the context manager protocol
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
 Не удалось прочитать учётные данные: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
 === F. Утилиты ad.py ===
 PASS qualify_user: без домена  — EXAMPLE\admin

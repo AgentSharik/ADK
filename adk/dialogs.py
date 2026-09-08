@@ -1151,7 +1151,9 @@ class GroupMembersDialog(FramelessDialog):
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Логин", "Имя", "Почта"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setVisible(False)          # как во всех таблицах ADK — без белой полосы номеров
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.body.addWidget(self.table)
         self.status = QLabel("Загрузка…")
         self.body.addWidget(self.status)
@@ -1332,11 +1334,13 @@ class RegisterUserDialog(FramelessDialog):
         kl = QVBoxLayout(chk)
         kl.addWidget(QLabel("<b>Готовность</b>"))
         self.checks: dict[str, QLabel] = {}
+        self._check_text: dict[str, str] = {}
         for key, text in (("fio", "Фамилия и имя"), ("login", "Логин ≤ 20 символов, латиница"),
                           ("pwd", "Пароль ≥ 8 символов, буквы и цифры"), ("ou", "Контейнер OU"),
                           ("ssl", "LDAPS включён (use_ssl)")):
             lb = QLabel(f"○ {text}")
             self.checks[key] = lb
+            self._check_text[key] = text
             kl.addWidget(lb)
         right.addWidget(chk)
         right.addStretch()
@@ -1389,7 +1393,7 @@ class RegisterUserDialog(FramelessDialog):
             "ssl": bool(settings.use_ssl),
         }
         for key, lb in self.checks.items():
-            text = lb.text()[2:]
+            text = self._check_text[key]                      # подпись хранится отдельно: text() может быть HTML с иконкой
             lb.setText(("✅ " if state[key] else "○ ") + text)
             lb.setStyleSheet(f"color: {ok_fg if state[key] else bad_fg};")
         self.btn_create.setEnabled(all(state.values()))

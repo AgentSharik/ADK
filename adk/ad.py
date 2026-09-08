@@ -254,6 +254,8 @@ def get_ad_datetime(entry: Any, attr: str) -> "datetime | None":
     if raw is None or raw == []:
         return None
     if isinstance(raw, datetime):
+        if raw.year <= 1601 or raw.year >= 9999:   # ldap3 со схемой отдаёт 0 → 1601 год, «никогда» → 9999
+            return None
         return raw if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
     return filetime_to_datetime(raw)
 

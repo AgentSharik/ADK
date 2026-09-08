@@ -257,9 +257,14 @@ class MessageBox(FramelessDialog):
         self.answer = self.NO
         row = QHBoxLayout()
         row.setContentsMargins(20, 10, 20, 10)
-        icon = QLabel(self._ICONS.get(kind, "ℹ️"))
-        icon.setStyleSheet("font-size: 28pt; border: none;")
-        row.addWidget(icon)
+        from . import icons
+        _name, _role = icons.EMOJI_ICON.get(self._ICONS.get(kind, "ℹ️").rstrip("\ufe0f"), ("info.circle", "info"))
+        icon = QLabel()
+        icon.setPixmap(icons.pixmap(_name, 36, role=_role))    # крупная контурная иконка, а не эмодзи-шрифт
+        icon.setFixedSize(44, 44)
+        icon.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        icon.setStyleSheet("border: none;")
+        row.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)
         lbl = QLabel(html.escape(text).replace("\n", "<br>"))
         lbl.setTextFormat(Qt.TextFormat.RichText)
         lbl.setWordWrap(True)
@@ -267,6 +272,11 @@ class MessageBox(FramelessDialog):
         lbl.setStyleSheet("font-size: 10.5pt; border: none;")
         row.addWidget(lbl, 1)
         self.body.addLayout(row)
+        # высота под текст: длинное сообщение не должно обрезаться нижним рядом кнопок
+        self._msg_lbl = lbl
+        lbl.setMinimumHeight(lbl.heightForWidth(340))
+        self.adjustSize()
+        self.resize(max(460, self.width()), max(170, self.sizeHint().height()))
         btns = QHBoxLayout()
         btns.setContentsMargins(20, 0, 20, 0)
         btns.addStretch()
@@ -527,8 +537,40 @@ def apply_theme(design: dict) -> None:
     app.setFont(QFont(design["font_family"], design["font_size"]))
     from . import icons
     icons.install()                      # 3.4.0: ведущие эмодзи → контурные иконки в цвете темы
+    new_pal = app_palette()
+    old_map = _LAST_PALETTE.get("map")
     for w in app.topLevelWidgets():
         icons.refresh(w)
+        if old_map:
+            retheme(w, old_map, new_pal.color_map())   # 3.4.1: inline-цвета открытых окон переходят на новую тему
+    _LAST_PALETTE["map"] = new_pal.color_map()
+
+
+_LAST_PALETTE: dict = {}
+
+
+def retheme(root: QWidget, old: dict[str, str], new: dict[str, str]) -> None:
+    """Заменить в inline-стилях всех потомков цвета прежней палитры на цвета новой (по одинаковым именам).
+
+    Окна, открытые до смены темы, задают цвета через ``setStyleSheet(f"color: {pal.subtext}")`` — строкой,
+    которая иначе осталась бы от старой темы. Сопоставляем по имени роли, поэтому «подпись» остаётся «подписью».
+    """
+    import re
+    table: dict[str, str] = {}
+    for k in old:                       # порядок ролей важен: при совпадении цветов побеждает первая (основная) роль
+        o = old[k].lower()
+        if k in new and o.startswith("#") and o not in table:
+            table[o] = new[k]
+    table = {o: n for o, n in table.items() if o != n.lower()}
+    if not table:
+        return
+    pat = re.compile("|".join(re.escape(o) for o in table), re.IGNORECASE)
+    for w in [root] + root.findChildren(QWidget):
+        ss = w.styleSheet()
+        if ss and "#" in ss:
+            new_ss = pat.sub(lambda m: table[m.group(0).lower()], ss)
+            if new_ss != ss:
+                w.setStyleSheet(new_ss)
 
 
 # --------------------------------------------------------------------------- выбор тома (C:, D:, …)

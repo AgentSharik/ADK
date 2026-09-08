@@ -315,7 +315,7 @@ def classify_printer_port(port: str) -> tuple[str, str]:
     p = (port or "").strip()
     low = p.lower()
     m = _IP_IN_PORT_RE.search(p)
-    if m:
+    if m and all(int(o) <= 255 for o in m.group(1).split(".")):     # «192.168.1.300» — не адрес
         return "network", m.group(1)
     if low.startswith(("ip_", "wsd", "tcp", "lan")) or "://" in low:
         return "network", ""

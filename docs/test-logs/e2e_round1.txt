@@ -1,5 +1,14 @@
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
 Не удалось сохранить учётные данные: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
-Найден пароль в открытом виде в /tmp/admgr_e2e_idhxnng5/cred.json — файл удалён
+Найден пароль в открытом виде в /tmp/admgr_e2e_8_u278jb/cred.json — файл удалён
 SearchWorker: LDAP
 Traceback (most recent call last):
   File "/home/user/adk/workers.py", line 127, in run
@@ -48,7 +57,7 @@ PASS опись: организации загружены
 PASS участники группы через LDAP (не COM)
 PASS смена темы применяется
 PASS пинг: живой вывод парсится  — 3 строк
-PASS пинг: процесс убит при Esc/reject  — pid 6583
+PASS пинг: процесс убит при Esc/reject  — pid 4887
 PASS потоки не текут после диалогов  — 1 → 1
 
 === D. Безопасность ===

@@ -412,7 +412,8 @@ class ADApp(FramelessMainWindow):
         self.history = QHBoxLayout(frame)
         lay.addWidget(frame)
         lay.addWidget(QLabel(tr("<b>⚡ Быстрый доступ:</b>")))
-        quick = QHBoxLayout()
+        quick_box = QWidget()
+        quick = FlowLayout(quick_box, spacing=8)          # переносится на новую строку, если окно узкое — подписи не режутся
         self._modifying_buttons: list = []  # (кнопка, действие) — скрываются, если access.can(действие) == False
         for text, fn, action in (("🔍 Свободный IP-адрес", lambda: FreeIPDialog(self).exec(), ""),
                                  ("📊 Excel-опись ПК", lambda: InventoryDialog(self, self).exec(), ""),
@@ -426,7 +427,7 @@ class ADApp(FramelessMainWindow):
             if action:
                 self._modifying_buttons.append((b, action))
             quick.addWidget(b)
-        lay.addLayout(quick)
+        lay.addWidget(quick_box)
         lay.addStretch()
         return w
 
@@ -643,10 +644,13 @@ class ADApp(FramelessMainWindow):
                 it.widget().deleteLater()
         pct = f"{round(online / total * 100)}%" if total else "0%"
         pal = app_palette()
+        unseen = max(0, offline - summ["offline"])   # ПК из AD, которых сканер ещё не проверял
+        off_sub = f"{summ['offline']} по сканеру · {unseen} ещё не сканированы" if unseen else "выключены / недоступны"
+        all_sub = f"в инвентаре {summ['total']}, остальные ещё не сканированы" if total > summ["total"] else "по фильтру host_pattern"
         for title, count, sub, kind, color in (
                 ("🟢 ПК В СЕТИ", f"{online}", f"{pct} активны", "online", pal.success[0]),
-                ("🔴 ПК НЕ В СЕТИ", f"{offline}", "выключены / недоступны", "offline", pal.danger[0]),
-                ("💻 РАБОЧИХ СТАНЦИЙ В AD", f"{total}", "по фильтру host_pattern", "all", pal.info[0])):
+                ("🔴 ПК НЕ В СЕТИ", f"{offline}", off_sub, "offline", pal.danger[0]),
+                ("💻 РАБОЧИХ СТАНЦИЙ В AD", f"{total}", all_sub, "all", pal.info[0])):
             self.cards.addWidget(self._stat_card(title, count, sub, kind, color))
         while self.history.count():
             it = self.history.takeAt(0)

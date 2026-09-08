@@ -164,11 +164,13 @@ class InventoryDialog(FramelessDialog):
         self.list.clear()
         for c in self.companies:
             if q in c.lower():
-                self.list.addItem(QListWidgetItem(f"🏢 {c}"))
+                it = QListWidgetItem(f"🏢 {c}")
+                it.setData(Qt.ItemDataRole.UserRole, c)          # имя организации — в данных, а не в тексте (текст несёт иконку)
+                self.list.addItem(it)
 
     def selected_company(self) -> str:
         items = self.list.selectedItems()
-        return items[0].text()[2:] if items else ""
+        return (items[0].data(Qt.ItemDataRole.UserRole) or "") if items else ""
 
     def _company_changed(self):
         self.btn_preview.setEnabled(bool(self.selected_company()))
