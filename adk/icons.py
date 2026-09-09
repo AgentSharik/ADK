@@ -20,7 +20,7 @@ from PyQt6.QtCore import QByteArray, QSize, Qt
 from PyQt6.QtGui import QIcon, QPainter, QPixmap
 
 # ---------------------------------------------------------------- контуры (viewBox 0 0 24 24, только stroke)
-_S = 'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'
+_S = 'fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"'
 
 PATHS: dict[str, str] = {
     "magnifyingglass": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/>',
@@ -195,6 +195,23 @@ def role_color(role: str) -> str:
     return pal.text
 
 
+def button_icon_color(btn, role: str) -> str:
+    """Контрастный цвет иконки для кнопки.
+    Для заливных кнопок (btnPrimary, btnSuccess, btnDanger, btnWarning, btnInfo, btnClose)
+    иконка рисуется контрастным цветом текста (#ffffff / on_accent), чтобы не сливаться
+    с цветным фоном кнопки. Для обычных кнопок — цвет берётся по роли из палитры."""
+    from .widgets import app_palette
+    pal = app_palette()
+    obj = btn.objectName() if hasattr(btn, "objectName") and callable(btn.objectName) else ""
+    if obj == "btnPrimary":
+        return pal.on_accent
+    if obj in ("btnSuccess", "btnDanger", "btnWarning", "btnInfo", "btnClose"):
+        return "#ffffff"
+    if obj == "chipBtn" and getattr(btn, "isChecked", lambda: False)():
+        return pal.on_accent
+    return role_color(role)
+
+
 def svg(name: str, color: str, size: int = 24) -> bytes:
     body = PATHS.get(name) or PATHS["circle"]
     body = body.replace("var(--bg)", color)
@@ -202,8 +219,8 @@ def svg(name: str, color: str, size: int = 24) -> bytes:
             f'{_S} color="{color}">{body}</svg>').encode()
 
 
-ICON_PX = 22        # размер иконки в кнопках/вкладках/меню
-LABEL_PX = 19       # размер иконки в подписях (<img> в rich-text QLabel)
+ICON_PX = 24        # размер иконки в кнопках/вкладках/меню
+LABEL_PX = 21       # размер иконки в подписях (<img> в rich-text QLabel)
 
 _cache: dict[tuple, QIcon] = {}
 
@@ -280,7 +297,8 @@ def install() -> None:
         role = emoji_role(btn.text())
         btn._adk_icon = (name, role)
         QAbstractButton.setText(btn, rest.strip())
-        btn.setIcon(icon(name, role=role))
+        c = button_icon_color(btn, role)
+        btn.setIcon(icon(name, color=c, role=role))
         btn.setIconSize(QSize(ICON_PX, ICON_PX))
         if not rest.strip():
             btn.setIconSize(QSize(ICON_PX + 2, ICON_PX + 2))
@@ -288,6 +306,7 @@ def install() -> None:
     for cls in (QPushButton, QCheckBox, QRadioButton, QToolButton):
         _orig_init = cls.__init__
         _orig_set = cls.setText
+        _orig_obj = cls.setObjectName
 
         def _init(self, *a, __o=_orig_init, **k):
             __o(self, *a, **k)
@@ -297,8 +316,17 @@ def install() -> None:
             __o(self, text)
             _apply_button(self)
 
+        def _set_obj(self, name, __o=_orig_obj):
+            __o(self, name)
+            meta = getattr(self, "_adk_icon", None)
+            if meta:
+                c = button_icon_color(self, meta[1])
+                self.setIcon(icon(meta[0], color=c, role=meta[1]))
+                self.setIconSize(QSize(ICON_PX, ICON_PX))
+
         cls.__init__ = _init
         cls.setText = _set
+        cls.setObjectName = _set_obj
 
     def _apply_label(lbl) -> None:
         t = lbl.text()
@@ -432,7 +460,9 @@ def refresh(root) -> None:
     for b in root.findChildren(QAbstractButton):
         meta = getattr(b, "_adk_icon", None)
         if meta:
-            b.setIcon(icon(meta[0], role=meta[1]))
+            c = button_icon_color(b, meta[1])
+            b.setIcon(icon(meta[0], color=c, role=meta[1]))
+            b.setIconSize(QSize(ICON_PX, ICON_PX))
     for a in root.findChildren(QAction):
         meta = getattr(a, "_adk_icon", None)
         if meta:

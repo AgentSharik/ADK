@@ -320,6 +320,15 @@ def test_buttons_get_outline_icons_instead_of_emoji(qapp):
     svg = icons.svg("person.crop.circle", "#ffffff")
     assert b"stroke-width" in svg and b"fill=\"none\"" in svg           # контур, а не заливка
 
+    # 3.4.4: заливные кнопки (btnSuccess, btnDanger, btnPrimary...) получают контрастную иконку, иконки крупнее
+    b_succ = QPushButton("➕ Добавить")
+    b_succ.setObjectName("btnSuccess")
+    assert icons.button_icon_color(b_succ, "success") == "#ffffff"
+    b_pri = QPushButton("🔍 Найти")
+    b_pri.setObjectName("btnPrimary")
+    assert not b_pri.icon().isNull()
+    assert icons.ICON_PX == 24 and icons.LABEL_PX == 21
+
 
 def test_subnet_map_cells_fit_three_digits(qapp):
     from PyQt6.QtGui import QFontMetrics, QFont
