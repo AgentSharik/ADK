@@ -295,16 +295,16 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     #sideCard QLabel, #dashCard QLabel {{ background: transparent; border: none; }}
     #specBox {{ background-color: {p.input}; border: 1px solid {p.border}; border-radius: 8px; padding: 8px; font-family: 'SF Mono', Consolas, monospace; font-size: 9.5pt; }}
     QTabWidget::pane {{ border: 1px solid {p.border}; border-top-color: {card_top}; border-radius: 10px; background: {p.card}; top: 6px; }}
-    QTabBar {{ qproperty-iconSize: 24px 24px; qproperty-drawBase: 0; background: {p.input}; border: 1px solid {input_top}; border-radius: 10px; }}
+    QTabBar {{ qproperty-iconSize: 22px 22px; qproperty-drawBase: 0; background: {p.input}; border: 1px solid {input_top}; border-radius: 10px; }}
     QTabBar::tab {{ background: transparent; color: {p.subtext}; padding: 7px 16px; margin: 3px 2px; border-radius: 8px;
         border: 1px solid transparent; font-weight: 600; }}
     QTabBar::tab:first {{ margin-left: 3px; }}
     QTabBar::tab:last {{ margin-right: 3px; }}
     QTabBar::tab:hover {{ color: {p.text}; background: {p.hover}; }}
     QTabBar::tab:selected {{ color: {p.text}; background: {relief(p.button, 112, 96)}; border: 1px solid {btn_edge}; border-top-color: {btn_light}; }}
-    QListWidget, QTreeWidget {{ background-color: {p.card}; border: 1px solid {p.border}; border-radius: 8px; outline: none; qproperty-iconSize: 24px 24px; }}
-    QTableWidget, QTableView {{ qproperty-iconSize: 24px 24px; }}
-    QMenu {{ icon-size: 24px; }}
+    QListWidget, QTreeWidget {{ background-color: {p.card}; border: 1px solid {p.border}; border-radius: 8px; outline: none; qproperty-iconSize: 22px 22px; }}
+    QTableWidget, QTableView {{ qproperty-iconSize: 22px 22px; }}
+    QMenu {{ icon-size: 22px; }}
     QPushButton#drivePicker {{ background-color: {p.button}; color: {p.title_accent}; border: 1px solid {p.border};
         border-radius: 14px; padding: 4px 8px; font-weight: 600; font-size: 10.5pt; text-align: center; }}
     QPushButton#drivePicker:hover {{ border-color: {accent}; }}
