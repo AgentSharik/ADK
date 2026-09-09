@@ -280,7 +280,10 @@ git rev-list --objects --all | git cat-file --batch-check='%(objecttype) %(objec
 ```
 После шага 4 в истории должен остаться **ровно один** блоб `.mp4` (актуальный) и один `adk.zip`. Проверка на GitHub:
 `git clone --depth=1000 https://github.com/AgentSharik/ADK.git /tmp/chk && du -sh /tmp/chk/.git` — десятки мегабайт, не сотни.
-Именно так делалось в 3.5.1 (история переписана, `git push --force`).
+Именно так делалось в 3.5.1 (история переписана, `git push --force`; клон стал ~54 МБ вместо ~140).
+Грабли: в песочнице файл `.git/config` не сохраняется между сессиями — `git filter-repo` падает с
+`ValueError: dictionary update sequence element #0 has length 1`. Лечение: перед запуском создать `.git/config`
+(секции `[core]`, `[remote "origin"] url = https://github.com/AgentSharik/ADK.git`, `[branch "main"]`).
 
 После filter-repo remote удаляется — восстановить и запушить принудительно:
 ```bash
