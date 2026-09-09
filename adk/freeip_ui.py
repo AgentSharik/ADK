@@ -40,8 +40,8 @@ class SubnetMap(QWidget):
     в высоту; в ширину места больше, ячейки крупнее, цифры читаются). Клик по ячейке — сигнал ``picked(host)``."""
     picked = pyqtSignal(int)
     COLS, ROWS = 32, 8
-    MAX_CELL = 36   # шаг сетки, px — трёхзначные номера помещаются с запасом
-    GAP = 6         # просвет между ячейками, px — блоки не сливаются
+    MAX_CELL = 32   # шаг сетки, px — трёхзначные номера помещаются с запасом
+    GAP = 5         # просвет между ячейками, px — блоки не сливаются
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -142,13 +142,15 @@ class FreeIPDialog(FramelessDialog):
     """Свободный IP: карта подсети, крупный результат, вердикт DHCP, таблица найденных за сеанс."""
 
     def __init__(self, parent=None):
-        super().__init__("🔍 Свободный IP-адрес", parent, (1320, 790))
+        super().__init__("🔍 Свободный IP-адрес", parent, (1280, 780))
         self.worker: FreeIPWorker | None = None
         self.found = ""
         self.history: list[str] = []
         self._dhcp: dict | None = None
         pal = app_palette()
         self.pal = pal
+        self.body.setSpacing(10)
+        self.body.setContentsMargins(16, 8, 16, 12)
         root = QVBoxLayout()
         root.setSpacing(10)
         self.body.addLayout(root, 1)
@@ -207,7 +209,7 @@ class FreeIPDialog(FramelessDialog):
         legend.setHorizontalSpacing(6)
         legend.setVerticalSpacing(4)
         legend.setVerticalSpacing(7)
-        for i, key in enumerate(("free", "found", "inventory", "lease", "reserved", "alive", "ptr")):
+        for i, key in enumerate(("free", "found", "lease", "reserved", "alive", "ptr")):
             sw = QLabel()
             sw.setFixedSize(16, 16)
             if key == "found":
@@ -218,7 +220,7 @@ class FreeIPDialog(FramelessDialog):
             t.setStyleSheet(f"color: {pal.text}; font-size: 9.5pt;")
             legend.addWidget(sw, i, 0)
             legend.addWidget(t, i, 1)
-        legend.setRowStretch(7, 1)
+        legend.setRowStretch(6, 1)
         self.legend_box = QWidget()
         self.legend_box.setLayout(legend)
         row_map.addWidget(self.legend_box, 1, Qt.AlignmentFlag.AlignTop)

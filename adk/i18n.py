@@ -10,7 +10,7 @@ _LANG = "ru"
 
 EN: dict[str, str] = {
     # главное окно
-    "Найти": "Find", "🎨 Дизайн": "🎨 Theme", "📤 Экспорт": "📤 Export",
+    "Найти": "Find", "🎨 Дизайн": "🎨 Theme", "🧩 Плагины": "🧩 Plugins", "📤 Экспорт": "📤 Export",
     "📦 Архивы (все ПК пользователя)": "📦 Archives (all user PCs)", "🚷 Отключённые учётки": "🚷 Disabled accounts",
     "Фамилия, логин, почта, отдел, кабинет, имя ПК, IP, printer:…": "Surname, login, e-mail, department, room, PC name, IP, printer:…",
     "🔄 Обновить статус сети ПК": "🔄 Refresh PC network status",

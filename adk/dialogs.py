@@ -278,6 +278,97 @@ class RoleInfoDialog(FramelessDialog):
         self.body.addWidget(btn_ok)
 
 
+# ============================================================================ плагины и расширения
+class PluginsDialog(FramelessDialog):
+    """Каталог и менеджер плагинов ADK (внешние скрипты автоматизации)."""
+
+    def __init__(self, parent=None):
+        super().__init__("🧩 Плагины и расширения", parent, (620, 460))
+        pal = app_palette()
+        self.body.setSpacing(10)
+        self.body.setContentsMargins(16, 8, 16, 12)
+
+        card = QFrame()
+        card.setObjectName("dashCard")
+        cl = QVBoxLayout(card)
+        cl.setSpacing(6)
+        lbl_head = QLabel("<b>Менеджер расширений ADK</b>")
+        lbl_head.setStyleSheet(f"font-size: 14px; color: {pal.accent};")
+        cl.addWidget(lbl_head)
+        lbl_desc = QLabel("Подключение пользовательских Python-модулей автоматизации, дополнительных действий "
+                          "для карточек пользователей и контекстных меню компьютеров.")
+        lbl_desc.setWordWrap(True)
+        lbl_desc.setStyleSheet(f"color: {pal.subtext};")
+        cl.addWidget(lbl_desc)
+        self.body.addWidget(card)
+
+        # Список обнаруженных плагинов
+        list_card = QFrame()
+        list_card.setObjectName("dashCard")
+        ll = QVBoxLayout(list_card)
+        ll.setSpacing(8)
+
+        row_h = QHBoxLayout()
+        row_h.addWidget(QLabel("<b>Установленные модули:</b>"), 1)
+        btn_open_folder = QPushButton("📁 Папка плагинов")
+        btn_open_folder.setToolTip("Открыть каталог плагинов")
+        btn_open_folder.clicked.connect(self._open_plugins_dir)
+        row_h.addWidget(btn_open_folder)
+        ll.addLayout(row_h)
+
+        from . import plugins
+        actions = plugins.load_plugins(settings.plugins_dir)
+
+        if actions:
+            for act in actions:
+                prow = QHBoxLayout()
+                prow.addWidget(QLabel(f"{act.icon} <b>{act.name}</b>"))
+                prow.addStretch()
+                tag = QLabel("модифицирующий" if act.modifying else "только чтение")
+                tag.setObjectName("subtle")
+                prow.addWidget(tag)
+                ll.addLayout(prow)
+        else:
+            lbl_empty = QLabel("В каталоге пока нет активных модулей.\n"
+                               "Пример: Documents/ADK/plugins/_example_user_profile.py\n"
+                               "(уберите «_» в начале имени для активации).")
+            lbl_empty.setObjectName("subtle")
+            lbl_empty.setWordWrap(True)
+            ll.addWidget(lbl_empty)
+
+        self.body.addWidget(list_card)
+
+        # Справка по созданию
+        info_card = QFrame()
+        info_card.setObjectName("dashCard")
+        il = QVBoxLayout(info_card)
+        il.setSpacing(4)
+        il.addWidget(QLabel("<b>Как создать свой плагин:</b>"))
+        code = QLabel("1. Поместите <code>*.py</code> в папку плагинов.<br>"
+                      "2. Наследуйте класс от <code>adk.plugins.Action</code> и реализуйте <code>run(ctx)</code>.<br>"
+                      "3. Кнопка появится в карточке и контекстном меню.")
+        code.setObjectName("subtle")
+        code.setWordWrap(True)
+        il.addWidget(code)
+        self.body.addWidget(info_card)
+        self.body.addStretch()
+
+        foot = QHBoxLayout()
+        btn_close = QPushButton("Закрыть")
+        btn_close.setObjectName("btnPrimary")
+        btn_close.setMinimumHeight(34)
+        btn_close.clicked.connect(self.accept)
+        foot.addStretch()
+        foot.addWidget(btn_close)
+        self.body.addLayout(foot)
+
+    def _open_plugins_dir(self):
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtCore import QUrl
+        os.makedirs(settings.plugins_dir, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(settings.plugins_dir))
+
+
 # ============================================================================ карточка пользователя
 _RU_LABELS = {
     "sAMAccountName": "Логин", "displayName": "Отображаемое имя", "mail": "Почта",

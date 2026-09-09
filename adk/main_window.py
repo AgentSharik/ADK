@@ -19,7 +19,7 @@ from . import access, ad, attention, db, export, nettools, netutils, plugins, up
 from .attention_ui import AttentionDialog
 from .config import APP_TITLE, CREATE_NO_WINDOW, SEARCH_RESULT_LIMIT, settings
 from .dialogs import (
-    AuditLogDialog, DesignSettingsDialog, FreeIPDialog, InventoryDialog, PingDialog, PrintersDialog,
+    AuditLogDialog, DesignSettingsDialog, FreeIPDialog, InventoryDialog, PingDialog, PluginsDialog, PrintersDialog,
     RegisterUserDialog, RoleInfoDialog, UserCardDialog,
 )
 from .extras import NotifySettingsDialog
@@ -338,9 +338,9 @@ class ADApp(FramelessMainWindow):
             chk.addWidget(c)
         btn_design = QPushButton(tr("🎨 Дизайн"))
         btn_design.clicked.connect(lambda: DesignSettingsDialog(self, self).exec())
-        btn_export = QPushButton(tr("📤 Экспорт"))
-        btn_export.setToolTip("Ctrl+E — результаты поиска в Excel/CSV")
-        btn_export.clicked.connect(self.export_results)
+        btn_plugins = QPushButton(tr("🧩 Плагины"))
+        btn_plugins.setToolTip("Плагины и модули автоматизации ADK")
+        btn_plugins.clicked.connect(lambda: PluginsDialog(self).exec())
         self.lbl_readonly = QLabel(tr("🔒 Только чтение"))
         self.lbl_readonly.setObjectName("readonlyBadge")
         self.lbl_readonly.setVisible(False)
@@ -348,7 +348,7 @@ class ADApp(FramelessMainWindow):
         top.addWidget(btn_search)
         top.addLayout(chk)
         top.addWidget(self.lbl_readonly)
-        top.addWidget(btn_export)
+        top.addWidget(btn_plugins)
         top.addWidget(btn_design)
         content.addLayout(top)
         self.lbl_update = QLabel("")

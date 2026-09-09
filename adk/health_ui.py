@@ -99,9 +99,9 @@ class TreemapWidget(QWidget):
     их имя/размер видны в легенде под картой и во всплывающей подсказке. Клик по плитке — callback ``on_click``.
     """
 
-    PALETTE = ["#38bdf8", "#818cf8", "#f472b6", "#fb923c", "#34d399", "#facc15", "#a78bfa", "#2dd4bf",
-               "#f87171", "#4ade80", "#60a5fa", "#e879f9"]
-    OTHER_COLOR = "#64748b"
+    PALETTE = ["#0284c7", "#6366f1", "#db2777", "#ea580c", "#059669", "#d97706", "#7c3aed", "#0d9488",
+               "#dc2626", "#16a34a", "#2563eb", "#c026d3"]
+    OTHER_COLOR = "#475569"
     MIN_PCT = 1.2          # меньше — в «Прочее»
     MAX_TILES = 14
     LEGEND_ROW = 22
@@ -232,7 +232,7 @@ class TreemapWidget(QWidget):
             inner = r.adjusted(9, 7, -9, -7)
             if inner.width() < 34 or inner.height() < 16:
                 continue                                           # слишком мелко — только легенда и подсказка
-            p.setPen(self._ink(c))
+            p.setPen(QColor("#ffffff"))
             p.setFont(bold)
             fm = p.fontMetrics()
             lines = [fm.elidedText(t["name"], Qt.TextElideMode.ElideRight, int(inner.width()))]
@@ -543,10 +543,8 @@ class HealthDialog(FramelessDialog):
         self.usage_tabs.addTab(self.tbl_dirs, "📁 Папки")
         self.usage_tabs.addTab(self.tbl_files, "📄 Файлы")
         self.usage_tabs.addTab(hogs_page, "🧹 Почистить")
-        self.usage_tabs.addTab(self.tbl_users, "👥 Профили")
         for i, tip in enumerate(("Папки верхнего уровня по размеру", "Самые крупные файлы тома",
-                                 "Что можно почистить на этом томе — из того же обхода, что и карта; ничего не удаляется",
-                                 "Размер профилей пользователей")):
+                                 "Что можно почистить на этом томе — из того же обхода, что и карта; ничего не удаляется")):
             self.usage_tabs.setTabToolTip(i, tip)
         self.usage_tabs.setUsesScrollButtons(False)
         self.usage_split.addWidget(self.usage_tabs)
