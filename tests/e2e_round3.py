@@ -5,6 +5,7 @@
 """
 import sys, os, tempfile, types, time  # noqa: E401
 sys.path.insert(0, 'tests'); sys.path.insert(0, '.')
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 for n in ("pythoncom", "win32com", "win32com.client", "win32crypt"):
     sys.modules.setdefault(n, types.ModuleType(n))
 _home = tempfile.mkdtemp(prefix="admgr_e2e3_")

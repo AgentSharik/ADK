@@ -12,6 +12,12 @@ for n in ("pythoncom", "win32com", "win32com.client", "win32crypt"):
     sys.modules.setdefault(n, types.ModuleType(n))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+try:
+    from PyQt6.QtCore import qInstallMessageHandler
+    qInstallMessageHandler(lambda t, c, m: None if "This plugin does not support" in m or "propagateSizeHints" in m else sys.stderr.write(f"{m}\n"))
+except Exception:
+    pass
+
 from adk import ad, config, db, netutils  # noqa: E402
 
 config.settings.db_path = os.path.join(tempfile.mkdtemp(), "shot.db")

@@ -7,6 +7,7 @@
 """
 import sys, os, threading, tempfile, gc, types, base64  # noqa: E401
 sys.path.insert(0, 'tests'); sys.path.insert(0, '.')
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 # --- заглушка pywin32 с РАБОЧИМ DPAPI-путём (обратимое «шифрование»), чтобы проверить Windows-ветку
 _w32 = types.ModuleType("win32crypt")

@@ -6,6 +6,12 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+try:
+    from PyQt6.QtCore import qInstallMessageHandler
+    qInstallMessageHandler(lambda t, c, m: None if "This plugin does not support" in m or "propagateSizeHints" in m else sys.stderr.write(f"{m}\n"))
+except Exception:
+    pass
+
 # pywin32 нужен только на Windows — подменяем, чтобы тесты шли везде
 for name in ("pythoncom", "win32com", "win32com.client", "win32crypt"):
     sys.modules.setdefault(name, type(sys)(name))

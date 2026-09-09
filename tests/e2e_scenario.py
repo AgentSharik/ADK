@@ -10,6 +10,7 @@ C — диалоги, D — безопасность, E — устойчивос
 import sys, os, threading, json  # noqa: E401
 sys.path.insert(0,'tests'); sys.path.insert(0,'.')
 for n in ("pythoncom","win32com","win32com.client","win32crypt"): sys.modules.setdefault(n, type(sys)(n))
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import tempfile
 _home=tempfile.mkdtemp(prefix="admgr_e2e_"); os.environ["HOME"]=_home; os.environ["USERPROFILE"]=_home
 from adk import config, db, ad, netutils, credentials

@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import html
+import os
+import sys
 from typing import Callable
 
-from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QtMsgType, pyqtSignal, qInstallMessageHandler
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QLabel, QMenu, QLayout, QLineEdit, QMainWindow, QPushButton, QSizeGrip,
@@ -14,6 +16,23 @@ from PyQt6.QtWidgets import (
 from .theme import Palette
 
 _EDGE = 8
+
+
+def _silence_qt_warnings() -> None:
+    """Подавляет платформенные предупреждения Qt в offscreen/headless-режиме (propagateSizeHints, raise, grabKeyboard)."""
+    try:
+        def _handler(msg_type, context, message):
+            if "This plugin does not support" in message or "propagateSizeHints" in message:
+                return
+            if msg_type in (QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg):
+                sys.stderr.write(f"{message}\n")
+
+        qInstallMessageHandler(_handler)
+    except Exception:
+        pass
+
+
+_silence_qt_warnings()
 
 
 class EdgeResizeFilter(QObject):
@@ -87,7 +106,6 @@ class TitleBar(QWidget):
         style = self.style()
         if is_main:
             from .tray import asset_path
-            import os
             logo_path = asset_path("logo.png")
             if os.path.exists(logo_path):
                 logo = QLabel()

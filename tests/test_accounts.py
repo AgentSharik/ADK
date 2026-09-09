@@ -361,16 +361,19 @@ def test_login_dialog_prefills_saved_password(qapp):
 
 
 def test_dashboard_role_card_differs_by_role(qapp, fake_conn, monkeypatch):
-    """3.3.0: разница ролей видна уже на стартовом экране — карточка «Роль» на дашборде."""
+    """Отображение роли в статус-баре и окно подробностей о роли (RoleInfoDialog)."""
     from adk import access
+    from adk.dialogs import RoleInfoDialog
     w = _main(qapp, fake_conn, monkeypatch)
-    assert "полный доступ" in w.lbl_role_title.text()
+    assert "Полный доступ" in w.lbl_role_status.text()
     access.set_rights(pc=True, ad=False, reason="нет в группах — AD: IT-Admins")
     try:
         w.apply_access()
-        assert "Роль «ПК»" in w.lbl_role_title.text() and "Скрыто" in w.lbl_role_text.text()
-        assert w.role_card.styleSheet()   # подсвечена — ограниченная роль
+        assert "ПК, AD: Чтение" in w.lbl_role_status.text()
+        dlg = RoleInfoDialog("admin", w)
+        assert "Роль «ПК»" in dlg.body.itemAt(0).widget().layout().itemAt(0).widget().text()
+        dlg.close()
     finally:
         access.reset(); w.apply_access()
-    assert "полный доступ" in w.lbl_role_title.text() and not w.role_card.styleSheet()
+    assert "Полный доступ" in w.lbl_role_status.text()
     w.close()

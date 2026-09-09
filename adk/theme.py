@@ -237,6 +237,9 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QComboBox::drop-down {{ border: none; width: 24px; }}
     QLabel#subtle {{ color: {p.subtext}; }}
     QLabel#statusLabel {{ color: {p.subtext}; }}
+    QLabel#roleStatusLabel {{ color: {p.text}; background-color: {p.card}; border: 1px solid {p.border};
+        border-radius: 8px; padding: 4px 10px; font-weight: 600; font-size: 12px; }}
+    QLabel#roleStatusLabel:hover {{ border-color: {accent}; color: {accent}; background-color: {p.hover}; }}
     QLabel#readonlyBadge {{ color: {p.warning[0]}; background-color: {p.warning[1]}; border: 1px solid {p.warning[2]};
         border-radius: 10px; padding: 4px 10px; font-weight: 600; }}
     QLabel#updateLabel {{ color: {p.info[0]}; font-weight: 600; }}

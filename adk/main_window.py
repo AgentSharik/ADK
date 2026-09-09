@@ -20,7 +20,7 @@ from .attention_ui import AttentionDialog
 from .config import APP_TITLE, CREATE_NO_WINDOW, SEARCH_RESULT_LIMIT, settings
 from .dialogs import (
     AuditLogDialog, DesignSettingsDialog, FreeIPDialog, InventoryDialog, PingDialog, PrintersDialog,
-    RegisterUserDialog, UserCardDialog,
+    RegisterUserDialog, RoleInfoDialog, UserCardDialog,
 )
 from .extras import NotifySettingsDialog
 from .fleet import ComparePCDialog, LogonsDialog, MassPingDialog, SoftwareDialog, wake_single
@@ -198,19 +198,21 @@ class ADApp(FramelessMainWindow):
         self.close()
 
     def apply_access(self):
-        """Скрывает кнопки запрещённых действий (ПК / AD) и показывает бейдж роли в шапке."""
+        """Скрывает кнопки запрещённых действий (ПК / AD) и показывает бейдж роли в шапке и статус-баре."""
         self.lbl_readonly.setText(tr(access.badge_text()))
         self.lbl_readonly.setVisible(access.is_limited())
         self.lbl_readonly.setToolTip(access.reason())
+        if hasattr(self, "lbl_role_status"):
+            self.lbl_role_status.setText(tr(access.role_title_short()))
+            self.lbl_role_status.setToolTip(f"{access.role_summary()[1]}\n(Клик — подробнее о возможностях роли)")
         for b, action in getattr(self, "_modifying_buttons", []):
             b.setVisible(access.can(action))
-        if hasattr(self, "role_card"):
-            title, text = access.role_summary()
-            self.lbl_role_title.setText(tr(title))
-            self.lbl_role_text.setText(tr(text))
-            self.role_card.setProperty("limited", access.is_limited())
-            self.role_card.setStyleSheet("#dashCard { border: 1.5px solid %s; }" % (
-                "#f59e0b" if access.is_limited() else "transparent") if access.is_limited() else "")
+
+    def show_role_info(self):
+        """Показывает модальное окно с описанием роли и доступных возможностей."""
+        dlg = RoleInfoDialog(self.admin_name, self)
+        dlg.exec()
+        dlg.deleteLater()
 
     def _deny(self, action: str) -> bool:
         """True — действие запрещено ролью (предупреждение уже показано)."""
@@ -366,8 +368,14 @@ class ADApp(FramelessMainWindow):
         self.btn_scan.clicked.connect(self.start_scan)
         self.lbl_status = QLabel("")
         self.lbl_status.setObjectName("statusLabel")
+        self.lbl_role_status = QLabel(tr(access.role_title_short()))
+        self.lbl_role_status.setObjectName("roleStatusLabel")
+        self.lbl_role_status.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.lbl_role_status.setToolTip(f"{access.role_summary()[1]}\n(Клик — подробнее о возможностях роли)")
+        self.lbl_role_status.mousePressEvent = lambda e: self.show_role_info()
         bottom.addWidget(self.btn_scan)
         bottom.addWidget(self.lbl_status, 1)
+        bottom.addWidget(self.lbl_role_status)
         content.addLayout(bottom)
 
     def _build_dashboard(self) -> QWidget:
@@ -391,21 +399,6 @@ class ADApp(FramelessMainWindow):
         b_att.clicked.connect(self.show_attention)
         arow.addWidget(b_att)
         lay.addWidget(self.attention_card)
-        self.role_card = QFrame()
-        self.role_card.setObjectName("dashCard")
-        rrow = QHBoxLayout(self.role_card)
-        self.lbl_role_title = QLabel("")
-        self.lbl_role_title.setStyleSheet("background: transparent; border: none; font-weight: bold;")
-        self.lbl_role_text = QLabel("")
-        self.lbl_role_text.setObjectName("subtle")
-        self.lbl_role_text.setWordWrap(True)
-        self.lbl_role_text.setStyleSheet("background: transparent; border: none;")
-        rcol = QVBoxLayout()
-        rcol.setSpacing(2)
-        rcol.addWidget(self.lbl_role_title)
-        rcol.addWidget(self.lbl_role_text)
-        rrow.addLayout(rcol, 1)
-        lay.addWidget(self.role_card)
         lay.addWidget(QLabel(tr("<b>🕒 Недавние поиски:</b>")))
         frame = QFrame()
         frame.setObjectName("dashCard")
