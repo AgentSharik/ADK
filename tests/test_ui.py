@@ -121,7 +121,7 @@ def test_compare_pc_dialog_keeps_all_cells(qapp, monkeypatch, tmp_path):
         assert all(t.item(r, c) is not None and t.item(r, c).text() for c in range(3)), f"пустая ячейка в строке {r}"
     keys = {t.item(r, 0).text() for r in range(t.rowCount())}
     assert any("ОС" in k or "os" in k.lower() for k in keys)
-    assert d.t_soft.rowCount() == 2 and d.t_soft.item(1, 2).text() in ("✔", "—")
+    assert d.t_soft.rowCount() == 2 and (d.t_soft.item(1, 2).text() == "—" or not d.t_soft.item(1, 2).icon().isNull())
     d.close()
 
 
@@ -338,3 +338,55 @@ def test_subnet_map_cells_fit_three_digits(qapp):
     assert SubnetMap.MAX_CELL >= 30 and SubnetMap.GAP >= 4
     f = QFont(); f.setPointSizeF(max(7, min(11, SubnetMap.MAX_CELL * 0.29)))
     assert QFontMetrics(f).horizontalAdvance("254") <= SubnetMap.MAX_CELL - SubnetMap.GAP - 1   # внутри ячейки
+
+
+def test_plugins_dialog_and_puzzle_icon(qapp):
+    """3.5.0: кнопка «Плагины» и менеджер расширений PluginsDialog."""
+    from PyQt6.QtWidgets import QPushButton
+    from adk.dialogs import PluginsDialog
+    b = QPushButton("🧩 Плагины")
+    assert b.text() == "Плагины" and not b.icon().isNull() and b._adk_icon[0] == "puzzlepiece"
+    dlg = PluginsDialog()
+    assert "Менеджер расширений" in dlg.body.itemAt(0).widget().layout().itemAt(0).widget().text()
+    dlg.close()
+
+
+def test_role_welcome_dialog(qapp, monkeypatch):
+    """3.5.0: RoleWelcomeDialog после входа со справкой по роли и галочкой скрытия."""
+    from adk.dialogs import RoleWelcomeDialog
+    from adk import access, config
+    access.set_rights(pc=True, ad=True)
+    dlg = RoleWelcomeDialog("admin")
+    assert "полный доступ" in dlg.body.itemAt(0).widget().layout().itemAt(0).widget().text()
+    dlg.chk_dont_show.setChecked(True)
+    dlg._save_and_close()
+    assert config.settings.hide_role_welcome is True
+    config.settings.hide_role_welcome = False
+
+
+def test_diskmap_tabs_three_and_no_profiles(qapp):
+    """3.5.0: в карте диска 3 вкладки («Папки», «Файлы», «Почистить»), вкладка «Профили» удалена."""
+    from adk.health_ui import HealthDialog
+    hd = HealthDialog("WS-101", None, None)
+    assert hd.usage_tabs.count() == 3
+    tab_titles = [hd.usage_tabs.tabText(i) for i in range(hd.usage_tabs.count())]
+    assert "Профили" not in "".join(tab_titles)
+    assert "Папки" in tab_titles[0] and "Файлы" in tab_titles[1] and "Почистить" in tab_titles[2]
+    hd.close()
+
+
+def test_freeip_legend_no_inventory(qapp):
+    """3.5.0: из легенды поиска свободного IP удален пункт «ПК из скана»."""
+    from adk.freeip_ui import FreeIPDialog
+    fd = FreeIPDialog()
+    labels = [fd.legend_box.layout().itemAtPosition(r, 1).widget().text() for r in range(fd.legend_box.layout().rowCount()) if fd.legend_box.layout().itemAtPosition(r, 1)]
+    assert not any("скана" in t for t in labels)
+    assert any("свободен" in t for t in labels)
+    fd.close()
+
+
+def test_table_item_no_double_checkmarks(qapp):
+    """3.5.0: одиночный эмодзи (галочка) не дублируется текстом рядом с иконкой."""
+    from PyQt6.QtWidgets import QTableWidgetItem
+    it = QTableWidgetItem("✔")
+    assert it.text() == "" and not it.icon().isNull()

@@ -77,7 +77,7 @@ def test_ip_of_printer_returns_only_printer_row(qapp, fake_conn, monkeypatch):
     w.search_input.setText("10.0.2.50")
     w.start_search()
     assert _wait(lambda: w.table.rowCount() >= 1 and "Принтеров: 1" in w.lbl_status.text(), qapp, 3000)
-    assert w.table.rowCount() == 1 and w.table.item(0, 0).text() == "🖨️"
+    assert w.table.rowCount() == 1 and w.table.item(0, 0).text() == "—"
     assert "подключено ПК — 2" in w.lbl_status.text()
     w.select_row(0)
     assert w.printer_pane.isVisible() and w.printer_pcs.rowCount() == 2
@@ -96,7 +96,7 @@ def test_printer_prefix_query_still_lists_owners(qapp, fake_conn, monkeypatch):
     w.search_input.setText("printer: Kyocera")
     w.start_search()
     assert _wait(lambda: w.table.rowCount() >= 2, qapp, 3000)
-    assert w.table.item(0, 0).text() == "🖨️" and "ivanov" in {w.table.item(r, 0).text() for r in range(w.table.rowCount())}
+    assert w.table.item(0, 0).text() == "—" and "ivanov" in {w.table.item(r, 0).text() for r in range(w.table.rowCount())}
     w.close()
 
 

@@ -908,12 +908,14 @@ class HealthDialog(FramelessDialog):
         hogs = u.get("hogs") or []
         self._fill(self.tbl_hogs, [(h["label"], h["size"], h.get("files") or "") for h in hogs], sizes=(1,), paths=[h["path"] for h in hogs])
         total = u.get("hogs_total", sum(h["size"] for h in hogs))
+        drive = u.get("drive") or u.get("root") or ""
+        host = getattr(self, "computer", "") or "ПК"
         if not hogs:
-            self.lbl_hogs.setText(f"✅ {u['root']}: известных «пожирателей» места (корзина, Temp, кэши, дампы, подкачка) на этом томе нет.")
+            self.lbl_hogs.setText(f"✅ На {host} (том {drive}): известных временных файлов (корзина, Temp, кэши) на этом томе нет.")
             return
-        share = f" — это {total / u['total'] * 100:.1f}% занятого на карте" if u.get("total") else ""
-        self.lbl_hogs.setText(f"🧹 {u['root']}: можно освободить до {health.fmt_size(total)}{share} · {len(hogs)} позиций. "
-                              "Файлы подкачки/гибернации удаляются только через настройки системы; клик по строке — путь в буфер.")
+        share = f" ({total / u['total'] * 100:.1f}% от занятого на томе)" if u.get("total") else ""
+        self.lbl_hogs.setText(f"🧹 На {host} (том {drive}): обнаружено временных файлов и данных корзины до {health.fmt_size(total)}{share}. "
+                              "Клик по строке копирует путь в буфер обмена.")
 
     @staticmethod
     def _fill(table: QTableWidget, rows, sizes=(), paths=None):

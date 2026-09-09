@@ -236,7 +236,9 @@ class FreeIPDialog(FramelessDialog):
         res = QFrame()
         res.setObjectName("dashCard")
         rl = QVBoxLayout(res)
-        rl.setContentsMargins(14, 8, 14, 8)
+        rl.setContentsMargins(18, 14, 18, 14)
+        rl.setSpacing(8)
+        rl.addStretch(1)
         cap = QLabel("СВОБОДНЫЙ АДРЕС")
         cap.setStyleSheet(f"color: {pal.subtext}; font-size: 8.5pt; font-weight: bold; letter-spacing: 1px;")
         rl.addWidget(cap)
@@ -251,6 +253,7 @@ class FreeIPDialog(FramelessDialog):
         self.lbl_dhcp.setWordWrap(True)
         self.lbl_dhcp.setStyleSheet(f"color: {pal.subtext}; font-size: 9pt;")
         rl.addWidget(self.lbl_dhcp)
+        rl.addSpacing(4)
         row = QHBoxLayout()
         self.btn_copy = QPushButton("📋 Копировать")
         self.btn_copy.setEnabled(False)
@@ -265,7 +268,7 @@ class FreeIPDialog(FramelessDialog):
         for b in (self.btn_copy, self.btn_ping, self.btn_next):
             row.addWidget(b)
         rl.addLayout(row)
-        rl.addStretch()
+        rl.addStretch(1)
         bottom.addWidget(res, 4)
 
         trow = QHBoxLayout()

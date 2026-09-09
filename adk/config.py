@@ -100,6 +100,7 @@ _DEFAULTS: dict[str, dict[str, str]] = {
         "language": "ru",             # ru | en
         "minimize_to_tray": "true",   # закрытие окна сворачивает в трей; выход — из меню трея
         "global_hotkey": "Ctrl+Shift+A",  # показать окно и перейти в поиск (Windows, RegisterHotKey); пусто — выключить
+        "hide_role_welcome": "false", # скрывать окно со справкой по роли после входа
     },
     "Access": {
         # Два независимых права по группам AD администратора (memberOf):
@@ -230,6 +231,7 @@ class Settings:
         self.language: str = (ui.get("language", "ru") or "ru").lower()[:2]
         self.minimize_to_tray: bool = str(ui.get("minimize_to_tray", "true")).lower() in ("1", "true", "yes", "да")
         self.global_hotkey: str = ui.get("global_hotkey", "Ctrl+Shift+A") or ""
+        self.hide_role_welcome: bool = str(ui.get("hide_role_welcome", "false")).lower() in ("1", "true", "yes", "да")
 
         acc = cp["Access"] if "Access" in cp else {}
         self.readonly: bool = str(acc.get("readonly", "false")).lower() in ("1", "true", "yes", "да")

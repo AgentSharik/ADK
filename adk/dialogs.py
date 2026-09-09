@@ -35,7 +35,7 @@ class LoginDialog(FramelessDialog):
     """
 
     def __init__(self, error_msg: str = "", saved_user: str | None = None, saved_password: str | None = None):
-        super().__init__("🔑 Вход в ADK", None, (460, 620))
+        super().__init__("🔑 Вход в ADK", None, (460, 520))
         self.username: str | None = None
         self.password: str | None = None
         self.result_conn = None
@@ -106,32 +106,6 @@ class LoginDialog(FramelessDialog):
             self.remember.setToolTip("Защищённое хранилище недоступно — пароль сохранить не получится")
         cl.addWidget(self.remember)
         self.body.addWidget(card)
-
-        # --- блок о ролях и возможностях
-        role_card = QFrame()
-        role_card.setObjectName("dashCard")
-        rl = QVBoxLayout(role_card)
-        rl.setSpacing(4)
-        rl.setContentsMargins(12, 8, 12, 8)
-        lbl_r_title = QLabel("<b>Роли доступа и возможности в ADK:</b>")
-        lbl_r_title.setStyleSheet("font-size: 11px;")
-        rl.addWidget(lbl_r_title)
-        lbl_r1 = QLabel("• <b>Роль «AD» (полный доступ):</b> объекты AD, пароли, группы, питание и действия с ПК")
-        lbl_r1.setObjectName("subtle")
-        lbl_r1.setStyleSheet("font-size: 11px;")
-        lbl_r1.setWordWrap(True)
-        rl.addWidget(lbl_r1)
-        lbl_r2 = QLabel("• <b>Роль «ПК» (AD — чтение):</b> управление и питание ПК, RMS, диск, ПО; изменение объектов AD скрыто")
-        lbl_r2.setObjectName("subtle")
-        lbl_r2.setStyleSheet("font-size: 11px;")
-        lbl_r2.setWordWrap(True)
-        rl.addWidget(lbl_r2)
-        lbl_r3 = QLabel("• <b>Режим «Только чтение»:</b> просмотр и аудит без внесения изменений")
-        lbl_r3.setObjectName("subtle")
-        lbl_r3.setStyleSheet("font-size: 11px;")
-        lbl_r3.setWordWrap(True)
-        rl.addWidget(lbl_r3)
-        self.body.addWidget(role_card)
 
         # --- действия: главная кнопка и SSO как альтернатива
         self.btn_login = QPushButton("Войти")
@@ -214,6 +188,74 @@ class LoginDialog(FramelessDialog):
 
 
 # ============================================================================ информация о роли
+class RoleWelcomeDialog(FramelessDialog):
+    """Справка по определенной роли после входа с галочкой «Больше не показывать»."""
+
+    def __init__(self, admin_name: str = "", parent=None):
+        super().__init__("🛡️ Роль и права доступа", parent, (520, 390))
+        from . import access
+        title, text = access.role_summary()
+        pal = app_palette()
+        self.body.setSpacing(10)
+        self.body.setContentsMargins(16, 8, 16, 12)
+
+        card = QFrame()
+        card.setObjectName("dashCard")
+        cl = QVBoxLayout(card)
+        cl.setSpacing(6)
+
+        lbl_title = QLabel(f"<b>{title}</b>")
+        color = pal.accent if not access.is_limited() else pal.warning[0]
+        lbl_title.setStyleSheet(f"font-size: 14px; color: {color}; font-weight: bold;")
+        cl.addWidget(lbl_title)
+
+        lbl_text = QLabel(text)
+        lbl_text.setWordWrap(True)
+        cl.addWidget(lbl_text)
+
+        if admin_name:
+            lbl_user = QLabel(f"<b>Пользователь:</b> {admin_name}")
+            lbl_user.setObjectName("subtle")
+            cl.addWidget(lbl_user)
+
+        self.body.addWidget(card)
+
+        cap_card = QFrame()
+        cap_card.setObjectName("dashCard")
+        cap_l = QVBoxLayout(cap_card)
+        cap_l.setSpacing(6)
+        cap_l.addWidget(QLabel("<b>Возможности в текущей сессии:</b>"))
+
+        if access.can_ad():
+            cap_l.addWidget(QLabel("✅ <b>Управление Active Directory:</b> объекты AD, сброс паролей, блокировка, создание пользователей, группы"))
+        else:
+            cap_l.addWidget(QLabel("🔒 <b>Active Directory:</b> только чтение (изменение объектов отключено)"))
+
+        if access.can_pc():
+            cap_l.addWidget(QLabel("✅ <b>Управление компьютерами:</b> перезагрузка/питание, RMS, S.M.A.R.T., ПО, карта диска, заметки"))
+        else:
+            cap_l.addWidget(QLabel("🔒 <b>Компьютеры:</b> только просмотр сетевого статуса и характеристик"))
+
+        self.body.addWidget(cap_card)
+        self.body.addStretch()
+
+        self.chk_dont_show = QCheckBox("Больше не показывать при входе")
+        self.chk_dont_show.setChecked(False)
+        self.body.addWidget(self.chk_dont_show)
+
+        self.btn_ok = QPushButton("Продолжить")
+        self.btn_ok.setObjectName("btnPrimary")
+        self.btn_ok.setMinimumHeight(38)
+        self.btn_ok.clicked.connect(self._save_and_close)
+        self.body.addWidget(self.btn_ok)
+
+    def _save_and_close(self):
+        if self.chk_dont_show.isChecked():
+            settings.save_section("UI", {"hide_role_welcome": "true"})
+            settings.hide_role_welcome = True
+        self.accept()
+
+
 class RoleInfoDialog(FramelessDialog):
     """Окно с подробной информацией о текущей роли и возможностях приложения."""
 

@@ -434,6 +434,7 @@ class ADApp(FramelessMainWindow):
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setHorizontalHeaderLabels(COLUMNS)
         self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(True)
         self.table.setSortingEnabled(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # Ctrl/Shift — массовые операции
@@ -793,8 +794,20 @@ class ADApp(FramelessMainWindow):
             fio = QTableWidgetItem(u["fio"])
             fio.setFont(bold)
             if u.get("kind") == "printer":
-                login.setText("🖨️")
-                cells = [login, fio, StatusItem("Принтер", "info"), QTableWidgetItem(u.get("ip") or "—"),
+                login.setText("—")
+                pinfo = u.get("printer") or {}
+                pkind = pinfo.get("kind") or ("network" if u.get("ip") else "")
+                if pkind == "network" and u.get("ip"):
+                    conn_type = f"🌐 {u['ip']}"
+                elif pkind == "network":
+                    conn_type = "🌐 Сетевой"
+                elif pkind == "usb":
+                    conn_type = "🔌 USB"
+                elif pkind == "shared":
+                    conn_type = "🔗 Общий"
+                else:
+                    conn_type = u.get("ip") or "—"
+                cells = [login, fio, StatusItem("Принтер", "info"), QTableWidgetItem(conn_type),
                          StatusItem("● В сети" if u["is_online"] else "● Не в сети", "online" if u["is_online"] else "offline")]
                 cells += [QTableWidgetItem("") for _ in range(7)] + [QTableWidgetItem(u.get("last_logon") or "")]
                 for c, item in enumerate(cells):

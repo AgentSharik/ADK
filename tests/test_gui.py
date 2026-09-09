@@ -395,10 +395,10 @@ def test_printer_badges_and_click_search(qapp, fake_conn, monkeypatch):
     badges[0].click()                                   # → просто IP принтера, без префикса
     assert w.search_input.text() == "10.0.2.50"
     assert _wait(lambda: "Принтеров: 1" in w.lbl_status.text(), qapp, 3000)
-    # единственная строка — сам принтер (🖨️, модель, IP, «В сети»); кто подключён — в его инспекторе,
+    # единственная строка — сам принтер (—, модель, IP, «В сети»); кто подключён — в его инспекторе,
     # «пустых» строк ПК без ФИО рядом быть не должно (v3.2.4)
     assert w.table.rowCount() == 1
-    assert w.table.item(0, 0).text() == "🖨️" and w.table.item(0, 1).text() == "HP LaserJet M404"
+    assert w.table.item(0, 0).text() == "—" and w.table.item(0, 1).text() == "HP LaserJet M404"
     assert w.table.item(0, 3).text() == "10.0.2.50" and "В сети" in w.table.item(0, 4).text()
     assert "подключено ПК — 2" in w.lbl_status.text()
     w.select_row(0)                                     # инспектор принтера: кто подключён
@@ -407,7 +407,7 @@ def test_printer_badges_and_click_search(qapp, fake_conn, monkeypatch):
     assert {w.printer_pcs.item(r, 0).text() for r in range(2)} == {"WS-101", "WS-102"}
     assert w.pvals["count"].text().startswith("2")
     w.search_input.setText("иванов"); w.start_search()   # обратно к человеку — панель принтера прячется
-    assert _wait(lambda: w.table.rowCount() > 0 and w.table.item(0, 0).text() != "🖨️", qapp, 3000)
+    assert _wait(lambda: w.table.rowCount() > 0 and w.table.item(0, 0).text() == "ivanov", qapp, 3000)
     w.select_row(0)
     assert w.details.isVisible() and not w.printer_pane.isVisible()
     w.close()
@@ -445,7 +445,7 @@ def test_printer_search_with_free_pc_and_status(qapp, fake_conn, monkeypatch):
     w.search_input.setText("printer: Canon LBP6030")
     w.start_search()
     assert _wait(lambda: w.table.rowCount() == 2, qapp, 3000)
-    assert w.table.item(0, 0).text() == "🖨️" and w.table.item(0, 1).text() == "Canon LBP6030"   # сам принтер
+    assert w.table.item(0, 0).text() == "—" and w.table.item(0, 1).text() == "Canon LBP6030"   # сам принтер
     assert w.table.item(1, 0).text() == "—"                                                     # свободный ПК с ним
     assert _wait(lambda: "подключено ПК — 1" in w.lbl_status.text(), qapp, 2000)
     w.select_row(0)

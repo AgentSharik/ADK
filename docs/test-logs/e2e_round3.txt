@@ -1,4 +1,3 @@
-This plugin does not support propagateSizeHints()
 === P. Классификация принтеров ===
 PASS classify_printer_port: 10 типовых портов  — {}
 PASS виртуальные принтеры отфильтрованы (13 имён)  — []
@@ -9,18 +8,18 @@ PASS CSV WS-101: 2 реальных принтера, PDF отброшен, defa
 PASS карточка/инспектор пишут кэш pc_printers
 PASS get_computer_printers (устаревший API) даёт подписи  — ['HP LaserJet M404dn (сетевой · 10.0.2.50)', 'Canon LBP6030 (USB)']
 PASS сканер: индексирует принтеры всех ПК из CSV (4 ПК, 4 принтера)  — ['🖨️ Принтеры проиндексированы: 4 ПК с CSV']
-PASS сводка: HP на 2 ПК (2 в сети), Kyocera на 2 ПК (0 в сети)  — {'HP LaserJet M404dn': {'name': 'HP LaserJet M404dn', 'kind': 'network', 'ip': '10.0.2.50', 'pcs': 2, 'online': 2, 'updated': '2026-09-08 04:38:04', 'computers': 'WS-101, WS-105'}, 'Kyocera ECOSYS P3145dn': {'name': 'Kyocera ECOSYS P3145dn', 'kind': 'network', 'ip': '10.0.2.51', 'pcs': 2, 'online': 0, 'updated': '2026-09-08 04:38:04', 'computers': 'WS-133, WS-102'}, 'Canon LBP6030': {'name': 'Canon LBP6030', 'kind': 'usb', 'ip': '', 'pcs': 1, 'online': 1, 'updated': '2026-09-08 04:38:04', 'computers': 'WS-101'}, 'Epson L3150': {'name': 'Epson L3150', 'kind': 'usb', 'ip': '', 'pcs': 1, 'online': 0, 'updated': '2026-09-08 04:38:04', 'computers': 'WS-102'}}
+PASS сводка: HP на 2 ПК (2 в сети), Kyocera на 2 ПК (0 в сети)  — {'HP LaserJet M404dn': {'name': 'HP LaserJet M404dn', 'kind': 'network', 'ip': '10.0.2.50', 'pcs': 2, 'online': 2, 'updated': '2026-09-09 19:16:17', 'computers': 'WS-101, WS-105'}, 'Kyocera ECOSYS P3145dn': {'name': 'Kyocera ECOSYS P3145dn', 'kind': 'network', 'ip': '10.0.2.51', 'pcs': 2, 'online': 0, 'updated': '2026-09-09 19:16:17', 'computers': 'WS-133, WS-102'}, 'Canon LBP6030': {'name': 'Canon LBP6030', 'kind': 'usb', 'ip': '', 'pcs': 1, 'online': 1, 'updated': '2026-09-09 19:16:17', 'computers': 'WS-101'}, 'Epson L3150': {'name': 'Epson L3150', 'kind': 'usb', 'ip': '', 'pcs': 1, 'online': 0, 'updated': '2026-09-09 19:16:17', 'computers': 'WS-102'}}
 PASS замена CSV → старый принтер исчезает из кэша ПК
 
 === R. Режимы поиска: без телефонов, IP по октетам, printer: ===
 PASS телефон НЕ ищется (telephoneNumber/ipPhone/mobile отсутствуют в фильтре)  — (&(objectCategory=person)(objectClass=user)(!(sAMAccountName=*$))(!(userAccountControl:1.2.840.113556.1.4.803:=2))(|(sAMAccountName=*2554567*)(displayName=*2554567*)(sn=2554567*)(givenName=2554567*)(mail=*2554567*)(department=*2554567*)(company=*2554567*)(title=*2554567*)(physicalDeliveryOfficeName=2554567)))
 PASS цифры всё ещё ищутся в логине/displayName
-PASS IP-префикс 10.0.2 → только владельцы 10.0.2.x (не 10.0.20.12)  — (&(objectCategory=person)(objectClass=user)(!(sAMAccountName=*$))(!(userAccountControl:1.2.840.113556.1.4.803:=2))(|(sAMAccountName=petrov)(sAMAccountName=ivanov)))
+PASS IP-префикс 10.0.2 → только владельцы 10.0.2.x (не 10.0.20.12)  — (&(objectCategory=person)(objectClass=user)(!(sAMAccountName=*$))(!(userAccountControl:1.2.840.113556.1.4.803:=2))(|(sAMAccountName=ivanov)(sAMAccountName=petrov)))
 PASS IP без владельцев → None (в AD не идём)
 PASS полный IP принтера (не ПК) → в AD не идём, printer_query не включается (только сам принтер)  — None
 PASS clean_computer_name не режет IP до первого октета
 PASS normalize_query: домен/UPN/пробелы
-PASS printer: по IP → логины владельцев, без текстовой части  — (&(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(|(sAMAccountName=petrov)(sAMAccountName=ivanov)))
+PASS printer: по IP → логины владельцев, без текстовой части  — (&(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(|(sAMAccountName=ivanov)(sAMAccountName=petrov)))
 PASS printer: подстрока модели (kyocera) находит владельцев (kuznetsova) + ПК без юзера
 PASS printer: короткий запрос (<3) не расширяется
 PASS printer: Kyocera → сам принтер + строки WS-102 (kuznetsova) и WS-133 (свободный ПК)  — ['', 'WS-102', 'WS-133']
@@ -36,11 +35,11 @@ PASS копия карточки содержит принтеры  — 👤 И�
 📞 Тел. 2554567
 💻 ПК: WS-101 | 10.0.2.11
 🖨️ HP LaserJet M404dn (сетевой · 10.0.2.50); Canon LBP6030 (USB)
-PASS клик по сетевому бейджу → поиск по IP → только сам принтер (владельцы — в инспекторе)  — ['🖨️']
-PASS статус: найден принтер, подключено 2 ПК  — <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNSIgaGVpZ2h0PSIxNSIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIxLjc1IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNvbG9yPSIjRjRGNEY1Ij48cGF0aCBkPSJNNyA5VjQuNWgxMFY5Ii8+PHJlY3QgeD0iMy41IiB5PSI5IiB3aWR0aD0iMTciIGhlaWdodD0iOCIgcng9IjIiLz48cmVjdCB4PSI3IiB5PSIxNCIgd2lkdGg9IjEwIiBoZWlnaHQ9IjUuNSIgcng9IjEiLz48Y2lyY2xlIGN4PSIxNyIgY3k9IjEyIiByPSIuOSIgZmlsbD0iY3VycmVudENvbG9yIi8+PC9zdmc+" width="15" height="15">&nbsp;Принтеров: 1 (подключено ПК — 2) · людей/ПК: 0
+PASS клик по сетевому бейджу → поиск по IP → только сам принтер (владельцы — в инспекторе)  — ['—']
+PASS статус: найден принтер, подключено 2 ПК  — <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOSIgaGVpZ2h0PSIxOSIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyLjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgY29sb3I9IiNGNUY1RjciPjxwYXRoIGQ9Ik02IDlWNGgxMnY1Ii8+PHJlY3QgeD0iMyIgeT0iOSIgd2lkdGg9IjE4IiBoZWlnaHQ9IjgiIHJ4PSIyIi8+PHBhdGggZD0iTTcgMTRoMTB2Nkg3eiIvPjxsaW5lIHgxPSI2IiB5MT0iMTIuNSIgeDI9IjgiIHkyPSIxMi41Ii8+PGNpcmNsZSBjeD0iMTcuNSIgY3k9IjEyLjUiIHI9IjEiIGZpbGw9ImN1cnJlbnRDb2xvciIvPjwvc3ZnPg==" width="19" height="19">&nbsp;Принтеров: 1 (подключено ПК — 2) · людей/ПК: 0
 PASS строка принтера открывает инспектор принтера (кто подключён — 2 ПК)  — 2
-PASS клик по USB-бейджу → подключён 1 ПК, 1 пользователь  — <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNSIgaGVpZ2h0PSIxNSIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIxLjc1IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNvbG9yPSIjRjRGNEY1Ij48cGF0aCBkPSJNNyA5VjQuNWgxMFY5Ii8+PHJlY3QgeD0iMy41IiB5PSI5IiB3aWR0aD0iMTciIGhlaWdodD0iOCIgcng9IjIiLz48cmVjdCB4PSI3IiB5PSIxNCIgd2lkdGg9IjEwIiBoZWlnaHQ9IjUuNSIgcng9IjEiLz48Y2lyY2xlIGN4PSIxNyIgY3k9IjEyIiByPSIuOSIgZmlsbD0iY3VycmVudENvbG9yIi8+PC9zdmc+" width="15" height="15">&nbsp;Принтеров: 1 (подключено ПК — 1) · людей/ПК: 1
-PASS свободный ПК с принтером: инспектор показывает ПК и бейдж Kyocera  — <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNSIgaGVpZ2h0PSIxNSIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIxLjc1IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNvbG9yPSIjRjRGNEY1Ij48cmVjdCB4PSIzIiB5PSI0LjUiIHdpZHRoPSIxOCIgaGVpZ2h0PSIxMiIgcng9IjIiLz48cGF0aCBkPSJNOSAyMGg2TTEyIDE2LjVWMjAiLz48L3N2Zz4=" width="15" height="15">&nbsp;WS-133 (свободный ПК)
+PASS клик по USB-бейджу → подключён 1 ПК, 1 пользователь  — <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOSIgaGVpZ2h0PSIxOSIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyLjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgY29sb3I9IiNGNUY1RjciPjxwYXRoIGQ9Ik02IDlWNGgxMnY1Ii8+PHJlY3QgeD0iMyIgeT0iOSIgd2lkdGg9IjE4IiBoZWlnaHQ9IjgiIHJ4PSIyIi8+PHBhdGggZD0iTTcgMTRoMTB2Nkg3eiIvPjxsaW5lIHgxPSI2IiB5MT0iMTIuNSIgeDI9IjgiIHkyPSIxMi41Ii8+PGNpcmNsZSBjeD0iMTcuNSIgY3k9IjEyLjUiIHI9IjEiIGZpbGw9ImN1cnJlbnRDb2xvciIvPjwvc3ZnPg==" width="19" height="19">&nbsp;Принтеров: 1 (подключено ПК — 1) · людей/ПК: 1
+PASS свободный ПК с принтером: инспектор показывает ПК и бейдж Kyocera  — <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOSIgaGVpZ2h0PSIxOSIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyLjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgY29sb3I9IiNGNUY1RjciPjxyZWN0IHg9IjMiIHk9IjQuNSIgd2lkdGg9IjE4IiBoZWlnaHQ9IjEyIiByeD0iMiIvPjxwYXRoIGQ9Ik05IDIwaDZNMTIgMTYuNVYyMCIvPjwvc3ZnPg==" width="19" height="19">&nbsp;WS-133 (свободный ПК)
 PASS диалог «Принтеры парка»: 4 принтера, сортировка по числу ПК  — ['Kyocera ECOSYS P3145dn', 'HP LaserJet M404dn', 'Epson L3150', 'Canon LBP6030']
 PASS диалог: фильтр по имени ПК
 PASS диалог: фильтр «USB»
@@ -49,11 +48,11 @@ PASS карточка 3.2.5: принтеры и действия с ПК убр
 PASS Esc/очистка → дашборд; секция принтеров не падает без выбора
 
 === T. Производительность ===
-PASS 30k ПК: load_inventory_maps 92 мс < 500
-PASS 30k ПК × 300 записей: _assemble 155 мс < 1500, все ПК сопоставлены
+PASS 30k ПК: load_inventory_maps 91 мс < 500
+PASS 30k ПК × 300 записей: _assemble 156 мс < 1500, все ПК сопоставлены
 PASS поиск по IP-префиксу с индексом: 0.4 мс/запрос < 50
 PASS кэш сети: 3 запроса подряд → 1 обращение к DNS  — 1
-PASS индексы pc_printers созданы  — {'sqlite_autoindex_pc_printers_1', 'ix_printers_name', 'ix_printers_ip'}
+PASS индексы pc_printers созданы  — {'ix_printers_ip', 'sqlite_autoindex_pc_printers_1', 'ix_printers_name'}
 
 === U. Артефакты README ===
 PASS скриншоты и GIF на месте (9 файлов)  — []

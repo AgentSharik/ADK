@@ -41,7 +41,8 @@ PATHS: dict[str, str] = {
     "terminal": '<rect x="3" y="4.5" width="18" height="15" rx="2.2"/><path d="m7 9 3.2 3L7 15M12.5 15H17"/>',
     "power": '<path d="M12 3.5v8.5"/><path d="M7.2 6.6a7.5 7.5 0 1 0 9.6 0"/>',
     "arrow.clockwise": '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.8 3.8v4.6h-4.6"/>',
-    "printer": '<path d="M7 9V4.5h10V9"/><rect x="3.5" y="9" width="17" height="8" rx="2"/><rect x="7" y="14" width="10" height="5.5" rx="1"/><circle cx="17" cy="12" r=".9" fill="currentColor"/>',
+    "printer": '<path d="M6 9V4h12v5"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v6H7z"/><line x1="6" y1="12.5" x2="8" y2="12.5"/><circle cx="17.5" cy="12.5" r="1" fill="currentColor"/>',
+    "puzzlepiece": '<path d="M14 4a2 2 0 0 1 2 2v1h2a2 2 0 0 1 2 2v2a2 2 0 0 1 0 4v2a2 2 0 0 1-2 2h-2v1a2 2 0 1 1-4 0v-1h-2a2 2 0 0 1-2-2v-2a2 2 0 1 1 0-4V9a2 2 0 0 1 2-2h2V6a2 2 0 0 1 2-2z"/>',
     "archivebox": '<rect x="3.5" y="4" width="17" height="4.5" rx="1.2"/><path d="M5 8.5v9.3A2.2 2.2 0 0 0 7.2 20h9.6a2.2 2.2 0 0 0 2.2-2.2V8.5M10 12.5h4"/>',
     "slider.horizontal.3": '<path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="8" cy="17" r="2" fill="var(--bg)"/>',
     "doc.on.clipboard": '<rect x="7" y="6" width="12" height="14" rx="2"/><path d="M5 16V5.8A1.8 1.8 0 0 1 6.8 4H15"/>',
@@ -143,6 +144,7 @@ EMOJI_ICON: dict[str, tuple[str, str]] = {
     "⚙": ("gearshape", "text"), "⏻": ("power", "danger"), "🔄": ("arrow.clockwise", "text"), "↺": ("arrow.clockwise", "text"),
     "🖨": ("printer", "text"), "🗂": ("archivebox", "text"), "📦": ("shippingbox", "text"), "📁": ("folder", "text"),
     "📂": ("folder.open", "text"), "📋": ("doc.on.clipboard", "text"), "📝": ("square.and.pencil", "text"),
+    "🧩": ("puzzlepiece", "text"),
     "📤": ("square.and.arrow.up", "text"), "📥": ("square.and.arrow.down", "text"), "📊": ("chart.bar", "text"),
     "📉": ("chart.line.downtrend", "text"), "📜": ("list.bullet.rectangle", "text"), "📄": ("doc.text", "text"),
     "📑": ("tablecells", "text"), "🎨": ("paintpalette", "text"),
@@ -431,8 +433,7 @@ def install() -> None:
             if f:
                 name, rest = f
                 item.setIcon(icon(name, role=emoji_role(text)))
-                if rest.strip():          # «🖨️» как самостоятельный маркер значения остаётся текстом (по нему ищет код)
-                    __set(item, rest.strip())
+                __set(item, rest.strip())
 
         def _item_init(self, *a, __o=_i_init, __ap=_item_apply, **k):
             __o(self, *a, **k)

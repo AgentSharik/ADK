@@ -56,6 +56,7 @@ class InventoryDialog(FramelessDialog):
         # ============ 1. организации
         left = QFrame()
         left.setObjectName("dashCard")
+        left.setMinimumWidth(260)
         ll = QVBoxLayout(left)
         ll.setContentsMargins(12, 10, 12, 10)
         ll.addWidget(QLabel("<b>1. Организация</b>"))
@@ -64,6 +65,7 @@ class InventoryDialog(FramelessDialog):
         self.filter.textChanged.connect(self._apply_filter)
         ll.addWidget(self.filter)
         self.list = QListWidget()
+        self.list.setWordWrap(True)
         self.list.itemSelectionChanged.connect(self._company_changed)
         self.list.itemDoubleClicked.connect(lambda _it: self.preview())
         ll.addWidget(self.list, 1)
@@ -75,7 +77,7 @@ class InventoryDialog(FramelessDialog):
         self.btn_preview.setEnabled(False)
         self.btn_preview.clicked.connect(self.preview)
         ll.addWidget(self.btn_preview)
-        root.addWidget(left, 3)
+        root.addWidget(left, 4)
 
         # ============ 2. предпросмотр
         mid = QVBoxLayout()
