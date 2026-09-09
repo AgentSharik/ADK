@@ -347,7 +347,7 @@ def test_plugins_dialog_and_puzzle_icon(qapp):
     b = QPushButton("🧩 Плагины")
     assert b.text() == "Плагины" and not b.icon().isNull() and b._adk_icon[0] == "puzzlepiece"
     dlg = PluginsDialog()
-    assert "Менеджер расширений" in dlg.body.itemAt(0).widget().layout().itemAt(0).widget().text()
+    assert dlg.table.columnCount() == 4 and dlg.btn_template.text().endswith("Создать шаблон плагина")
     dlg.close()
 
 
@@ -390,3 +390,41 @@ def test_table_item_no_double_checkmarks(qapp):
     from PyQt6.QtWidgets import QTableWidgetItem
     it = QTableWidgetItem("✔")
     assert it.text() == "" and not it.icon().isNull()
+
+
+def test_plugins_manager_create_toggle_delete(qapp, tmp_path, monkeypatch):
+    """3.5.1: менеджер плагинов — создать шаблон, включить/выключить двойным кликом, удалить."""
+    from adk import config
+    from adk.dialogs import PluginsDialog
+    monkeypatch.setattr(config.settings, "plugins_dir", str(tmp_path / "pl"))
+    dlg = PluginsDialog()
+    assert dlg.table.rowCount() == 0 and "пуста" in dlg.status.text()
+    dlg.btn_template.click()
+    assert dlg.table.rowCount() == 1 and dlg.table.item(0, 0).text() == "_template_plugin.py"
+    assert "Выключен" in dlg.table.item(0, 3).text() and dlg.btn_toggle.text() == "Включить"
+    dlg._toggle()
+    assert dlg.table.item(0, 0).text() == "template_plugin.py" and "Включён" in dlg.table.item(0, 3).text()
+    assert dlg.table.item(0, 1).text() == "Профиль пользователя" and dlg.table.item(0, 2).text() == "только чтение"
+    monkeypatch.setattr("adk.widgets.MessageBox.question", lambda *a, **k: True)
+    dlg._delete()
+    assert dlg.table.rowCount() == 0
+    dlg.close()
+
+
+def test_role_welcome_shown_once_after_access_resolved(qapp, monkeypatch):
+    """3.5.1: справка по роли показывается главным окном после определения роли, один раз, и не при hide_role_welcome."""
+    from adk import config
+    from adk.main_window import ADApp
+    monkeypatch.setattr(config.settings, "hide_role_welcome", False)
+    w = ADApp("admin", "pw")
+    try:
+        w.show_role_welcome()
+        assert w.role_welcome.isVisible() and "Роль" in w.role_welcome.windowTitle() or w.role_welcome.isVisible()
+        w.role_welcome.close()
+        w._welcome_shown = False
+        monkeypatch.setattr(config.settings, "hide_role_welcome", True)
+        w.role_welcome = None
+        w.show_role_welcome()
+        assert w.role_welcome is None                      # выключено галочкой — не показываем
+    finally:
+        w.close()

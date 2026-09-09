@@ -537,6 +537,8 @@ class HealthDialog(FramelessDialog):
                                "«пожиратели» места (корзина, Temp, кэши обновлений, дампы, подкачка). Ничего не удаляется.")
         self.lbl_hogs.setObjectName("subtle")
         self.lbl_hogs.setWordWrap(True)
+        self.lbl_hogs.setMinimumHeight(self.lbl_hogs.fontMetrics().lineSpacing() * 3 + 8)   # место под 2–3 строки текста
+        self.lbl_hogs.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         hl.addWidget(self.lbl_hogs)
         hl.addWidget(self.tbl_hogs, 1)
         self.tbl_users = self._usage_table(["Профиль", "Размер", "Файлов"])
@@ -908,14 +910,16 @@ class HealthDialog(FramelessDialog):
         hogs = u.get("hogs") or []
         self._fill(self.tbl_hogs, [(h["label"], h["size"], h.get("files") or "") for h in hogs], sizes=(1,), paths=[h["path"] for h in hogs])
         total = u.get("hogs_total", sum(h["size"] for h in hogs))
-        drive = u.get("drive") or u.get("root") or ""
-        host = getattr(self, "computer", "") or "ПК"
+        root = u.get("root") or ""                                   # \\\\WS-101\\D$ → буква D
+        letter = (u.get("drive") or root.rstrip("\\").rsplit("\\", 1)[-1]).rstrip("$:")
+        host = getattr(self, "comp", "") or "ПК"
+        vol = f"диск {letter}:" if letter else "этот диск"
         if not hogs:
-            self.lbl_hogs.setText(f"✅ На {host} (том {drive}): известных временных файлов (корзина, Temp, кэши) на этом томе нет.")
+            self.lbl_hogs.setText(f"✅ На компьютере {host}, {vol}: временных файлов, которые можно безопасно удалить, не найдено.")
             return
-        share = f" ({total / u['total'] * 100:.1f}% от занятого на томе)" if u.get("total") else ""
-        self.lbl_hogs.setText(f"🧹 На {host} (том {drive}): обнаружено временных файлов и данных корзины до {health.fmt_size(total)}{share}. "
-                              "Клик по строке копирует путь в буфер обмена.")
+        share = f" — это {total / u['total'] * 100:.1f}% занятого места" if u.get("total") else ""
+        self.lbl_hogs.setText(f"🧹 На компьютере {host}, {vol}: можно освободить до {health.fmt_size(total)}{share}. "
+                              f"Ниже — что именно занимает место на этом диске ({len(hogs)} поз.). Клик по строке копирует путь.")
 
     @staticmethod
     def _fill(table: QTableWidget, rows, sizes=(), paths=None):

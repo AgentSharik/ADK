@@ -8,7 +8,7 @@ import subprocess
 from datetime import datetime
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFontComboBox, QFormLayout, QGridLayout,
     QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QPushButton,
@@ -192,7 +192,7 @@ class RoleWelcomeDialog(FramelessDialog):
     """Справка по определенной роли после входа с галочкой «Больше не показывать»."""
 
     def __init__(self, admin_name: str = "", parent=None):
-        super().__init__("🛡️ Роль и права доступа", parent, (520, 390))
+        super().__init__("🛡️ Роль и права доступа", parent, (560, 440))
         from . import access
         title, text = access.role_summary()
         pal = app_palette()
@@ -226,18 +226,23 @@ class RoleWelcomeDialog(FramelessDialog):
         cap_l.setSpacing(6)
         cap_l.addWidget(QLabel("<b>Возможности в текущей сессии:</b>"))
 
+        def cap(text: str) -> QLabel:           # длинные строки переносятся, а не обрезаются по краю окна
+            lbl = QLabel(text)
+            lbl.setWordWrap(True)
+            return lbl
+
         if access.can_ad():
-            cap_l.addWidget(QLabel("✅ <b>Управление Active Directory:</b> объекты AD, сброс паролей, блокировка, создание пользователей, группы"))
+            cap_l.addWidget(cap("✅ <b>Управление Active Directory:</b> объекты AD, сброс паролей, блокировка, создание пользователей, группы"))
         else:
-            cap_l.addWidget(QLabel("🔒 <b>Active Directory:</b> только чтение (изменение объектов отключено)"))
+            cap_l.addWidget(cap("🔒 <b>Active Directory:</b> только чтение (изменение объектов отключено)"))
 
         if access.can_pc():
-            cap_l.addWidget(QLabel("✅ <b>Управление компьютерами:</b> перезагрузка/питание, RMS, S.M.A.R.T., ПО, карта диска, заметки"))
+            cap_l.addWidget(cap("✅ <b>Управление компьютерами:</b> перезагрузка/питание, RMS, S.M.A.R.T., ПО, карта диска, заметки"))
         else:
-            cap_l.addWidget(QLabel("🔒 <b>Компьютеры:</b> только просмотр сетевого статуса и характеристик"))
+            cap_l.addWidget(cap("🔒 <b>Компьютеры:</b> только просмотр сетевого статуса и характеристик"))
 
         self.body.addWidget(cap_card)
-        self.body.addStretch()
+        self.body.addStretch(1)
 
         self.chk_dont_show = QCheckBox("Больше не показывать при входе")
         self.chk_dont_show.setChecked(False)
@@ -248,6 +253,20 @@ class RoleWelcomeDialog(FramelessDialog):
         self.btn_ok.setMinimumHeight(38)
         self.btn_ok.clicked.connect(self._save_and_close)
         self.body.addWidget(self.btn_ok)
+
+    def showEvent(self, ev):
+        super().showEvent(ev)
+        # переносимый текст в карточках знает свою высоту только при известной ширине —
+        # после первого показа подгоняем высоту окна, чтобы ни одна строка не обрезалась
+        self.layout().activate()
+        need = self.layout().totalMinimumSize().height()
+        for lbl in self.findChildren(QLabel):
+            if lbl.wordWrap():
+                lbl.setMinimumHeight(lbl.heightForWidth(max(lbl.width(), 200)))
+        self.layout().activate()
+        need = max(need, self.layout().totalSizeHint().height())
+        if self.height() < need:
+            self.resize(self.width(), need)
 
     def _save_and_close(self):
         if self.chk_dont_show.isChecked():
@@ -322,87 +341,196 @@ class RoleInfoDialog(FramelessDialog):
 
 # ============================================================================ плагины и расширения
 class PluginsDialog(FramelessDialog):
-    """Каталог и менеджер плагинов ADK (внешние скрипты автоматизации)."""
+    """Менеджер плагинов: список файлов из папки плагинов с переключателем «включён», кнопки «Создать шаблон»,
+    «Папка плагинов», «Перечитать». Включение/выключение — переименованием файла («_» в начале = выключен).
+    После изменений главное окно перечитывает плагины (``parent.reload_plugins()``), если умеет."""
 
     def __init__(self, parent=None):
-        super().__init__("🧩 Плагины и расширения", parent, (620, 460))
+        super().__init__("🧩 Плагины", parent, (760, 560))
+        self._app = parent
         pal = app_palette()
         self.body.setSpacing(10)
         self.body.setContentsMargins(16, 8, 16, 12)
 
-        card = QFrame()
-        card.setObjectName("dashCard")
-        cl = QVBoxLayout(card)
-        cl.setSpacing(6)
-        lbl_head = QLabel("<b>Менеджер расширений ADK</b>")
-        lbl_head.setStyleSheet(f"font-size: 14px; color: {pal.accent};")
-        cl.addWidget(lbl_head)
-        lbl_desc = QLabel("Подключение пользовательских Python-модулей автоматизации, дополнительных действий "
-                          "для карточек пользователей и контекстных меню компьютеров.")
-        lbl_desc.setWordWrap(True)
-        lbl_desc.setStyleSheet(f"color: {pal.subtext};")
-        cl.addWidget(lbl_desc)
-        self.body.addWidget(card)
+        head = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        lbl_head = QLabel("<b>Плагины — свои кнопки в инспекторе и в меню строки</b>")
+        lbl_head.setStyleSheet(f"font-size: 13.5px; color: {pal.title_accent};")
+        title_box.addWidget(lbl_head)
+        self.lbl_dir = QLabel("")
+        self.lbl_dir.setObjectName("subtle")
+        self.lbl_dir.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        title_box.addWidget(self.lbl_dir)
+        head.addLayout(title_box, 1)
+        self.btn_template = QPushButton("➕ Создать шаблон плагина")
+        self.btn_template.setObjectName("btnPrimary")
+        self.btn_template.setToolTip("Создать файл-заготовку с полной документацией внутри (выключен, пока не переименован)")
+        self.btn_template.clicked.connect(self._create_template)
+        head.addWidget(self.btn_template)
+        self.btn_folder = QPushButton("📁 Папка плагинов")
+        self.btn_folder.clicked.connect(self._open_plugins_dir)
+        head.addWidget(self.btn_folder)
+        self.btn_reload = QPushButton("🔄 Перечитать")
+        self.btn_reload.clicked.connect(self.reload)
+        head.addWidget(self.btn_reload)
+        self.body.addLayout(head)
 
-        # Список обнаруженных плагинов
-        list_card = QFrame()
-        list_card.setObjectName("dashCard")
-        ll = QVBoxLayout(list_card)
-        ll.setSpacing(8)
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["Файл", "Действия (кнопки)", "Права", "Состояние"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(0, 210)
+        self.table.setColumnWidth(2, 130)
+        self.table.setColumnWidth(3, 120)
+        self.table.itemSelectionChanged.connect(self._sync_buttons)
+        self.table.itemDoubleClicked.connect(lambda _it: self._toggle())
+        self.body.addWidget(self.table, 1)
 
-        row_h = QHBoxLayout()
-        row_h.addWidget(QLabel("<b>Установленные модули:</b>"), 1)
-        btn_open_folder = QPushButton("📁 Папка плагинов")
-        btn_open_folder.setToolTip("Открыть каталог плагинов")
-        btn_open_folder.clicked.connect(self._open_plugins_dir)
-        row_h.addWidget(btn_open_folder)
-        ll.addLayout(row_h)
+        act_row = QHBoxLayout()
+        self.btn_toggle = QPushButton("Включить")
+        self.btn_toggle.setObjectName("btnSuccess")
+        self.btn_toggle.setEnabled(False)
+        self.btn_toggle.clicked.connect(self._toggle)
+        act_row.addWidget(self.btn_toggle)
+        self.btn_edit = QPushButton("✏️ Открыть файл")
+        self.btn_edit.setEnabled(False)
+        self.btn_edit.clicked.connect(self._open_file)
+        act_row.addWidget(self.btn_edit)
+        self.btn_delete = QPushButton("🗑️ Удалить")
+        self.btn_delete.setObjectName("btnDanger")
+        self.btn_delete.setEnabled(False)
+        self.btn_delete.clicked.connect(self._delete)
+        act_row.addWidget(self.btn_delete)
+        act_row.addStretch()
+        self.lbl_hint = QLabel("Двойной клик по строке — включить/выключить. Выключенные файлы начинаются с «_».")
+        self.lbl_hint.setObjectName("subtle")
+        act_row.addWidget(self.lbl_hint)
+        self.body.addLayout(act_row)
 
-        from . import plugins
-        actions = plugins.load_plugins(settings.plugins_dir)
-
-        if actions:
-            for act in actions:
-                prow = QHBoxLayout()
-                prow.addWidget(QLabel(f"{act.icon} <b>{act.name}</b>"))
-                prow.addStretch()
-                tag = QLabel("модифицирующий" if act.modifying else "только чтение")
-                tag.setObjectName("subtle")
-                prow.addWidget(tag)
-                ll.addLayout(prow)
-        else:
-            lbl_empty = QLabel("В каталоге пока нет активных модулей.\n"
-                               "Пример: Documents/ADK/plugins/_example_user_profile.py\n"
-                               "(уберите «_» в начале имени для активации).")
-            lbl_empty.setObjectName("subtle")
-            lbl_empty.setWordWrap(True)
-            ll.addWidget(lbl_empty)
-
-        self.body.addWidget(list_card)
-
-        # Справка по созданию
-        info_card = QFrame()
-        info_card.setObjectName("dashCard")
-        il = QVBoxLayout(info_card)
+        info = QFrame()
+        info.setObjectName("dashCard")
+        il = QVBoxLayout(info)
         il.setSpacing(4)
-        il.addWidget(QLabel("<b>Как создать свой плагин:</b>"))
-        code = QLabel("1. Поместите <code>*.py</code> в папку плагинов.<br>"
-                      "2. Наследуйте класс от <code>adk.plugins.Action</code> и реализуйте <code>run(ctx)</code>.<br>"
-                      "3. Кнопка появится в карточке и контекстном меню.")
-        code.setObjectName("subtle")
-        code.setWordWrap(True)
-        il.addWidget(code)
-        self.body.addWidget(info_card)
-        self.body.addStretch()
+        il.addWidget(QLabel("<b>Как сделать свой плагин</b>"))
+        steps = QLabel("1. «Создать шаблон плагина» — в папке появится <code>_template_plugin.py</code>: в нём описано всё "
+                       "(атрибуты, методы, что приходит в <code>ctx</code>, примеры).<br>"
+                       "2. Откройте файл, переименуйте класс, впишите своё в <code>run(ctx)</code>.<br>"
+                       "3. Уберите «_» из имени файла (или нажмите «Включить») и «Перечитать» — кнопка появится в инспекторе "
+                       "и в меню строки. Действия с <code>modifying = True</code> видит только роль «ПК».")
+        steps.setObjectName("subtle")
+        steps.setWordWrap(True)
+        il.addWidget(steps)
+        self.body.addWidget(info)
 
         foot = QHBoxLayout()
+        self.status = QLabel("")
+        self.status.setObjectName("subtle")
+        foot.addWidget(self.status, 1)
         btn_close = QPushButton("Закрыть")
-        btn_close.setObjectName("btnPrimary")
         btn_close.setMinimumHeight(34)
         btn_close.clicked.connect(self.accept)
-        foot.addStretch()
         foot.addWidget(btn_close)
         self.body.addLayout(foot)
+        self.reload()
+
+    # ---------------------------------------------------------------- данные
+    def reload(self):
+        from . import plugins
+        d = settings.plugins_dir
+        self.lbl_dir.setText(f"Папка: {d}")
+        self.files = plugins.list_plugin_files(d)
+        self.table.setSortingEnabled(False)
+        self.table.setRowCount(len(self.files))
+        for r, f in enumerate(self.files):
+            self.table.setItem(r, 0, QTableWidgetItem(f["file"]))
+            names = ", ".join(a.name for a in f["actions"]) or ("— (нет классов Action)" if not f["error"] else "")
+            it = QTableWidgetItem(f["error"] or names)
+            if f["error"]:
+                it.setForeground(QColor(app_palette().danger[0]))
+                it.setToolTip(f["error"])
+            self.table.setItem(r, 1, it)
+            rights = "меняет (роль «ПК»)" if any(a.modifying for a in f["actions"]) else ("только чтение" if f["actions"] else "")
+            self.table.setItem(r, 2, QTableWidgetItem(rights))
+            st = QTableWidgetItem("● Включён" if f["enabled"] else "○ Выключен")
+            st.setForeground(QColor(app_palette().success[0] if f["enabled"] else app_palette().subtext))
+            st.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(r, 3, st)
+        self.table.setSortingEnabled(False)
+        on = sum(1 for f in self.files if f["enabled"])
+        self.status.setText(f"Файлов: {len(self.files)} · включено: {on}" if self.files else
+                            "Папка пуста — нажмите «Создать шаблон плагина».")
+        self._sync_buttons()
+        if self._app is not None and hasattr(self._app, "reload_plugins"):
+            self._app.reload_plugins()
+
+    def _current(self) -> dict | None:
+        r = self.table.currentRow()
+        return self.files[r] if 0 <= r < len(self.files) else None
+
+    def _sync_buttons(self):
+        f = self._current()
+        for b in (self.btn_toggle, self.btn_edit, self.btn_delete):
+            b.setEnabled(f is not None)
+        if f is not None:
+            self.btn_toggle.setText("Выключить" if f["enabled"] else "Включить")
+            self.btn_toggle.setObjectName("btnWarning" if f["enabled"] else "btnSuccess")
+            self.btn_toggle.style().unpolish(self.btn_toggle)
+            self.btn_toggle.style().polish(self.btn_toggle)
+
+    # ---------------------------------------------------------------- действия
+    def _create_template(self):
+        from . import plugins
+        path = plugins.write_template(settings.plugins_dir)
+        if not path:
+            MessageBox.warning(self, "Плагины", f"Не удалось создать файл в папке {settings.plugins_dir}")
+            return
+        self.reload()
+        for r, f in enumerate(self.files):
+            if f["path"] == path:
+                self.table.selectRow(r)
+        self.status.setText(f"Создан шаблон: {os.path.basename(path)} — откройте его, документация внутри файла.")
+
+    def _toggle(self):
+        from . import plugins
+        f = self._current()
+        if f is None:
+            return
+        try:
+            plugins.set_enabled(f["path"], not f["enabled"])
+        except OSError as exc:
+            MessageBox.warning(self, "Плагины", f"Не удалось переименовать файл: {exc}")
+            return
+        name = f["file"]
+        self.reload()
+        for r, x in enumerate(self.files):
+            if x["file"].lstrip("_") == name.lstrip("_"):
+                self.table.selectRow(r)
+        self.status.setText(("Включён: " if not f["enabled"] else "Выключен: ") + name.lstrip("_"))
+
+    def _open_file(self):
+        f = self._current()
+        if f is None:
+            return
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtCore import QUrl
+        QDesktopServices.openUrl(QUrl.fromLocalFile(f["path"]))
+
+    def _delete(self):
+        f = self._current()
+        if f is None:
+            return
+        if not MessageBox.question(self, "Удалить плагин", f"Удалить файл {f['file']} без возможности восстановления?"):
+            return
+        try:
+            os.remove(f["path"])
+        except OSError as exc:
+            MessageBox.warning(self, "Плагины", f"Не удалось удалить: {exc}")
+            return
+        self.reload()
 
     def _open_plugins_dir(self):
         from PyQt6.QtGui import QDesktopServices

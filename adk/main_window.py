@@ -7,7 +7,7 @@ import os
 import subprocess
 import time
 
-from PyQt6.QtCore import QRectF, QSettings, Qt, QTimer
+from PyQt6.QtCore import QRectF, QSettings, QSize, Qt, QTimer
 from PyQt6.QtGui import QAction, QColor, QCursor, QFont, QKeySequence, QPainter, QPen, QShortcut
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QCompleter, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView,
@@ -15,12 +15,12 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from . import access, ad, attention, db, export, nettools, netutils, plugins, updates
+from . import access, ad, attention, db, export, icons, nettools, netutils, plugins, updates
 from .attention_ui import AttentionDialog
 from .config import APP_TITLE, CREATE_NO_WINDOW, SEARCH_RESULT_LIMIT, settings
 from .dialogs import (
     AuditLogDialog, DesignSettingsDialog, FreeIPDialog, InventoryDialog, PingDialog, PluginsDialog, PrintersDialog,
-    RegisterUserDialog, RoleInfoDialog, UserCardDialog,
+    RegisterUserDialog, RoleInfoDialog, RoleWelcomeDialog, UserCardDialog,
 )
 from .extras import NotifySettingsDialog
 from .fleet import ComparePCDialog, LogonsDialog, MassPingDialog, SoftwareDialog, wake_single
@@ -39,6 +39,11 @@ COLUMNS = ["Логин", "ФИО", "Учётка", "Имя ПК", "Сеть", "�
 COL_LOGIN, COL_FIO, COL_UZ, COL_PC, COL_NET = 0, 1, 2, 3, 4
 # Колонки, видимые «из коробки»; остальные скрыты, но включаются правой кнопкой по заголовку.
 DEFAULT_VISIBLE = ("Логин", "ФИО", "Учётка", "Имя ПК", "Сеть", "Телефон", "IP-тел")
+COL_PC = COLUMNS.index("Имя ПК")
+# принтер в результатах поиска: вместо имени ПК — способ подключения (иконка + подпись). Определяется по порту
+# очереди печати (netutils.printer_port_kind): IP_/TCP-порт → сетевой, \\server\queue → общий, USB → USB.
+PRINTER_CONN = {"network": ("printer.network", "сетевой"), "shared": ("printer.shared", "общий (через сервер)"),
+                "usb": ("printer.usb", "USB"), "local": ("printer", "локальный")}
 DEFAULT_HIDDEN = {i for i, name in enumerate(COLUMNS) if name not in DEFAULT_VISIBLE}
 COLUMNS_KEY = "hidden_columns_v3"   # новый ключ: старые сохранённые наборы не переопределяют стандартный набор
 
@@ -222,10 +227,23 @@ class ADApp(FramelessMainWindow):
         return True
 
     def resolve_access(self):
+        """Определяет роль по группам AD в фоне; когда роль известна — обновляет кнопки и показывает справку по роли."""
         if not access.policy_configured():
+            self.show_role_welcome()          # политика групп не настроена: роль известна сразу (полный доступ / readonly)
             return
-        run_in_background(self, lambda: access.resolve(self.get_conn, self.admin_name), lambda _: self.apply_access(),
-                          lambda m: log.warning("access: %s", m))
+        run_in_background(self, lambda: access.resolve(self.get_conn, self.admin_name),
+                          lambda _: (self.apply_access(), self.show_role_welcome()),
+                          lambda m: (log.warning("access: %s", m), self.show_role_welcome()))
+
+    def show_role_welcome(self):
+        """Окно «Роль и права доступа» после входа: программа сама определила роль (AD / ПК / только чтение)
+        и показывает, что доступно. Галочка «Больше не показывать» пишет UI.hide_role_welcome в config.ini."""
+        if settings.hide_role_welcome or getattr(self, "_welcome_shown", False):
+            return
+        self._welcome_shown = True
+        self.role_welcome = RoleWelcomeDialog(self.admin_name, self)
+        self.role_welcome.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        self.role_welcome.open()             # модально к главному окну, но не блокирует цикл событий
 
     def check_updates(self):
         if not settings.version_file:
@@ -526,14 +544,8 @@ class ADApp(FramelessMainWindow):
             if access.action_class(action):
                 self._modifying_buttons.append((b, action))
             bg.addWidget(b, i // 2, i % 2)
-        for i, act in enumerate(self.plugin_actions, start=len(self.action_buttons)):
-            b = QPushButton(act.label)
-            b.setToolTip(f"Плагин: {act.name}")
-            b.clicked.connect(lambda _, a=act: self.run_plugin(a))
-            if act.modifying:
-                self._modifying_buttons.append((b, "plugin_modifying"))
-            self.action_buttons[f"plugin:{act.name}"] = b
-            bg.addWidget(b, i // 2, i % 2)
+        self._actions_grid = bg
+        self._add_plugin_buttons()
         dl.addLayout(bg)
         dl.addWidget(QLabel(tr("<b>🖨️ Принтеры</b> (клик — кто ещё подключён):")))
         self.printers_box = QWidget()
@@ -797,17 +809,10 @@ class ADApp(FramelessMainWindow):
                 login.setText("—")
                 pinfo = u.get("printer") or {}
                 pkind = pinfo.get("kind") or ("network" if u.get("ip") else "")
-                if pkind == "network" and u.get("ip"):
-                    conn_type = f"🌐 {u['ip']}"
-                elif pkind == "network":
-                    conn_type = "🌐 Сетевой"
-                elif pkind == "usb":
-                    conn_type = "🔌 USB"
-                elif pkind == "shared":
-                    conn_type = "🔗 Общий"
-                else:
-                    conn_type = u.get("ip") or "—"
-                cells = [login, fio, StatusItem("Принтер", "info"), QTableWidgetItem(conn_type),
+                conn = QTableWidgetItem(PRINTER_CONN.get(pkind, ("", "локальный"))[1])
+                if pkind in PRINTER_CONN:
+                    conn.setIcon(icons.icon(PRINTER_CONN[pkind][0], role="text"))
+                cells = [login, fio, StatusItem("Принтер", "info"), conn,
                          StatusItem("● В сети" if u["is_online"] else "● Не в сети", "online" if u["is_online"] else "offline")]
                 cells += [QTableWidgetItem("") for _ in range(7)] + [QTableWidgetItem(u.get("last_logon") or "")]
                 for c, item in enumerate(cells):
@@ -824,6 +829,9 @@ class ADApp(FramelessMainWindow):
             for c, item in enumerate(cells):
                 self.table.setItem(r, c, item)
         self.table.setSortingEnabled(True)
+        # найден принтер (по IP показывается только он) — столбец «Имя ПК» становится «Подключение»
+        only_printers = bool(rows) and all(x.get("kind") == "printer" for x in rows)
+        self.table.horizontalHeaderItem(COL_PC).setText("Подключение" if only_printers else COLUMNS[COL_PC])
         fit_columns(self.table, max_width=280, min_width=70, wrap=False, stretch_last=True)
         self.table.setUpdatesEnabled(True)
         if rows:
@@ -976,7 +984,7 @@ class ADApp(FramelessMainWindow):
             self.printer_pcs.setItem(r, 0, QTableWidgetItem(x["comp"]))
             self.printer_pcs.setItem(r, 1, QTableWidgetItem(x.get("user") or "—"))
             self.printer_pcs.setItem(r, 2, StatusItem("● В сети" if x["is_online"] else "● Не в сети", "online" if x["is_online"] else "offline"))
-            self.printer_pcs.setItem(r, 3, QTableWidgetItem("★" if x.get("is_default") else ""))
+            self.printer_pcs.setItem(r, 3, QTableWidgetItem("да" if x.get("is_default") else ""))
         fit_columns(self.printer_pcs, wrap=False, stretch_last=False)
         self.printer_pcs.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.btn_ping.setVisible(False)
@@ -1022,14 +1030,13 @@ class ADApp(FramelessMainWindow):
             self.printers_flow.addWidget(QLabel("нет (или CSV не собран)"))
             return
         pal = app_palette()
-        icon = {"network": "🌐", "shared": "🔗", "usb": "🔌", "local": "🖨️"}
         kind_badge = {"network": "info", "shared": "info", "usb": "warning", "local": "neutral"}
         for p in printers:
-            text = f"{icon.get(p['kind'], '🖨️')} {p['name']}" + (f" · {p['ip']}" if p.get("ip") else "")
-            if p.get("is_default"):
-                text += " ★"
-            tip = f"{netutils.printer_label(p)}\nПорт: {p.get('port') or '—'}" + ("\nПо умолчанию" if p.get("is_default") else "")
+            text = p["name"] + (f" · {p['ip']}" if p.get("ip") else "") + (" · по умолчанию" if p.get("is_default") else "")
+            tip = f"{netutils.printer_label(p)}\nПорт: {p.get('port') or '—'}" + ("\nПринтер по умолчанию" if p.get("is_default") else "")
             b = BadgeButton(text, kind_badge.get(p["kind"], "neutral"), pal, tip)
+            b.setIcon(icons.icon(PRINTER_CONN.get(p["kind"], PRINTER_CONN["local"])[0], role="text"))
+            b.setIconSize(QSize(18, 18))
             b.clicked.connect(lambda _, pp=p: self.search_printer(pp))
             self.printers_flow.addWidget(b)
 
@@ -1058,13 +1065,13 @@ class ADApp(FramelessMainWindow):
         live_names = {p["name"].lower() for p in live}
         added = [p for p in live if p["name"].lower() not in cached]
         gone = sorted(cached - live_names)
-        icon = {"network": "🌐", "shared": "🔗", "usb": "🔌", "local": "🖨️"}
+        kind_txt = {"network": "сетевой", "shared": "общий", "usb": "USB", "local": "локальный"}
         lines = [f"<b>📡 Сейчас на {html.escape(comp)}</b> ({time.strftime('%H:%M:%S')}, только просмотр — инвентарь не изменён):"]
         for p in live:
             st = p.get("status_text") or "—"
             mark = "🟢" if p["status"] in (3, 4) and not p["offline"] else "🔴" if p["offline"] or p["status"] == 7 else "⚪"
-            lines.append(f"{mark} {icon.get(p['kind'], '🖨️')} {p['name']}" + (f" · {p['ip']}" if p.get("ip") else "")
-                         + (" ★" if p.get("is_default") else "") + f" — {st}")
+            lines.append(f"{mark} {p['name']}" + (f" · {p['ip']}" if p.get("ip") else "") + f" · {kind_txt.get(p['kind'], 'локальный')}"
+                         + (" · по умолчанию" if p.get("is_default") else "") + f" — {st}")
         if not live:
             lines.append("принтеров не найдено (виртуальные скрыты)")
         if added:
@@ -1504,6 +1511,30 @@ class ADApp(FramelessMainWindow):
         if self._deny("groups_sync"):
             return
         GroupCompareDialog(u["entry"], self, self).exec()
+
+    def _add_plugin_buttons(self):
+        """Кнопки плагинов в сетке «Действия с ПК» (после встроенных действий)."""
+        bg = self._actions_grid
+        start = sum(1 for k in self.action_buttons if not k.startswith("plugin:"))
+        for i, act in enumerate(self.plugin_actions, start=start):
+            b = QPushButton(act.label)
+            b.setToolTip(f"Плагин: {act.name}")
+            b.clicked.connect(lambda _, a=act: self.run_plugin(a))
+            if act.modifying:
+                self._modifying_buttons.append((b, "plugin_modifying"))
+            self.action_buttons[f"plugin:{act.name}"] = b
+            bg.addWidget(b, i // 2, i % 2)
+
+    def reload_plugins(self):
+        """Перечитать папку плагинов (менеджер плагинов): старые кнопки убрать, новые добавить, права применить."""
+        for key in [k for k in self.action_buttons if k.startswith("plugin:")]:
+            b = self.action_buttons.pop(key)
+            self._modifying_buttons = [(x, a) for x, a in self._modifying_buttons if x is not b]
+            self._actions_grid.removeWidget(b)
+            b.deleteLater()
+        self.plugin_actions = plugins.load_plugins(settings.plugins_dir)
+        self._add_plugin_buttons()
+        self.apply_access()
 
     def run_plugin(self, act):
         u = self.selected()

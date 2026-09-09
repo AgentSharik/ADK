@@ -340,3 +340,23 @@ def test_main_window_kit_features(qapp, monkeypatch, tmp_path):
         w.apply_access()
     assert w.action_buttons["power"].isVisible() and "health" in w.action_buttons
     w.quit_app()
+
+
+def test_plugins_template_is_self_documented_and_toggle(tmp_path):
+    """3.5.1: «Создать шаблон плагина» — файл с документацией внутри, компилируется, выключен («_»),
+    включается переименованием; list_plugin_files видит и выключенные файлы."""
+    d = str(tmp_path / "plugins")
+    p = plugins.write_template(d)
+    assert p and os.path.basename(p) == "_template_plugin.py"
+    src = open(p, encoding="utf-8").read()
+    compile(src, p, "exec")                                             # валидный python
+    for word in ("needs_pc", "modifying", "ctx[\"comp\"]", "conn_factory", "run(ctx)", "enabled(ctx)"):
+        assert word in src                                              # документация — внутри файла
+    p2 = plugins.write_template(d)                                      # второй раз — не затирает первый
+    assert p2 != p and os.path.exists(p)
+    files = plugins.list_plugin_files(d)
+    assert [f["enabled"] for f in files] == [False, False] and files[0]["actions"][0].name == "Профиль пользователя"
+    assert plugins.load_plugins(d) == []                                # выключенные не грузятся
+    new = plugins.set_enabled(p, True)
+    assert os.path.basename(new) == "template_plugin.py" and [a.name for a in plugins.load_plugins(d)] == ["Профиль пользователя"]
+    assert os.path.basename(plugins.set_enabled(new, False)) == "_template_plugin.py"

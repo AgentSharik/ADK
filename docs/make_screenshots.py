@@ -125,6 +125,21 @@ _ld.show(); tg._wait(lambda: False, app, 300)
 _ld.grab().save(os.path.join(SHOTS, "login.png"))
 _ld.close()
 
+# 3.5.1: справка по роли (показывается главным окном после определения роли) и менеджер плагинов с шаблоном
+from adk.dialogs import PluginsDialog, RoleWelcomeDialog  # noqa: E402
+import tempfile  # noqa: E402
+_rw = RoleWelcomeDialog("CORP\\admin")
+_rw.show(); tg._wait(lambda: False, app, 300)
+_rw.grab().save(os.path.join(SHOTS, "role_welcome.png"))
+_rw.close()
+config.settings.plugins_dir = tempfile.mkdtemp(prefix="adk_plugins_")
+_pd = PluginsDialog()
+_pd.btn_template.click(); _pd.table.selectRow(0)
+_pd.lbl_dir.setText("Папка: C:\\Users\\admin\\Documents\\ADK\\plugins")     # на скриншоте — путь как у пользователя Windows
+_pd.show(); tg._wait(lambda: False, app, 300)
+_pd.grab().save(os.path.join(SHOTS, "plugins.png"))
+_pd.close()
+
 w = ADApp("CORP\\admin", "x")
 w.resize(1400, 820)
 w.show()

@@ -22,6 +22,9 @@ def temp_db(tmp_path, monkeypatch):
     from adk import config, db
 
     monkeypatch.setattr(config.settings, "db_path", str(tmp_path / "test.db"))
+    # окно «Роль и права доступа» после входа в тестах не показываем (иначе всплывает поверх главного окна);
+    # его собственные тесты включают показ явно
+    monkeypatch.setattr(config.settings, "hide_role_welcome", True)
     db.init_db()
     yield
 

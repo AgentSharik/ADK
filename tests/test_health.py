@@ -344,7 +344,7 @@ def test_health_dialog_hogs_tab_follows_map_volume(qapp, monkeypatch):
     assert "20.0%" in hd.lbl_hogs.text() and "10.0 ГБ" in hd.lbl_hogs.text()      # 10 из 50 ГБ карты
     u["hogs"], u["hogs_total"] = [], 0
     hd.show_usage(u)
-    assert hd.tbl_hogs.rowCount() == 0 and "нет" in hd.lbl_hogs.text()
+    assert hd.tbl_hogs.rowCount() == 0 and "не найдено" in hd.lbl_hogs.text() and "На компьютере" in hd.lbl_hogs.text()
     hd.close()
 
 

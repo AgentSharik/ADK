@@ -389,8 +389,9 @@ def test_printer_badges_and_click_search(qapp, fake_conn, monkeypatch):
     assert _wait(lambda: w.table.rowCount() > 0, qapp, 3000)
     w.select_row(next(r for r in range(w.table.rowCount()) if w.table.item(r, 0).text() == "ivanov"))
     badges = w.printers_box.findChildren(BadgeButton)
-    assert [b.text() for b in badges] == ["HP LaserJet M404 · 10.0.2.50 ★", "Canon LBP"]
-    assert [b._adk_icon[0] for b in badges] == ["wifi", "cable.connector"]     # 3.4.0: вид принтера — иконкой
+    # 3.5.1: одна иконка (вид подключения), «по умолчанию» — словами, а не второй иконкой-звёздочкой
+    assert [b.text() for b in badges] == ["HP LaserJet M404 · 10.0.2.50 · по умолчанию", "Canon LBP"]
+    assert all(not b.icon().isNull() for b in badges)
     monkeypatch.setattr(netutils, "is_printer_alive", lambda ip, **kw: ip == "10.0.2.50")
     badges[0].click()                                   # → просто IP принтера, без префикса
     assert w.search_input.text() == "10.0.2.50"
@@ -399,7 +400,7 @@ def test_printer_badges_and_click_search(qapp, fake_conn, monkeypatch):
     # «пустых» строк ПК без ФИО рядом быть не должно (v3.2.4)
     assert w.table.rowCount() == 1
     assert w.table.item(0, 0).text() == "—" and w.table.item(0, 1).text() == "HP LaserJet M404"
-    assert w.table.item(0, 3).text() == "10.0.2.50" and "В сети" in w.table.item(0, 4).text()
+    assert w.table.item(0, 3).text() == "сетевой" and "В сети" in w.table.item(0, 4).text()   # 3.5.1: вид подключения
     assert "подключено ПК — 2" in w.lbl_status.text()
     w.select_row(0)                                     # инспектор принтера: кто подключён
     assert w.printer_pane.isVisible() and not w.details.isVisible()
@@ -483,8 +484,14 @@ def test_printers_dialog_summary_and_drilldown(qapp, fake_conn, monkeypatch, tmp
     dlg.open_owners()                                             # → главное окно: printer: 10.0.2.50
     assert w.search_input.text() == "10.0.2.50"
     assert _wait(lambda: w.table.rowCount() >= 1 and "Принтеров:" in w.lbl_status.text(), qapp, 3000)
-    assert [w.table.item(r, 3).text() for r in range(w.table.rowCount())] == ["10.0.2.50"], w.lbl_status.text()
+    # 3.5.1: у принтера в столбце «Имя ПК» — способ подключения, заголовок столбца переключён на «Подключение»
+    assert [w.table.item(r, 3).text() for r in range(w.table.rowCount())] == ["сетевой"], w.lbl_status.text()
+    assert w.table.horizontalHeaderItem(3).text() == "Подключение" and not w.table.item(0, 3).icon().isNull()
+    assert w.table.item(0, 0).text() == "—"                        # в логине — прочерк, без иконки принтера
     assert "подключено ПК — 2" in w.lbl_status.text()
+    w.search_input.setText("иванов"); w.start_search()
+    assert _wait(lambda: w.table.rowCount() >= 1 and w.table.item(0, 0).text() == "ivanov"
+                 and w.table.horizontalHeaderItem(3).text() == "Имя ПК", qapp, 3000)   # обычный поиск — заголовок вернулся
     w.close()
 
 

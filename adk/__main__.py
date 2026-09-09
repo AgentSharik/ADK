@@ -60,7 +60,7 @@ def main() -> int:
         return 2
     _install_notify_hook()
 
-    from .dialogs import LoginDialog, RoleWelcomeDialog
+    from .dialogs import LoginDialog
     from .main_window import ADApp
 
     user, password = load_credentials()
@@ -89,10 +89,8 @@ def main() -> int:
 
     window = ADApp(user, password)
     window.show()
-    if not config.settings.hide_role_welcome:
-        w_dlg = RoleWelcomeDialog(user or "admin", window)
-        w_dlg.exec()
-        w_dlg.deleteLater()
+    # справка по роли показывается самим окном — после того, как роль определена по группам AD
+    # (ADApp.resolve_access → show_role_welcome), а не до проверки, иначе она могла описать не ту роль
     return app.exec()
 
 

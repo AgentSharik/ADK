@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "adk"
-version = "3.5.0"
+version = "3.5.1"
 description = "Desktop-инструмент администратора Active Directory: единый поиск, инвентарь ПК, удалённые действия"
 requires-python = ">=3.10"
 readme = "README.md"

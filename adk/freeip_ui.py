@@ -12,7 +12,7 @@ from PyQt6.QtCore import QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (
     QApplication, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton,
-    QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QSizePolicy, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from .config import settings
@@ -238,7 +238,7 @@ class FreeIPDialog(FramelessDialog):
         rl = QVBoxLayout(res)
         rl.setContentsMargins(18, 14, 18, 14)
         rl.setSpacing(8)
-        rl.addStretch(1)
+        rl.addStretch(1)                       # содержимое карточки — по центру по вертикали (stretch сверху и снизу)
         cap = QLabel("СВОБОДНЫЙ АДРЕС")
         cap.setStyleSheet(f"color: {pal.subtext}; font-size: 8.5pt; font-weight: bold; letter-spacing: 1px;")
         rl.addWidget(cap)
@@ -269,6 +269,7 @@ class FreeIPDialog(FramelessDialog):
             row.addWidget(b)
         rl.addLayout(row)
         rl.addStretch(1)
+        res.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         bottom.addWidget(res, 4)
 
         trow = QHBoxLayout()

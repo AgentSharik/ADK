@@ -180,6 +180,10 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     btn_light = QColor(p.button).lighter(118).name() if is_dark else "#FFFFFF"   # блик по верхнему краю
     card_top = QColor(p.border).lighter(125).name() if is_dark else "#FFFFFF"    # светлая кромка панели сверху
     card_bottom = QColor(p.border).darker(112).name() if is_dark else QColor(p.border).darker(108).name()
+    # разделители внутри выделения: цвет самой подсветки, но заметно темнее/светлее — иначе при выделении
+    # нескольких строк границы строк и столбцов сливаются в одно пятно
+    sel = QColor(p.selection) if not str(p.selection).startswith("rgba") else QColor(accent)
+    sel_line = sel.darker(135).name() if is_dark else sel.darker(118).name()
     input_top = QColor(p.border).darker(105).name() if is_dark else QColor(p.border).darker(104).name()
 
     # заливка семантических кнопок (тёмная / светлая тема)
@@ -275,7 +279,7 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
         gridline-color: {p.border}; selection-background-color: {p.selection}; selection-color: {p.text}; outline: none; }}
     QTableWidget::item, QTableView::item {{ padding: 4px; border-bottom: 1px solid {p.border}; border-right: 1px solid {p.border}; }}
     QTableWidget::item:selected, QTableView::item:selected {{ background-color: {p.selection}; color: {p.text};
-        border-bottom: 1px solid {p.border}; border-right: 1px solid {p.border}; }}
+        border-bottom: 1px solid {sel_line}; border-right: 1px solid {sel_line}; }}
     QTableWidget::item:selected:first, QTableView::item:selected:first {{ border-left: 4px solid {accent}; padding-left: 2px; }}
     QAbstractScrollArea::viewport {{ background-color: {p.card}; }}
     QHeaderView::section {{ background: {relief(p.header, 105, 98)}; color: {p.subtext}; padding: 9px 12px; border: none;
