@@ -195,6 +195,8 @@ def test_subnet_map_found_cell_stays_green(qapp):
     from PyQt6.QtGui import QColor
     green, accent, frame = m._color(pal, "success"), m._color(pal, "accent"), QColor(pal.text)
     def dist(a, b): return abs(a.red() - b.red()) + abs(a.green() - b.green()) + abs(a.blue() - b.blue())
-    assert dist(centre, green) < dist(centre, accent), "центр найденной ячейки должен быть зелёным, а не акцентным"
+    # в теме с зелёным акцентом («Тёмная мята») green == accent — тогда достаточно, что центр именно зелёный
+    assert dist(centre, green) <= 12, "центр найденной ячейки должен быть зелёным"
+    assert green == accent or dist(centre, green) < dist(centre, accent), "…а не акцентным"
     edge = img.pixelColor(int(ox + col * c + 2), int(oy + row * c + c / 2))     # у левого края — контрастная рамка
     assert dist(edge, frame) < dist(edge, green)

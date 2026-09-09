@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from PyQt6.QtGui import QColor
 
 PRESET_THEMES = {
-    # Десять тем в духе macOS/iOS: нейтральный фон с лёгким подтоном + системный акцент Apple.
+    # Десять тем: нейтральный фон с лёгким подтоном + насыщенный акцент.
     # Ключи "dark"/"light" — те, что берутся в режиме «как в системе». Градиентов нет — только спокойные заливки.
     "dark": {"name": "Графит", "type": "solid", "bg": "#1C1C1E", "panel": "#2C2C2E", "text": "#F5F5F7",
              "border": "#48484A", "is_dark": True, "accent": "#0A84FF"},
@@ -69,7 +69,7 @@ def is_color_dark(hex_str: str) -> bool:
 
 
 def contrast_text(bg_hex: str) -> str:
-    """Текст на заливке акцентом: белый на насыщенных цветах (как у Apple), тёмный — только на очень светлых."""
+    """Текст на заливке акцентом: белый на насыщенных цветах, тёмный — только на очень светлых."""
     return "#ffffff" if luminance(bg_hex) < 185 else "#1D1D1F"
 
 
@@ -128,7 +128,7 @@ class Palette:
         """Фон выбранной строки/элемента: акцент, разбавленный панелью — заметно, но текст остаётся читаемым."""
         return _mix(self._panel.name(), self.accent, 0.30 if self.is_dark else 0.16)
 
-    # семантические цвета (текст / фон / рамка) в духе системных цветов Apple: tinted-стиль —
+    # семантические цвета (текст / фон / рамка), тонированный стиль —
     # заливка = цвет, разбавленный панелью; текст = сам цвет (тёмная тема) или его «доступный» вариант (светлая)
     def _sem(self, dark_fg: str, base: str, light_fg: str, light_bg: str, light_bd: str) -> tuple[str, str, str]:
         if self.is_dark:
@@ -160,49 +160,73 @@ class Palette:
                 "disabled": self.danger, "warning": self.warning, "info": self.info}.get(kind, self.neutral)
 
 
+def relief(color: str, top: int = 108, bottom: int = 96) -> str:
+    """Вертикальный градиент «сверху светлее, снизу темнее» — объём кнопки/панели без картинок.
+    top/bottom — множители QColor.lighter() для верхнего и нижнего края."""
+    c = QColor(color)
+    return (f"qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {c.lighter(top).name()}, "
+            f"stop:0.5 {c.name()}, stop:1 {c.lighter(bottom).name()})")
+
+
 def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: int, accent: str,
                      panel: str = "", text_color: str = "", border_color: str = "") -> str:
     p = Palette(is_dark, accent, panel, text_color, border_color)
-    R = 8            # радиус скругления кнопок/полей — как у элементов управления macOS
-    acc_hover = QColor(accent).lighter(112).name() if is_dark else QColor(accent).darker(108).name()
-    acc_press = QColor(accent).darker(115).name()
+    R = 8            # радиус скругления кнопок/полей
+    acc = QColor(accent)
+    acc_hover = acc.lighter(112).name() if is_dark else acc.darker(106).name()
+    acc_press = acc.darker(115).name()
+    acc_edge = acc.darker(125).name()            # нижняя кромка акцентной кнопки — читается как тень
+    btn_edge = QColor(p.border).darker(125).name() if is_dark else QColor(p.border).darker(112).name()
+    btn_light = QColor(p.button).lighter(118).name() if is_dark else "#FFFFFF"   # блик по верхнему краю
+    card_top = QColor(p.border).lighter(125).name() if is_dark else "#FFFFFF"    # светлая кромка панели сверху
+    card_bottom = QColor(p.border).darker(112).name() if is_dark else QColor(p.border).darker(108).name()
+    input_top = QColor(p.border).darker(105).name() if is_dark else QColor(p.border).darker(104).name()
 
-    # заливка семантических кнопок — системные цвета Apple (тёмная / светлая тема)
+    # заливка семантических кнопок (тёмная / светлая тема)
     sem_fill = {"btnSuccess": ("#30D158", "#34C759"), "btnDanger": ("#FF453A", "#FF3B30"),
                 "btnWarning": ("#FF9F0A", "#FF9500"), "btnInfo": ("#0A84FF", "#007AFF")}
 
+    def solid_btn(sel: str, base_hex: str, fg: str) -> str:
+        """Заливная кнопка (акцентная и семантические): градиент с бликом сверху, тёмная кромка снизу,
+        три состояния. Все цвета непрозрачные — не сливается ни с одной панелью."""
+        base = QColor(base_hex)
+        hov = (base.lighter(110) if is_dark else base.darker(106)).name()
+        prs = base.darker(115).name()
+        edge = base.darker(125).name()
+        return (f"{sel} {{ background: {relief(base.name(), 112, 94)}; color: {fg}; border: 1px solid {edge};"
+                f"  border-top-color: {base.lighter(104).name()}; font-weight: 600; }}"
+                f"{sel}:hover {{ background: {relief(hov, 112, 94)}; }}"
+                f"{sel}:pressed {{ background: {prs}; border-color: {edge}; padding-top: 8px; padding-bottom: 6px; }}"
+                f"{sel}:disabled {{ background: {p.header}; color: {p.subtext}; border-color: {p.border}; }}")
+
     def btn(name: str, _colors: tuple[str, str, str]) -> str:
-        """Семантическая кнопка: сплошная заливка системным цветом + контрастный текст (prominent-стиль Apple).
-        Раньше была тонированная — на тёмных панелях сливалась с фоном."""
-        base = QColor(sem_fill[name][0 if is_dark else 1])
-        fill, hov, prs = base.name(), (base.lighter(110) if is_dark else base.darker(108)).name(), base.darker(118).name()
-        return (f"QPushButton#{name} {{ background-color: {fill}; color: {contrast_text(fill)}; border: 1px solid {fill}; font-weight: 600; }}"
-                f"QPushButton#{name}:hover {{ background-color: {hov}; border-color: {hov}; }}"
-                f"QPushButton#{name}:pressed {{ background-color: {prs}; border-color: {prs}; }}"
-                f"QPushButton#{name}:disabled {{ background-color: {p.header}; color: {p.subtext}; border-color: {p.border}; }}")
+        fill = sem_fill[name][0 if is_dark else 1]
+        return solid_btn(f"QPushButton#{name}", fill, contrast_text(fill))
 
     return f"""
     QMainWindow, QWidget#bgWidget {{ {bg_style} }}
-    QDialog {{ background-color: {p.card}; border: 1px solid {p.border}; border-radius: 12px; }}
+    QDialog {{ background-color: {p.card}; border: 1px solid {p.border}; border-top-color: {card_top}; border-bottom-color: {card_bottom}; border-radius: 12px; }}
     QWidget {{ font-family: '{font_family}', 'SF Pro Text', 'Segoe UI', sans-serif; font-size: {font_size}pt; color: {p.text}; }}
     QLabel {{ color: {p.text}; }}
-    QLineEdit, QComboBox, QSpinBox, QDateTimeEdit {{ background-color: {p.input}; border: 1px solid {p.border}; border-radius: {R}px;
-        padding: 7px 11px; color: {p.text}; selection-background-color: {accent}; selection-color: {p.on_accent}; }}
-    QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDateTimeEdit:focus {{ border: 2px solid {accent}; padding: 6px 10px; }}
+    QLineEdit, QComboBox, QSpinBox, QDateTimeEdit {{ background-color: {p.input}; border: 1px solid {p.border}; border-top-color: {input_top};
+        border-radius: {R}px; padding: 7px 11px; color: {p.text}; selection-background-color: {accent}; selection-color: {p.on_accent}; }}
+    QLineEdit:hover, QComboBox:hover, QSpinBox:hover, QDateTimeEdit:hover {{ border-color: {p.subtext}; }}
+    QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDateTimeEdit:focus {{ border: 2px solid {accent}; padding: 6px 10px; background-color: {p.card}; }}
     QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled {{ color: {p.subtext}; background-color: {p.header}; }}
-    QGroupBox {{ font-weight: 600; border: 1px solid {p.border}; border-radius: 10px; margin-top: 12px; padding-top: 10px; }}
+    QGroupBox {{ font-weight: 600; border: 1px solid {p.border}; border-top-color: {card_top}; border-bottom-color: {card_bottom};
+        border-radius: 10px; margin-top: 12px; padding-top: 10px; background-color: {p.card}; }}
     QGroupBox::title {{ subcontrol-origin: margin; padding: 0 6px; color: {p.title_accent}; }}
-    QWidget#titleBar {{ background-color: {p.header}; border-bottom: 1px solid {p.border}; }}
+    QWidget#titleBar {{ background: {relief(p.header, 106, 98)}; border-bottom: 1px solid {btn_edge}; }}
     QLabel#titleLabel {{ font-weight: 600; font-size: {font_size + 1}pt; color: {p.text}; background: transparent; }}
     QLabel#brandLabel {{ font-weight: 800; font-size: 22pt; color: {p.text}; background: transparent;
         letter-spacing: 1px; padding-left: 2px; }}
     QLabel#brandLogo {{ background: transparent; }}
     QCheckBox, QRadioButton {{ color: {p.text}; spacing: 8px; background: transparent; }}
     QCheckBox::indicator, QRadioButton::indicator {{ width: 18px; height: 18px; border: 1.5px solid {p.subtext};
-        background-color: {p.input}; border-radius: 5px; }}
+        background: {relief(p.input, 104, 96)}; border-radius: 5px; }}
     QRadioButton::indicator {{ border-radius: 9px; }}
     QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border-color: {accent}; }}
-    QCheckBox::indicator:checked, QRadioButton::indicator:checked {{ background-color: {accent}; border-color: {accent};
+    QCheckBox::indicator:checked, QRadioButton::indicator:checked {{ background: {relief(accent, 112, 94)}; border-color: {acc_edge};
         image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjMuMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJtNiAxMi41IDQgNCA4LTkiLz48L3N2Zz4=); }}
     QRadioButton::indicator:checked {{ image: none; border: 5px solid {accent}; background-color: #ffffff; }}
     QCheckBox::indicator:disabled {{ border-color: {p.border}; background-color: {p.header}; }}
@@ -223,26 +247,26 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QScrollArea {{ background: transparent; border: none; }}
     QWidget#detailsPane, QWidget#detailsViewport {{ background-color: {p.card}; }}
     QProgressBar {{ background-color: {p.input}; border: 1px solid {p.border}; border-radius: 7px; text-align: center; color: {p.text}; }}
-    QProgressBar::chunk {{ background-color: {accent}; border-radius: 6px; }}
+    QProgressBar::chunk {{ background: {relief(accent, 114, 92)}; border-radius: 6px; }}
     QPushButton#winBtn, QPushButton#btnClose {{ background: transparent; border: none; border-radius: 6px; padding: 0; }}
     QPushButton#winBtn:hover {{ background-color: {p.hover}; }}
     QPushButton#btnClose:hover {{ background-color: #FF453A; color: #ffffff; }}
-    QPushButton {{ background-color: {p.button}; border: 1px solid {p.border}; border-radius: {R}px; padding: 7px 16px;
-        font-weight: 600; color: {p.text}; outline: none; }}
-    QPushButton:hover {{ background-color: {p.hover}; border-color: {p.subtext}; }}
-    QPushButton:pressed {{ background-color: {p.selection}; border-color: {accent}; }}
-    QPushButton:checked {{ background-color: {p.selection}; border-color: {accent}; color: {p.text}; }}
-    QPushButton:disabled {{ color: {p.subtext}; background-color: {p.header}; border-color: {p.border}; }}
-    QPushButton#btnPrimary {{ background-color: {accent}; color: {p.on_accent}; border: 1px solid {accent}; font-weight: 600; }}
-    QPushButton#btnPrimary:hover {{ background-color: {acc_hover}; border-color: {acc_hover}; }}
-    QPushButton#btnPrimary:pressed {{ background-color: {acc_press}; border-color: {acc_press}; }}
-    QPushButton#btnPrimary:disabled {{ background-color: {p.header}; color: {p.subtext}; border-color: {p.border}; }}
+    QPushButton {{ background: {relief(p.button, 110, 95)}; border: 1px solid {btn_edge}; border-top-color: {btn_light};
+        border-radius: {R}px; padding: 7px 16px; font-weight: 600; color: {p.text}; outline: none; }}
+    QPushButton:hover {{ background: {relief(p.hover, 110, 95)}; border-color: {p.subtext}; border-top-color: {btn_light}; }}
+    QPushButton:pressed {{ background: {p.selection}; border-color: {accent}; padding-top: 8px; padding-bottom: 6px; }}
+    QPushButton:checked {{ background: {p.selection}; border-color: {accent}; color: {p.text}; }}
+    QPushButton:disabled {{ color: {p.subtext}; background: {p.header}; border-color: {p.border}; }}
+    {solid_btn("QPushButton#btnPrimary", accent, p.on_accent)}
+    QPushButton#btnPrimary:hover {{ background: {relief(acc_hover, 112, 94)}; }}
+    QPushButton#btnPrimary:pressed {{ background: {acc_press}; }}
     {btn("btnSuccess", p.success)} {btn("btnDanger", p.danger)} {btn("btnWarning", p.warning)} {btn("btnInfo", p.info)}
-    QPushButton#historyBtn {{ background-color: {p.button}; border: 1px solid {p.border}; border-radius: 14px; padding: 6px 14px; }}
+    QPushButton#historyBtn {{ background: {relief(p.button, 110, 95)}; border: 1px solid {btn_edge}; border-top-color: {btn_light};
+        border-radius: 14px; padding: 6px 14px; }}
     QPushButton#historyBtn:hover {{ border-color: {accent}; color: {p.title_accent}; }}
-    QPushButton#chipBtn {{ padding: 5px 16px; min-height: 16px; border-radius: 14px; border: 1px solid {p.border};
-        background: {p.button}; color: {p.text}; font-weight: 600; }}
-    QPushButton#chipBtn:checked {{ background: {accent}; color: {p.on_accent}; border: 1px solid {accent}; }}
+    QPushButton#chipBtn {{ padding: 5px 16px; min-height: 16px; border-radius: 14px; border: 1px solid {btn_edge};
+        border-top-color: {btn_light}; background: {relief(p.button, 110, 95)}; color: {p.text}; font-weight: 600; }}
+    QPushButton#chipBtn:checked {{ background: {relief(accent, 112, 94)}; color: {p.on_accent}; border: 1px solid {acc_edge}; }}
     QPushButton#chipBtn:hover {{ border-color: {accent}; }}
     QTableWidget, QTableView {{ background-color: {p.card}; alternate-background-color: {p.header}; border: 1px solid {p.border}; border-radius: 8px;
         gridline-color: {p.border}; selection-background-color: {p.selection}; selection-color: {p.text}; outline: none; }}
@@ -251,7 +275,7 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
         border-bottom: 1px solid {p.border}; border-right: 1px solid {p.border}; }}
     QTableWidget::item:selected:first, QTableView::item:selected:first {{ border-left: 4px solid {accent}; padding-left: 2px; }}
     QAbstractScrollArea::viewport {{ background-color: {p.card}; }}
-    QHeaderView::section {{ background-color: {p.header}; color: {p.subtext}; padding: 9px 12px; border: none;
+    QHeaderView::section {{ background: {relief(p.header, 105, 98)}; color: {p.subtext}; padding: 9px 12px; border: none;
         border-right: 1px solid {p.border}; border-bottom: 1px solid {p.border}; font-weight: 600; }}
     QTableCornerButton::section {{ background-color: {p.header}; border: none; }}
     QHeaderView {{ background-color: {p.header}; }}
@@ -266,17 +290,21 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QScrollBar::handle:horizontal:hover {{ background: {acc_hover}; margin: 1px 0; }}
     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
     QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{ background: transparent; }}
-    #sideCard, #dashCard {{ background-color: {p.card}; border: 1px solid {p.border}; border-radius: 12px; padding: 14px; }}
+    #sideCard, #dashCard {{ background: {relief(p.card, 103, 99)}; border: 1px solid {p.border}; border-top-color: {card_top};
+        border-bottom-color: {card_bottom}; border-radius: 12px; padding: 14px; }}
     #sideCard QLabel, #dashCard QLabel {{ background: transparent; border: none; }}
     #specBox {{ background-color: {p.input}; border: 1px solid {p.border}; border-radius: 8px; padding: 8px; font-family: 'SF Mono', Consolas, monospace; font-size: 9.5pt; }}
-    QTabWidget::pane {{ border: 1px solid {p.border}; border-radius: 10px; background: {p.card}; top: -1px; }}
-    QTabBar {{ qproperty-iconSize: 20px 20px; }}
-    QTabBar::tab {{ background: transparent; color: {p.subtext}; padding: 9px 18px; border-bottom: 2px solid transparent; font-weight: 600; }}
-    QTabBar::tab:hover {{ color: {p.text}; }}
-    QTabBar::tab:selected {{ color: {p.title_accent}; border-bottom: 2px solid {accent}; }}
-    QListWidget, QTreeWidget {{ background-color: {p.card}; border: 1px solid {p.border}; border-radius: 8px; outline: none; qproperty-iconSize: 20px 20px; }}
-    QTableWidget, QTableView {{ qproperty-iconSize: 20px 20px; }}
-    QMenu {{ icon-size: 20px; }}
+    QTabWidget::pane {{ border: 1px solid {p.border}; border-top-color: {card_top}; border-radius: 10px; background: {p.card}; top: 6px; }}
+    QTabBar {{ qproperty-iconSize: 22px 22px; qproperty-drawBase: 0; background: {p.input}; border: 1px solid {input_top}; border-radius: 10px; }}
+    QTabBar::tab {{ background: transparent; color: {p.subtext}; padding: 7px 16px; margin: 3px 2px; border-radius: 8px;
+        border: 1px solid transparent; font-weight: 600; }}
+    QTabBar::tab:first {{ margin-left: 3px; }}
+    QTabBar::tab:last {{ margin-right: 3px; }}
+    QTabBar::tab:hover {{ color: {p.text}; background: {p.hover}; }}
+    QTabBar::tab:selected {{ color: {p.text}; background: {relief(p.button, 112, 96)}; border: 1px solid {btn_edge}; border-top-color: {btn_light}; }}
+    QListWidget, QTreeWidget {{ background-color: {p.card}; border: 1px solid {p.border}; border-radius: 8px; outline: none; qproperty-iconSize: 22px 22px; }}
+    QTableWidget, QTableView {{ qproperty-iconSize: 22px 22px; }}
+    QMenu {{ icon-size: 22px; }}
     QPushButton#drivePicker {{ background-color: {p.button}; color: {p.title_accent}; border: 1px solid {p.border};
         border-radius: 14px; padding: 4px 8px; font-weight: 600; font-size: 10.5pt; text-align: center; }}
     QPushButton#drivePicker:hover {{ border-color: {accent}; }}
@@ -284,7 +312,7 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QPushButton#drivePicker::menu-indicator {{ image: none; width: 0; }}
     QMenu {{ background-color: {p.card}; border: 1px solid {p.border}; border-radius: 10px; padding: 6px; }}
     QMenu::item {{ padding: 7px 22px; border-radius: 6px; }}
-    QMenu::item:selected {{ background-color: {accent}; color: {p.on_accent}; }}
+    QMenu::item:selected {{ background: {relief(accent, 110, 94)}; color: {p.on_accent}; }}
     QMenu::separator {{ height: 1px; background: {p.border}; margin: 4px 8px; }}
     QMenu#diskMenu {{ border: 1px solid {p.border}; border-radius: 10px; padding: 6px; }}
     QMenu#diskMenu::item {{ padding: 8px 22px; border-radius: 6px; font-weight: 600; }}

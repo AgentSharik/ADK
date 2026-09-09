@@ -1,4 +1,4 @@
-"""Интерфейсные иконки в стиле SF Symbols / macOS (3.4.0).
+"""Контурные интерфейсные иконки (3.4.0).
 
 Раньше иконки в интерфейсе были эмодзи — они зависят от шрифта системы и выглядят разношёрстно.
 Теперь это контурные SVG-пиктограммы: штрих 1.75 px, скруглённые концы и углы, единая сетка 24×24,
@@ -20,7 +20,7 @@ from PyQt6.QtCore import QByteArray, QSize, Qt
 from PyQt6.QtGui import QIcon, QPainter, QPixmap
 
 # ---------------------------------------------------------------- контуры (viewBox 0 0 24 24, только stroke)
-_S = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
+_S = 'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'
 
 PATHS: dict[str, str] = {
     "magnifyingglass": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/>',
@@ -202,8 +202,8 @@ def svg(name: str, color: str, size: int = 24) -> bytes:
             f'{_S} color="{color}">{body}</svg>').encode()
 
 
-ICON_PX = 20        # размер иконки в кнопках/вкладках/меню (было 16 — мелко и неразборчиво)
-LABEL_PX = 18       # размер иконки в подписях (<img> в rich-text QLabel)
+ICON_PX = 22        # размер иконки в кнопках/вкладках/меню
+LABEL_PX = 19       # размер иконки в подписях (<img> в rich-text QLabel)
 
 _cache: dict[tuple, QIcon] = {}
 
