@@ -22,7 +22,10 @@ from adk.widgets import apply_theme  # noqa: E402
 
 app = QApplication([])
 from adk.theme import PRESET_THEMES, theme_design  # noqa: E402
-apply_theme({**config.settings.design, **theme_design(PRESET_THEMES["dark"])})   # тема по умолчанию «Графит и титан»
+# тема по умолчанию; ADK_THEME=<ключ> и ADK_SHOTS_DIR=<папка> — для визуальной проверки других тем без правки docs/
+apply_theme({**config.settings.design, **theme_design(PRESET_THEMES[os.environ.get("ADK_THEME", "dark")])})
+SHOTS = os.environ.get("ADK_SHOTS_DIR") or os.path.join(ROOT, "docs")
+os.makedirs(SHOTS, exist_ok=True)
 now = datetime.now(timezone.utc)
 
 people = [
@@ -113,7 +116,7 @@ ADApp.start_scan = lambda s: None
 from adk.dialogs import LoginDialog  # noqa: E402
 _ld = LoginDialog("", saved_user="CORP\\admin")
 _ld.show(); tg._wait(lambda: False, app, 300)
-_ld.grab().save(os.path.join(ROOT, "docs", "login.png"))
+_ld.grab().save(os.path.join(SHOTS, "login.png"))
 _ld.close()
 
 w = ADApp("CORP\\admin", "x")
@@ -122,7 +125,7 @@ w.show()
 w.active_ad_total = 5
 w.refresh_dashboard()
 tg._wait(lambda: False, app, 400)
-w.grab().save(os.path.join(ROOT, "docs", "dashboard.png"))
+w.grab().save(os.path.join(SHOTS, "dashboard.png"))
 
 w.search_input.setText("отдел")
 w.start_search()
@@ -130,26 +133,26 @@ tg._wait(lambda: w.table.rowCount() >= 5, app, 5000)
 row = next(r for r in range(w.table.rowCount()) if w.table.item(r, 0).text() == "sidorov")
 w.select_row(row)
 tg._wait(lambda: False, app, 400)
-w.grab().save(os.path.join(ROOT, "docs", "search.png"))
+w.grab().save(os.path.join(SHOTS, "search.png"))
 
 card = UserCardDialog(entries[2], w, w)
 card.resize(960, 640)
 card.show()
 tg._wait(lambda: card.current_ip != "Не найден", app, 3000)
 tg._wait(lambda: False, app, 300)
-card.grab().save(os.path.join(ROOT, "docs", "user_card.png"))
+card.grab().save(os.path.join(SHOTS, "user_card.png"))
 card.close()
 
 rp = ResetPasswordDialog("sidorov", w, fio="Сидоров Пётр Ильич")
 rp.show()
 tg._wait(lambda: False, app, 200)
-rp.grab().save(os.path.join(ROOT, "docs", "reset_password.png"))
+rp.grab().save(os.path.join(SHOTS, "reset_password.png"))
 rp.close()
 
 al = AuditLogDialog(w, w)
 al.show()
 tg._wait(lambda: False, app, 300)
-al.grab().save(os.path.join(ROOT, "docs", "audit_log.png"))
+al.grab().save(os.path.join(SHOTS, "audit_log.png"))
 al.close()
 
 # --- поиск по принтеру: клик по бейджу → кто подключён
@@ -165,7 +168,7 @@ badge.click()
 tg._wait(lambda: w.table.rowCount() >= 4, app, 5000)
 w.select_row(0)                       # первая строка — сам принтер, инспектор принтера
 tg._wait(lambda: False, app, 400)
-w.grab().save(os.path.join(ROOT, "docs", "printer_search.png"))
+w.grab().save(os.path.join(SHOTS, "printer_search.png"))
 
 # --- здоровье ПК 3.2: обзор, S.M.A.R.T., карта диска (данные подготовлены — offscreen без PowerShell)
 import base64  # noqa: E402
@@ -219,22 +222,22 @@ hd.show()
 tg._wait(lambda: hd.btn_refresh.isEnabled(), app, 5000)
 hd.show_health(_h)
 tg._wait(lambda: False, app, 400)
-hd.grab().save(os.path.join(ROOT, "docs", "health_overview.png"))
+hd.grab().save(os.path.join(SHOTS, "health_overview.png"))
 hd.tabs.setCurrentIndex(1)
 hd._select_disk(_h["phys"][1], hd.disk_cards[1])
 tg._wait(lambda: False, app, 300)
-hd.grab().save(os.path.join(ROOT, "docs", "health_smart.png"))
+hd.grab().save(os.path.join(SHOTS, "health_smart.png"))
 hd.tabs.setCurrentIndex(2)
 hd.show_usage(_u)
 hd.treemap._selected = 0                                   # выбранная плитка — рамка акцентом
 tg._wait(lambda: False, app, 300)
-hd.grab().save(os.path.join(ROOT, "docs", "health_diskmap.png"))
+hd.grab().save(os.path.join(SHOTS, "health_diskmap.png"))
 # «Что можно почистить» — из того же обхода, что и карта: те же цифры, только реально найденные пути
 hd.treemap._selected = 6                                  # плитка «$Recycle.Bin» → строка в таблице подсвечена
 hd.treemap.on_click(_u["dirs"][6])
 hd.usage_tabs.setCurrentIndex(2)
 tg._wait(lambda: False, app, 300)
-hd.grab().save(os.path.join(ROOT, "docs", "health_cleanup.png"))
+hd.grab().save(os.path.join(SHOTS, "health_cleanup.png"))
 hd.usage_tabs.setCurrentIndex(0)
 # вкладка «Ошибки»: журнал Windows с фильтром; счётчики — по показанным событиям
 from datetime import datetime as _dt, timedelta as _td  # noqa: E402
@@ -256,7 +259,7 @@ hd.tabs.setCurrentIndex(3)
 hd._events_quick(24)
 hd.show_events(_ev, hd.event_filter())
 tg._wait(lambda: False, app, 300)
-hd.grab().save(os.path.join(ROOT, "docs", "health_errors.png"))
+hd.grab().save(os.path.join(SHOTS, "health_errors.png"))
 hd.close()
 
 # --- новое окно пинга (монитор доступности) — замеры имитируются, сеть в песочнице не нужна
@@ -277,7 +280,7 @@ for i in range(48):
     pd.on_event({"ip": "10.0.2.11", "bytes": "32", "time": f"{ms}мс" if ok else "—", "ttl": "128",
                  "status": "Ответ" if ok else "Превышен интервал ожидания для запроса.", "success": ok, "is_info": False})
 tg._wait(lambda: False, app, 300)
-pd.grab().save(os.path.join(ROOT, "docs", "ping.png"))
+pd.grab().save(os.path.join(SHOTS, "ping.png"))
 pd.close()
 _pingui.PingWorker = _orig_pw
 
@@ -308,7 +311,7 @@ for h in range(60, 76):
 fd.on_dhcp(fw.verdict("10.0.2.69")); fd.on_done("10.0.2.69")
 fd.on_dhcp(fw.verdict("10.0.2.74")); fd.on_done("10.0.2.74")
 tg._wait(lambda: False, app, 300)
-fd.grab().save(os.path.join(ROOT, "docs", "free_ip.png"))
+fd.grab().save(os.path.join(SHOTS, "free_ip.png"))
 fd.close()
 _dhcp.query, netutils.is_host_alive, _socket.gethostbyaddr = _old_q, _old_alive, _old_gha
 config.settings.dhcp_servers = _old_dhcp_servers
@@ -337,7 +340,7 @@ _rows = [
 inv.company = "ООО «Пример»"; inv.lbl_title.setText("<b>2. Что попадёт в файл</b> — ООО «Пример»")
 inv.show_rows(_rows)
 tg._wait(lambda: False, app, 300)
-inv.grab().save(os.path.join(ROOT, "docs", "inventory.png"))
+inv.grab().save(os.path.join(SHOTS, "inventory.png"))
 inv.close()
 
 # --- GIF-анимации (PIL): кадры снимаем с offscreen-окна
@@ -363,7 +366,7 @@ def save_gif(frames, durations, name):
         fixed.append(canvas)
     frames = fixed
     frames = [f.quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE) for f in frames]
-    frames[0].save(os.path.join(ROOT, "docs", name), save_all=True, append_images=frames[1:],
+    frames[0].save(os.path.join(SHOTS, name), save_all=True, append_images=frames[1:],
                    duration=durations, loop=0, optimize=True)
 
 # GIF 1: живой поиск — набор запроса, результаты, выбор строки, инспектор
@@ -442,16 +445,16 @@ w.start_search()
 tg._wait(lambda: w.table.rowCount() >= 1 and w.table.item(0, 0).text() == "sidorov", app, 5000)
 w.select_row(0)
 tg._wait(lambda: False, app, 400)
-w.grab().save(os.path.join(ROOT, "docs", "inspector_notes.png"))
+w.grab().save(os.path.join(SHOTS, "inspector_notes.png"))
 
 nd = NotesDialog("sidorov", "user", w, w, title="Сидоров Пётр Ильич")
 nd.show(); tg._wait(lambda: False, app, 300)
-nd.grab().save(os.path.join(ROOT, "docs", "notes.png"))
+nd.grab().save(os.path.join(SHOTS, "notes.png"))
 nd.close()
 
 hd = HistoryDialog("sidorov", "WS-133", w)
 hd.show(); tg._wait(lambda: False, app, 300)
-hd.grab().save(os.path.join(ROOT, "docs", "history.png"))
+hd.grab().save(os.path.join(SHOTS, "history.png"))
 hd.close()
 
 # группы как у…: у Смирнова есть VPN и ИТ-отдел, у Иванова — только ИТ-отдел
@@ -462,7 +465,7 @@ gc.ref.setText("smirnov")
 gc.load_ref()
 tg._wait(lambda: gc.missing.count() >= 1, app, 3000)
 gc.show(); tg._wait(lambda: False, app, 300)
-gc.grab().save(os.path.join(ROOT, "docs", "group_compare.png"))
+gc.grab().save(os.path.join(SHOTS, "group_compare.png"))
 gc.close()
 
 # массовые операции: выделяем весь ИТ-отдел
@@ -476,7 +479,7 @@ tg._wait(lambda: bd.groups.count() >= 1, app, 3000)
 bd.op.setCurrentIndex(bd.op.findData("group_add"))
 bd.groups.setCurrentRow(0)
 bd.show(); tg._wait(lambda: False, app, 300)
-bd.grab().save(os.path.join(ROOT, "docs", "bulk_ops.png"))
+bd.grab().save(os.path.join(SHOTS, "bulk_ops.png"))
 bd.close()
 
 # роль «ПК-администратор» (GT_Admins): действия с ПК есть, изменения объектов AD скрыты
@@ -484,7 +487,7 @@ access.set_rights(pc=True, ad=False, reason="нет в группах — AD: IT
 w.apply_access()
 w.select_row(0)
 tg._wait(lambda: False, app, 400)
-w.grab().save(os.path.join(ROOT, "docs", "readonly.png"))
+w.grab().save(os.path.join(SHOTS, "readonly.png"))
 access.reset(); w.apply_access()
 
 # GIF 4: набор инструментов — заметки → история → группы как у… → массовые операции
@@ -528,11 +531,11 @@ items = attention.from_entries(entries, now=now, acct_days=7, no_logon_days=90) 
 w.set_attention_items(items)
 w.search_input.clear(); w.on_text_changed("")
 tg._wait(lambda: False, app, 400)
-w.grab().save(os.path.join(ROOT, "docs", "dashboard_attention.png"))
+w.grab().save(os.path.join(SHOTS, "dashboard_attention.png"))
 
 atd = AttentionDialog(w, w, items=items)
 atd.show(); tg._wait(lambda: False, app, 300)
-atd.grab().save(os.path.join(ROOT, "docs", "attention.png"))
+atd.grab().save(os.path.join(SHOTS, "attention.png"))
 atd.close()
 
 w.search_input.setText("отдел"); w.start_search()
@@ -540,7 +543,7 @@ tg._wait(lambda: w.table.rowCount() >= 5, app, 5000)
 w.table.selectAll(); tg._wait(lambda: False, app, 200)
 mp = MassPingDialog(w.selected_computers(), w, w)
 mp.show(); tg._wait(lambda: "Опрос" not in mp.status.text(), app, 5000)
-mp.grab().save(os.path.join(ROOT, "docs", "mass_ping.png"))
+mp.grab().save(os.path.join(SHOTS, "mass_ping.png"))
 mp.close()
 
 software.cache_software("WS-101", [{"name": "1С:Предприятие 8.3", "version": "8.3.24.1467", "publisher": "1С", "installed": "2026-02-11"},
@@ -554,16 +557,16 @@ software.cache_software("WS-105", [{"name": "1С:Предприятие 8.3", "v
 software.cache_software("WS-214", [{"name": "Google Chrome", "version": "127.0.6533.100", "publisher": "Google LLC", "installed": "2026-07-30"}])
 sd = SoftwareDialog("WS-101", w, w)
 sd.show(); tg._wait(lambda: False, app, 300)
-sd.grab().save(os.path.join(ROOT, "docs", "software.png"))
+sd.grab().save(os.path.join(SHOTS, "software.png"))
 sd.tabs.setCurrentIndex(2); sd.q.setText("1С"); sd.search_fleet()
 tg._wait(lambda: False, app, 200)
-sd.grab().save(os.path.join(ROOT, "docs", "software_fleet.png"))
+sd.grab().save(os.path.join(SHOTS, "software_fleet.png"))
 sd.close()
 
 cp = ComparePCDialog("WS-101", "WS-105", w, w)
 cp.show(); tg._wait(lambda: cp._data is not None, app, 3000); tg._wait(lambda: False, app, 200)
 cp.tabs.setCurrentIndex(1); tg._wait(lambda: False, app, 200)
-cp.grab().save(os.path.join(ROOT, "docs", "compare_pc.png"))
+cp.grab().save(os.path.join(SHOTS, "compare_pc.png"))
 cp.close()
 
 from adk import templates as _tpl  # noqa: E402
@@ -577,7 +580,7 @@ rd = RegisterUserDialog(w, w)
 rd.surname.setText("Николаева"); rd.name.setText("Ольга"); rd.patronymic.setText("Викторовна"); rd.generate()
 rd.cb_template.setCurrentIndex(1)
 rd.show(); tg._wait(lambda: False, app, 400)
-rd.grab().save(os.path.join(ROOT, "docs", "register_template.png"))
+rd.grab().save(os.path.join(SHOTS, "register_template.png"))
 rd.close()
 
 # GIF 5: 3.1 — сводка «Внимание» → массовый пинг → ПО парка → сравнение ПК

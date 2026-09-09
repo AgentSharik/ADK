@@ -174,7 +174,7 @@ def test_color_picker_sources_stay_in_sync(qapp):
     d._from_sv(0.0, 1.0)                                 # без насыщенности при полной яркости — белый
     assert d.color() == "#ffffff" and "светлый" in d.lbl_info.text()
     d.preset_btns[1].click()                             # пресет
-    assert d.color() == "#f97316"                            # второй пресет палитры
+    assert d.color() == "#34c759"                            # второй пресет палитры
     d.btn_reset.click()                                  # «Как было»
     assert d.color() == "#38bdf8"
     d._from_hex("#zzz")                                  # мусор игнорируется

@@ -85,15 +85,15 @@ _DEFAULTS: dict[str, dict[str, str]] = {
         "dhcp_servers": "",
     },
     "Design": {
-        # по умолчанию — тема «Графит и титан» (см. theme.PRESET_THEMES["dark"])
-        "bg_style": "background-color: #1C1C1F;",
+        # по умолчанию — тема «Графит» (см. theme.PRESET_THEMES["dark"])
+        "bg_style": "background-color: #1C1C1E;",
         "is_dark": "true",
         "font_family": "Segoe UI",
         "font_size": "10",
-        "accent_color": "#F59E0B",
-        "panel_color": "#26262A",
-        "text_color": "#F4F4F5",
-        "border_color": "",
+        "accent_color": "#0A84FF",
+        "panel_color": "#2C2C2E",
+        "text_color": "#F5F5F7",
+        "border_color": "#48484A",
         "follow_system": "false",     # тёмная/светлая — как в Windows (AppsUseLightTheme)
     },
     "UI": {

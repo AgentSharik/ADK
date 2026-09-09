@@ -36,7 +36,7 @@ class AttentionDialog(FramelessDialog):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.table.setColumnWidth(0, 36)
+        self.table.setColumnWidth(0, 44)
         self.table.itemDoubleClicked.connect(self.open_selected)
         self.body.addWidget(self.table, 1)
         btns = QHBoxLayout()
@@ -83,6 +83,9 @@ class AttentionDialog(FramelessDialog):
             self.table.insertRow(r)
             for c, v in enumerate((i["icon"], i["title"], i["subject"], i["text"])):
                 it = QTableWidgetItem(v)
+                if c == 0:                       # в первой колонке — только иконка, без остатков эмодзи-текста
+                    it.setText("")
+                    it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 it.setForeground(QColor(colors.get(i["severity"], pal.text)))
                 it.setData(Qt.ItemDataRole.UserRole, i["key"])
                 self.table.setItem(r, c, it)

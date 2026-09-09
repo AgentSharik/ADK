@@ -22,13 +22,15 @@ from .workers import FreeIPWorker
 
 # статус ячейки → (подпись, ключ цвета палитры)
 CELL = {
-    "inventory": ("в инвентаре ADK", "info"),
-    "lease": ("аренда DHCP", "warning"),
-    "reserved": ("резерв DHCP", "warning"),
-    "alive": ("отвечает на ping", "danger"),
-    "ptr": ("есть PTR в DNS", "ptr"),
-    "free": ("свободен", "success"),
-    "found": ("найден (рамка)", "accent"),
+    # подпись честно говорит, ОТКУДА взят факт: сканер ADK (данные последнего опроса парка), DHCP-сервер,
+    # ответ на ping прямо сейчас, запись в DNS. «Свободен» = ни один источник адрес не знает.
+    "inventory": ("ПК из последнего скана парка", "info"),
+    "lease": ("аренда DHCP (активная)", "warning"),
+    "reserved": ("резервирование DHCP", "warning"),
+    "alive": ("отвечает на ping сейчас", "danger"),
+    "ptr": ("есть имя в DNS (PTR)", "ptr"),
+    "free": ("свободен — нигде не числится", "success"),
+    "found": ("выбранный результат", "accent"),
 }
 DHCP_ICON = {"free": "✅", "excluded": "✅", "outside": "ℹ️", "n/a": "⚠️", "unavailable": "⚠️"}
 
@@ -91,12 +93,13 @@ class SubnetMap(QWidget):
         if h is not None:
             self.picked.emit(h)
 
+    # сплошные системные цвета (одинаковы во всех темах): статус ячейки читается сразу, цифры — белым
+    SOLID = {"info": "#0A84FF", "warning": "#FF9F0A", "danger": "#FF453A", "success": "#30D158", "ptr": "#BF5AF2"}
+
     def _color(self, pal, key: str) -> QColor:
         if key == "accent":
             return QColor(pal.title_accent)
-        if key == "ptr":
-            return QColor("#a855f7")
-        return QColor({"info": pal.info, "warning": pal.warning, "danger": pal.danger, "success": pal.success}[key][2])
+        return QColor(self.SOLID[key])
 
     def paintEvent(self, _e):  # noqa: N802
         pal = app_palette()
@@ -114,27 +117,23 @@ class SubnetMap(QWidget):
             if h in (0, 255):
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(QColor(pal.border))
-                p.drawRoundedRect(r, 2, 2)
+                p.drawRoundedRect(r, 4, 4)
                 continue
             st = self.status.get(h)
             if st and st not in CELL:            # неизвестный статус не должен ронять отрисовку
                 st = None
-            if st:
-                fill = self._color(pal, CELL[st][1])
-                fill.setAlpha(210 if st == "free" else 170)
-            else:
-                fill = QColor(base)
+            fill = self._color(pal, CELL[st][1]) if st else QColor(base)
             p.setPen(QPen(QColor(pal.border), 1) if h >= self.start_host and not st else Qt.PenStyle.NoPen)
             p.setBrush(fill)
-            p.drawRoundedRect(r, 2, 2)
+            p.drawRoundedRect(r, 4, 4)
             if h == self.found:
                 # найденный адрес остаётся ЗЕЛЁНЫМ (он свободен — цвет = смысл), а «это он» показываем
                 # толстой акцентной рамкой: цвет ячейки не должен менять значение при выборе
                 p.setPen(QPen(QColor(pal.text), max(2.0, c * 0.12)))
                 p.setBrush(Qt.BrushStyle.NoBrush)
-                p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 2, 2)
+                p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 4, 4)
             if c >= 15:
-                p.setPen(QColor(pal.text if st else pal.subtext))
+                p.setPen(QColor("#ffffff" if st else pal.subtext))
                 p.drawText(r, Qt.AlignmentFlag.AlignCenter, str(h))
         p.end()
 
@@ -207,15 +206,19 @@ class FreeIPDialog(FramelessDialog):
         legend = QGridLayout()
         legend.setHorizontalSpacing(6)
         legend.setVerticalSpacing(4)
-        for i, key in enumerate(("free", "found", "inventory", "lease", "alive", "ptr")):
-            sw = QLabel("▢" if key == "found" else "■")
-            sw.setStyleSheet(f"color: {pal.text if key == 'found' else self.map._color(pal, CELL[key][1]).name()}; "
-                             "font-size: 12pt; font-weight: bold;")
+        legend.setVerticalSpacing(7)
+        for i, key in enumerate(("free", "found", "inventory", "lease", "reserved", "alive", "ptr")):
+            sw = QLabel()
+            sw.setFixedSize(16, 16)
+            if key == "found":
+                sw.setStyleSheet(f"background: {pal.input}; border: 2.5px solid {pal.text}; border-radius: 4px;")
+            else:
+                sw.setStyleSheet(f"background: {self.map._color(pal, CELL[key][1]).name()}; border: none; border-radius: 4px;")
             t = QLabel(CELL[key][0])
-            t.setStyleSheet(f"color: {pal.subtext}; font-size: 9pt;")
+            t.setStyleSheet(f"color: {pal.text}; font-size: 9.5pt;")
             legend.addWidget(sw, i, 0)
             legend.addWidget(t, i, 1)
-        legend.setRowStretch(6, 1)
+        legend.setRowStretch(7, 1)
         self.legend_box = QWidget()
         self.legend_box.setLayout(legend)
         row_map.addWidget(self.legend_box, 1, Qt.AlignmentFlag.AlignTop)
@@ -291,8 +294,8 @@ class FreeIPDialog(FramelessDialog):
         self.status.setObjectName("subtle")
         dhcp_note = (f"Сверяется с DHCP: {', '.join(settings.dhcp_servers)} (аренды, резервирования, исключения)."
                      if settings.dhcp_servers else "Сверка с DHCP выключена — укажите серверы в [Scanner] dhcp_servers.")
-        self.status.setToolTip("Свободным считается адрес, которого нет в инвентаре ADK, который не отвечает на ping "
-                               "и не имеет PTR-записи. " + dhcp_note)
+        self.status.setToolTip("Свободным считается адрес, которого нет среди ПК последнего скана парка, который сейчас "
+                               "не отвечает на ping и не имеет имени в DNS (PTR). " + dhcp_note)
         self.lbl_map.setToolTip(self.status.toolTip())
         self.body.addWidget(self.status)
 
@@ -382,7 +385,7 @@ class FreeIPDialog(FramelessDialog):
         st = info.get("status", "n/a")
         icon = DHCP_ICON.get(st, "❌")
         dhcp_kind = "online" if st in ("free", "excluded") else "info" if st == "outside" else "warning"
-        self._set_checks([("✓ нет в инвентаре", "online"), ("✓ не пингуется", "online"), ("✓ нет PTR", "online"),
+        self._set_checks([("✓ нет среди ПК парка", "online"), ("✓ не отвечает на ping", "online"), ("✓ нет имени в DNS", "online"),
                           (f"{icon} DHCP", dhcp_kind)])
         txt = info.get("text", "не сверялось")
         txt = "адрес не выдан" if txt == "не выдан DHCP" else txt

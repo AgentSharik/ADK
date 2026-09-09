@@ -103,7 +103,7 @@ d3=FreeIPDialog(w); d3.show(); d3.prefix.setText("bad"); d3.search(); tg._wait(l
 check("свободный IP: валидация префикса", "Префикс" in d3.status.text()); d3.close()
 d4=InventoryDialog(w, w); d4.show(); tg._wait(lambda: d4.companies, app, 3000); check("опись: организации загружены", d4.companies==["Орг"]); d4.close()
 d5=GroupMembersDialog("CN=IT,OU=g","IT",w,w); d5.show(); tg._wait(lambda: d5.table.rowCount()>0, app, 3000); check("участники группы через LDAP (не COM)", d5.table.rowCount()>0); d5.close()
-d6=DesignSettingsDialog(w,w); d6.show(); d6.preset("plum"); check("смена темы применяется", config.settings.design["accent_color"]=="#A855F7" and config.settings.design["panel_color"]=="#281E2E"); d6.close()
+d6=DesignSettingsDialog(w,w); d6.show(); d6.preset("plum"); check("смена темы применяется", config.settings.design["accent_color"]=="#BF5AF2" and config.settings.design["panel_color"]=="#2C2831"); d6.close()
 d7=PingDialog("LOCAL","127.0.0.1",w,w); d7.show(); tg._wait(lambda: d7.sent>=2, app, 6000)
 got=d7.sent; pid=d7.worker._proc.pid if d7.worker._proc else None
 d7.reject(); tg._wait(lambda: not d7.worker.isRunning(), app, 5000)

@@ -474,7 +474,7 @@ class UserCardDialog(FramelessDialog):
         right = QVBoxLayout()
         right.addWidget(QLabel("<b>Все группы домена</b>"))
         self.group_filter = QLineEdit()
-        self.group_filter.setPlaceholderText("🔍 Фильтр по имени группы…")
+        self.group_filter.setPlaceholderText("Фильтр по имени группы…")
         self.group_filter.setClearButtonEnabled(True)
         self.group_filter.textChanged.connect(self._filter_groups)
         right.addWidget(self.group_filter)
@@ -1561,7 +1561,7 @@ __all__ = ["FreeIPDialog", "InventoryDialog", "PingDialog"]
 
 # ============================================================================ дизайн
 class Swatch(QPushButton):
-    """Квадратик цвета: клик — выбрать. Выбранный обведён акцентом."""
+    """Кружок цвета: клик — выбрать. Выбранный — с белой точкой внутри и кольцом акцента (как выбор акцента в macOS)."""
 
     def __init__(self, color: str, tooltip: str = "", size: int = 30, parent=None):
         super().__init__(parent)
@@ -1569,57 +1569,104 @@ class Swatch(QPushButton):
         self.setFixedSize(size, size)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(tooltip or color)
+        self._selected = False
         self.set_selected(False)
 
     def set_selected(self, on: bool):
+        self._selected = on
+        self.setStyleSheet("QPushButton { background: transparent; border: none; }")
+        self.update()
+
+    def paintEvent(self, _e):  # noqa: N802
+        from PyQt6.QtGui import QPainter, QPen, QColor
+        from PyQt6.QtCore import QRectF
         pal = app_palette()
-        bd = f"3px solid {pal.title_accent}" if on else f"1.5px solid {pal.border}"
-        self.setStyleSheet(f"QPushButton {{ background-color: {self.color}; border: {bd}; border-radius: 8px; }}"
-                           f"QPushButton:hover {{ border: 2px solid {pal.text}; }}")
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        s = min(self.width(), self.height())
+        r = QRectF((self.width() - s) / 2 + 2, (self.height() - s) / 2 + 2, s - 4, s - 4)
+        p.setPen(QPen(QColor(pal.border), 1))
+        p.setBrush(QColor(self.color))
+        p.drawEllipse(r)
+        if self._selected:
+            p.setPen(QPen(QColor(pal.text), 2))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawEllipse(r.adjusted(-1, -1, 1, 1))
+            dot = QColor("#ffffff" if is_color_dark(self.color) else "#1D1D1F")
+            p.setPen(Qt.PenStyle.NoPen); p.setBrush(dot)
+            c = r.center()
+            p.drawEllipse(QRectF(c.x() - 3.5, c.y() - 3.5, 7, 7))
+        p.end()
 
 
 class ThemeTile(QPushButton):
-    """Плитка темы: превью фона с мини-«окном» и подписью."""
+    """Плитка темы: мини-«окно» в цветах темы (фон, панель, акцентная кнопка) и подпись — как выбор обоев в macOS."""
 
     def __init__(self, key: str, t: dict, parent=None):
         super().__init__(parent)
         self.key = key
-        self.setFixedSize(136, 84)
+        self.t = t
+        self.setFixedSize(132, 96)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(t["name"])
-        self.setStyleSheet("")
-        bg = (f"background-color: {t['bg']};" if t["type"] == "solid"
-              else f"background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 {t['c1']}, stop:1 {t['c2']});")
-        self._bg = bg
-        self._fg = t.get("text") or ("#ffffff" if t["is_dark"] else "#1C1C1E")
-        self._accent = t["accent"]
-        # название в две строки — целиком помещается в плитку
-        words = t["name"].split(" ")
-        self.setText(t["name"] if len(words) < 2 else " ".join(words[:len(words) // 2 or 1]) + "\n" + " ".join(words[len(words) // 2 or 1:]))
+        self._selected = False
         self.set_selected(False)
 
     def set_selected(self, on: bool):
-        pal = app_palette()
-        bd = f"3px solid {pal.title_accent}" if on else f"1.5px solid {pal.border}"
-        self.setStyleSheet(f"QPushButton {{ {self._bg} color: {self._fg}; font-weight: bold; font-size: 9pt; border: {bd}; "
-                           f"border-radius: 10px; padding: 26px 4px 6px 4px; border-top: 8px solid {self._accent}; }}"
-                           f"QPushButton:hover {{ border: 2px solid {pal.text}; border-top: 8px solid {self._accent}; }}")
+        self._selected = on
+        self.setStyleSheet("QPushButton { background: transparent; border: none; }")
+        self.update()
+
+    def paintEvent(self, _e):  # noqa: N802
+        from PyQt6.QtGui import QPainter, QPen, QColor
+        from PyQt6.QtCore import QRectF
+        t, pal = self.t, app_palette()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        # рамка выбора
+        outer = QRectF(1, 1, w - 2, h - 2)
+        p.setPen(QPen(QColor(pal.accent if self._selected else pal.border), 2.5 if self._selected else 1))
+        p.setBrush(QColor(pal.card))
+        p.drawRoundedRect(outer, 12, 12)
+        # превью «экрана»
+        scr = QRectF(8, 8, w - 16, h - 36)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(t.get("bg") or t.get("c1", "#1C1C1E")))
+        p.drawRoundedRect(scr, 7, 7)
+        panel = QRectF(scr.left() + 8, scr.top() + 8, scr.width() - 16, scr.height() - 16)
+        p.setBrush(QColor(t["panel"]))
+        p.drawRoundedRect(panel, 5, 5)
+        # «строки текста» и акцентная кнопка
+        fg = QColor(t["text"]); fg.setAlpha(110)
+        p.setBrush(fg)
+        p.drawRoundedRect(QRectF(panel.left() + 7, panel.top() + 7, panel.width() * 0.45, 4), 2, 2)
+        p.drawRoundedRect(QRectF(panel.left() + 7, panel.top() + 15, panel.width() * 0.65, 4), 2, 2)
+        p.setBrush(QColor(t["accent"]))
+        p.drawRoundedRect(QRectF(panel.right() - 30, panel.bottom() - 13, 24, 8), 4, 4)
+        # подпись
+        p.setPen(QColor(pal.text if self._selected else pal.subtext))
+        f = self.font(); f.setPointSizeF(max(8.0, f.pointSizeF() - 0.5)); f.setBold(self._selected)
+        p.setFont(f)
+        p.drawText(QRectF(4, h - 26, w - 8, 20), Qt.AlignmentFlag.AlignCenter, t["name"])
+        p.end()
 
 
 class DesignSettingsDialog(FramelessDialog):
     """Оформление: вкладки «Тема» (плитки + акцент + свои цвета), «Шрифт», «Интерфейс». Всё применяется сразу."""
 
-    ACCENTS = (("#F59E0B", "Янтарь"), ("#F97316", "Коралл"), ("#C2410C", "Терракота"), ("#F43F5E", "Роза"),
-               ("#A855F7", "Лаванда"), ("#6366F1", "Индиго"), ("#007AFF", "Системный синий"), ("#2563EB", "Кобальт"),
-               ("#10B981", "Мята"), ("#15803D", "Лесной"), ("#14B8A6", "Бирюза"), ("#A1A1AA", "Серый"))
-    BACKGROUNDS = ("#1C1C1F", "#121E17", "#1D1622", "#18181B", "#1F1528", "#232326", "#1A1A1D", "#2A1B38",
-                   "#F5F5F7", "#FDFBF7", "#F1F6F3", "#F8FAFC", "#FFF7ED", "#FAFAFA")
+    # системные цвета Apple (iOS/macOS): синий, зелёный, индиго, оранжевый, розовый, фиолетовый, красный, бирюзовый, жёлтый, серый
+    ACCENTS = (("#007AFF", "Синий"), ("#34C759", "Зелёный"), ("#5856D6", "Индиго"), ("#FF9500", "Оранжевый"),
+               ("#FF2D55", "Розовый"), ("#AF52DE", "Фиолетовый"), ("#FF3B30", "Красный"), ("#5AC8FA", "Бирюзовый"),
+               ("#FFCC00", "Жёлтый"), ("#8E8E93", "Серый"))
+    BACKGROUNDS = ("#1C1C1E", "#1A1E1B", "#1E1B22", "#201E1C", "#211C1E", "#242426", "#2C2C2E",
+                   "#F2F2F7", "#F7F2EC", "#EFF5F1", "#F3F1F8", "#F1F1F6", "#FFFFFF")
 
     def __init__(self, app, parent=None):
         super().__init__("🎨 Оформление", parent, (760, 620))
         self.app = app
         self.design = dict(settings.design)
-        self._c1, self._c2 = "#18181B", "#27272A"
+        self._c1, self._c2 = "#1C1C1E", "#2C2C2E"
         self._mode = "solid"
         m = re.findall(r"#[0-9a-fA-F]{6}", self.design.get("bg_style", ""))
         if "qlineargradient" in self.design.get("bg_style", "") and len(m) >= 2:

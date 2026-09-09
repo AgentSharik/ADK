@@ -12,7 +12,7 @@ EN: dict[str, str] = {
     # главное окно
     "Найти": "Find", "🎨 Дизайн": "🎨 Theme", "📤 Экспорт": "📤 Export",
     "📦 Архивы (все ПК пользователя)": "📦 Archives (all user PCs)", "🚷 Отключённые учётки": "🚷 Disabled accounts",
-    "🔍 Фамилия, логин, почта, отдел, кабинет, имя ПК, IP, printer:…": "🔍 Surname, login, e-mail, department, room, PC name, IP, printer:…",
+    "Фамилия, логин, почта, отдел, кабинет, имя ПК, IP, printer:…": "Surname, login, e-mail, department, room, PC name, IP, printer:…",
     "🔄 Обновить статус сети ПК": "🔄 Refresh PC network status",
     "<b>📊 Состояние компьютеров домена</b> (клик по карточке — список):": "<b>📊 Domain computers</b> (click a tile for the list):",
     "<b>🕒 Недавние поиски:</b>": "<b>🕒 Recent searches:</b>", "<b>⚡ Быстрый доступ:</b>": "<b>⚡ Quick access:</b>",

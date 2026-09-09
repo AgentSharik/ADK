@@ -315,7 +315,7 @@ class ADApp(FramelessMainWindow):
 
         top = QHBoxLayout()
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText(tr("🔍 Фамилия, логин, почта, отдел, кабинет, имя ПК, IP, printer:…"))
+        self.search_input.setPlaceholderText(tr("Фамилия, логин, почта, отдел, кабинет, имя ПК, IP, printer:…"))
         self.search_input.setClearButtonEnabled(True)
         self.completer = QCompleter(db.suggestions(), self.search_input)
         self.completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)

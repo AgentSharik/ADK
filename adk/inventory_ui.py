@@ -60,7 +60,7 @@ class InventoryDialog(FramelessDialog):
         ll.setContentsMargins(12, 10, 12, 10)
         ll.addWidget(QLabel("<b>1. Организация</b>"))
         self.filter = QLineEdit()
-        self.filter.setPlaceholderText("🔍 Фильтр…")
+        self.filter.setPlaceholderText("Фильтр…")
         self.filter.textChanged.connect(self._apply_filter)
         ll.addWidget(self.filter)
         self.list = QListWidget()

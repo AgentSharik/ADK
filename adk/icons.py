@@ -20,7 +20,7 @@ from PyQt6.QtCore import QByteArray, QSize, Qt
 from PyQt6.QtGui import QIcon, QPainter, QPixmap
 
 # ---------------------------------------------------------------- контуры (viewBox 0 0 24 24, только stroke)
-_S = 'fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"'
+_S = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
 
 PATHS: dict[str, str] = {
     "magnifyingglass": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/>',
@@ -160,7 +160,7 @@ EMOJI_ICON: dict[str, tuple[str, str]] = {
     "🧪": ("flask", "text"), "📣": ("megaphone", "text"), "📞": ("phone", "text"), "📍": ("mappin", "danger"),
     "🏢": ("building.2", "text"), "📅": ("calendar", "text"), "★": ("star", "warning"), "👁": ("eye", "text"),
     "⬆": ("arrow.up.circle", "info"), "↑": ("arrow.up.circle", "info"), "⚖": ("square.split.2x1", "text"),
-    "😴": ("face.smiling", "text"), "👋": ("hand.wave", "warning"), "🟢": ("circle.fill", "success"),
+    "😴": ("moon.zzz", "info"), "👋": ("hand.wave", "warning"), "🟢": ("circle.fill", "success"),
     "🔴": ("circle.fill", "danger"), "🟡": ("circle.fill", "warning"), "🔵": ("circle.fill", "info"),
     "⚪": ("circle", "text"), "🟥": ("square", "danger"), "▾": ("chevron.down", "text"),
 }
@@ -202,6 +202,9 @@ def svg(name: str, color: str, size: int = 24) -> bytes:
             f'{_S} color="{color}">{body}</svg>').encode()
 
 
+ICON_PX = 20        # размер иконки в кнопках/вкладках/меню (было 16 — мелко и неразборчиво)
+LABEL_PX = 18       # размер иконки в подписях (<img> в rich-text QLabel)
+
 _cache: dict[tuple, QIcon] = {}
 
 
@@ -213,7 +216,7 @@ def icon(name: str, color: str | None = None, role: str = "text") -> QIcon:
         return _cache[key]
     from PyQt6.QtSvg import QSvgRenderer
     ic = QIcon()
-    for px in (16, 20, 24, 32, 48):
+    for px in (16, 18, 20, 24, 32, 48):
         pm = QPixmap(px, px)
         pm.fill(Qt.GlobalColor.transparent)
         r = QSvgRenderer(QByteArray(svg(name, color, px)))
@@ -226,11 +229,11 @@ def icon(name: str, color: str | None = None, role: str = "text") -> QIcon:
     return ic
 
 
-def pixmap(name: str, size: int = 16, color: str | None = None, role: str = "text") -> QPixmap:
+def pixmap(name: str, size: int = ICON_PX, color: str | None = None, role: str = "text") -> QPixmap:
     return icon(name, color, role).pixmap(QSize(size, size))
 
 
-def img_html(name: str, size: int = 15, color: str | None = None, role: str = "text") -> str:
+def img_html(name: str, size: int = LABEL_PX, color: str | None = None, role: str = "text") -> str:
     """<img> с SVG для rich-text QLabel."""
     b64 = base64.b64encode(svg(name, color or role_color(role), size)).decode()
     return f'<img src="data:image/svg+xml;base64,{b64}" width="{size}" height="{size}">'
@@ -278,9 +281,9 @@ def install() -> None:
         btn._adk_icon = (name, role)
         QAbstractButton.setText(btn, rest.strip())
         btn.setIcon(icon(name, role=role))
-        btn.setIconSize(QSize(16, 16))
+        btn.setIconSize(QSize(ICON_PX, ICON_PX))
         if not rest.strip():
-            btn.setIconSize(QSize(18, 18))
+            btn.setIconSize(QSize(ICON_PX + 2, ICON_PX + 2))
 
     for cls in (QPushButton, QCheckBox, QRadioButton, QToolButton):
         _orig_init = cls.__init__
@@ -305,7 +308,8 @@ def install() -> None:
         name, rest = f
         role = emoji_role(t)
         rich = lbl.textFormat() == Qt.TextFormat.RichText or "<" in t
-        html = f"{img_html(name, 15, role=role)}&nbsp;{rest}" if rich else f"{img_html(name, 15, role=role)}&nbsp;{_esc(rest)}"
+        html = f"{img_html(name, LABEL_PX, role=role)}&nbsp;{rest}" if rich else f"{img_html(name, LABEL_PX, role=role)}&nbsp;{_esc(rest)}"
+        lbl._adk_icon = (name, role, rest if rich else _esc(rest))
         QLabel.setText(lbl, html)
         lbl.setTextFormat(Qt.TextFormat.RichText)
 
@@ -316,6 +320,7 @@ def install() -> None:
         _apply_label(self)
 
     def _label_set(self, text):
+        self._adk_icon = None           # новый текст без эмодзи — иконки больше нет
         _lbl_set(self, text)
         _apply_label(self)
 
@@ -327,6 +332,7 @@ def install() -> None:
         f = find_leading(text)
         if f:
             name, rest = f
+            act._adk_icon = (name, emoji_role(text))
             _act_set(act, rest.strip())
             act.setIcon(icon(name, role=emoji_role(text)))
 
@@ -356,8 +362,27 @@ def install() -> None:
                 break
         return args
 
-    QTabWidget.addTab = lambda self, *a: _tab_add(self, *_tab_args(a))
-    QTabWidget.insertTab = lambda self, *a: _tab_ins(self, *_tab_args(a))
+    def _tab_meta(self, args):
+        for x in args:
+            if isinstance(x, str):
+                f = find_leading(x)
+                if f:
+                    metas = getattr(self, "_adk_tab_icons", None)
+                    if metas is None:
+                        metas = self._adk_tab_icons = {}
+                    metas[f[1].strip()] = (f[0], emoji_role(x))
+                break
+
+    def _add_tab(self, *a):
+        _tab_meta(self, a)
+        return _tab_add(self, *_tab_args(a))
+
+    def _insert_tab(self, *a):
+        _tab_meta(self, a)
+        return _tab_ins(self, *_tab_args(a))
+
+    QTabWidget.addTab = _add_tab
+    QTabWidget.insertTab = _insert_tab
     _tab_set = QTabWidget.setTabText
 
     def _set_tab_text(self, idx, text):
@@ -400,10 +425,25 @@ def _esc(s: str) -> str:
 
 
 def refresh(root) -> None:
-    """После смены темы перекрасить иконки у всех кнопок/вкладок под новым корнем."""
-    from PyQt6.QtWidgets import QAbstractButton
+    """После смены темы перекрасить иконки у всех кнопок, вкладок, действий меню и подписей под новым корнем."""
+    from PyQt6.QtGui import QAction
+    from PyQt6.QtWidgets import QAbstractButton, QLabel, QTabWidget
     clear_cache()
     for b in root.findChildren(QAbstractButton):
         meta = getattr(b, "_adk_icon", None)
         if meta:
             b.setIcon(icon(meta[0], role=meta[1]))
+    for a in root.findChildren(QAction):
+        meta = getattr(a, "_adk_icon", None)
+        if meta:
+            a.setIcon(icon(meta[0], role=meta[1]))
+    for t in root.findChildren(QTabWidget):
+        metas = getattr(t, "_adk_tab_icons", None) or {}
+        for i in range(t.count()):
+            meta = metas.get(t.tabText(i))
+            if meta:
+                t.setTabIcon(i, icon(meta[0], role=meta[1]))
+    for lbl in root.findChildren(QLabel):
+        meta = getattr(lbl, "_adk_icon", None)
+        if meta:
+            QLabel.setText(lbl, f"{img_html(meta[0], LABEL_PX, role=meta[1])}&nbsp;{meta[2]}")
