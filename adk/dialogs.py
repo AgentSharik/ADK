@@ -2026,7 +2026,7 @@ class DesignSettingsDialog(FramelessDialog):
         elif m:
             self._c1 = m[0]
 
-        tabs = QTabWidget()
+        tabs = self.tabs = QTabWidget()
         tabs.addTab(self._tab_theme(), "🎨 Тема")
         tabs.addTab(self._tab_font(), "🔤 Шрифт")
         tabs.addTab(self._tab_ui(), "⚙️ Интерфейс")
