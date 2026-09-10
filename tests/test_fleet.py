@@ -547,7 +547,7 @@ def test_main_window_hides_only_ad_buttons(qapp, monkeypatch):
     access.set_rights(pc=True, ad=False, reason="GT_Admins")
     try:
         w.apply_access(); qapp.processEvents()
-        assert w.lbl_readonly.isVisible() and "AD" in w.lbl_readonly.text()
+        assert not hasattr(w, "lbl_readonly") and "ПК" in w.lbl_role_status.text()   # роль — только в строке состояния
         # инспектор не на экране (стек показывает дашборд), поэтому смотрим isHidden(), а не isVisible()
         assert not w.action_buttons["power"].isHidden() and "wol" not in w.action_buttons   # WoL — пункт меню «Питание ПК»
         assert w.btn_compare.isHidden()
@@ -556,7 +556,7 @@ def test_main_window_hides_only_ad_buttons(qapp, monkeypatch):
     finally:
         access.reset()
         w.apply_access()
-    assert not w.btn_compare.isHidden() and not w.lbl_readonly.isVisible()
+    assert not w.btn_compare.isHidden() and "Полный" in w.lbl_role_status.text()
     w.close()
 
 

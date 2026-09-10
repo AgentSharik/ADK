@@ -55,6 +55,7 @@ class FunctionWorker(BaseWorker):
 class SearchWorker(BaseWorker):
     """Единый поиск: ФИО / логин / телефон / почта / отдел / имя ПК / IP → строки таблицы."""
     results_ready = pyqtSignal(list, str, bool)  # rows, query, truncated
+    net_ready = pyqtSignal(dict, str)            # {ПК: (ip, online)} — второй шаг: результат проверки сети, query
 
     PRINTER_PREFIX = "printer:"
 
@@ -70,6 +71,7 @@ class SearchWorker(BaseWorker):
         self.include_archives = include_archives
         self.include_disabled = include_disabled
         self._printer_comps: set[str] = set()
+        self._net_pending: set[str] = set()      # ПК, чей статус сети ещё не проверен (см. _assemble(defer_net=True))
 
     @staticmethod
     def normalize_query(query: str) -> str:
@@ -139,13 +141,34 @@ class SearchWorker(BaseWorker):
         truncated = len(entries) > SEARCH_RESULT_LIMIT
         entries = entries[:SEARCH_RESULT_LIMIT]
         try:
-            rows = self._assemble(entries)
+            # 3.5.4: два шага. Сначала строки из AD + инвентаря (мгновенно), сеть проверяем потом и досылаем
+            # net_ready — на слабом ПК/сети таблица появляется сразу, а не через 1–2 с после DNS и пингов.
+            rows = self._assemble(entries, defer_net=True)
         except Exception as exc:  # noqa: BLE001
             log.exception("SearchWorker: assemble")
             self.error.emit(str(exc))
             return
-        if not self.cancelled:
-            self.results_ready.emit(printer_rows + rows, self.raw_query, truncated)
+        if self.cancelled:
+            return
+        self.results_ready.emit(printer_rows + rows, self.raw_query, truncated)
+        if self._net_pending:
+            net = self._probe_network(self._net_pending)
+            if net is not None and not self.cancelled:
+                self.net_ready.emit(net, self.raw_query)
+
+    def _probe_network(self, comps: set[str]) -> dict[str, tuple[str, bool]] | None:
+        """DNS + доступность для набора ПК параллельно; None — поиск отменён."""
+        net: dict[str, tuple[str, bool]] = {}
+        with ThreadPoolExecutor(max_workers=min(50, max(1, len(comps)))) as ex:
+            futs = {ex.submit(netutils.get_computer_network_info, pc): pc for pc in comps}
+            for f in as_completed(futs):
+                if self.cancelled:
+                    return None
+                try:
+                    net[futs[f]] = f.result()
+                except Exception:  # noqa: BLE001
+                    net[futs[f]] = ("Не найден", False)
+        return net
 
     def _printer_rows(self) -> list[dict]:
         """Сами принтеры, подходящие под запрос (модель или IP), — первыми строками результата.
@@ -221,7 +244,9 @@ class SearchWorker(BaseWorker):
                          "printers": printers_by_pc.get(name, [])})
         return rows
 
-    def _assemble(self, entries) -> list[dict]:
+    def _assemble(self, entries, defer_net: bool = False) -> list[dict]:
+        """Строки таблицы из записей AD + инвентаря. ``defer_net=True`` — сеть не проверять: для ПК без свежего
+        кэша строка получает статус из инвентаря и ``net_pending=True``, а их имена копятся в ``_net_pending``."""
         inv, perm, pcm = db.load_inventory_maps()
         audit = db.load_audit_map() if self.include_archives else {}
 
@@ -256,16 +281,20 @@ class SearchWorker(BaseWorker):
 
         printers_by_pc = db.printers_for_computers(to_check) if to_check else {}
         net: dict[str, tuple[str, bool]] = {}
-        if to_check:
-            with ThreadPoolExecutor(max_workers=50) as ex:
-                futs = {ex.submit(netutils.get_computer_network_info, pc): pc for pc in to_check}
-                for f in as_completed(futs):
-                    if self.cancelled:
-                        return []
-                    try:
-                        net[futs[f]] = f.result()
-                    except Exception:  # noqa: BLE001
-                        net[futs[f]] = ("Не найден", False)
+        pending: set[str] = set()
+        if to_check and defer_net:
+            for pc in to_check:
+                hit = netutils.cached_network_info(pc)
+                if hit is None:
+                    pending.add(pc)
+                else:
+                    net[pc] = hit
+        elif to_check:
+            probed = self._probe_network(to_check)
+            if probed is None:
+                return []
+            net = probed
+        self._net_pending = pending
 
         rows: list[dict] = []
         for e in entries:
@@ -287,7 +316,11 @@ class SearchWorker(BaseWorker):
                 "title": ad.get_ad_value(e, "title"), "mail": ad.get_ad_value(e, "mail"),
             }
             for comp in by_user.get(login, [""]):
-                ip, online = net.get(comp, ("Не найден", False))
+                is_pending = comp in pending
+                if is_pending:      # до проверки — данные инвентаря (последний скан), а не «не в сети» наугад
+                    ip, online = inv.get(comp, {}).get("ip", "Не найден"), bool(inv.get(comp, {}).get("is_online"))
+                else:
+                    ip, online = net.get(comp, ("Не найден", False))
                 last_logon = "Нет данных"
                 if comp in inv:
                     last_logon = inv[comp]["last_logon"]
@@ -307,7 +340,7 @@ class SearchWorker(BaseWorker):
                     if ip == "Не найден":
                         ip = csv_ip
                 rows.append({**base, "comp": comp or "—", "ip": ip if comp else "Не найден",
-                             "is_online": online, "last_logon": last_logon,
+                             "is_online": online, "net_pending": is_pending, "last_logon": last_logon,
                              "last_seen_online": inv.get(comp, {}).get("last_seen_online"),
                              "printers": printers_by_pc.get(comp, [])})
         if self._printer_comps:  # ПК с принтером, чьих пользователей AD не вернул (отключены/нет) — тоже показать

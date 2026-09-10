@@ -15,7 +15,7 @@ hidden = (
     collect_submodules("ldap3")            # протокол/расширения подключаются динамически
     + collect_submodules("pyasn1")
     + collect_submodules("keyring.backends")
-    + ["openpyxl", "openpyxl.styles", "openpyxl.utils", "cryptography", "qrcode", "qrcode.image.pil", "PIL.Image", "PIL.PngImagePlugin"]
+    + ["openpyxl", "openpyxl.styles", "openpyxl.utils", "cryptography"]   # QR-кодов и PIL в ADK нет — лишнее в exe не тянем
     + ["win32crypt", "win32timezone", "winkerberos"]  # на не-Windows отсутствуют — PyInstaller просто предупредит
 )
 

@@ -315,7 +315,7 @@ def test_main_window_kit_features(qapp, monkeypatch, tmp_path):
     monkeypatch.setattr(config.settings, "minimize_to_tray", False)
     w = ADApp("CORP\\admin", "pwd")
     w.show()
-    assert not w.lbl_readonly.isVisible()
+    assert "Полный" in w.lbl_role_status.text()
     w.search_input.setText("иванов")
     w.start_search()
     _spin(qapp, 1500)
@@ -334,7 +334,7 @@ def test_main_window_kit_features(qapp, monkeypatch, tmp_path):
     access.set_readonly(True, "test")
     try:
         w.apply_access()
-        assert w.lbl_readonly.isVisible() and not w.action_buttons["power"].isVisible()
+        assert "чтение" in w.lbl_role_status.text().lower() and not w.action_buttons["power"].isVisible()
     finally:
         access.reset()
         w.apply_access()

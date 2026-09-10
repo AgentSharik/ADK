@@ -166,6 +166,13 @@ class Palette:
     @property
     def neutral(self): return self._sem("#C7C7CC", "#8E8E93", "#3A3A3C", "#EBEBF0", "#C7C7CC")
 
+    # насыщенные цвета для индикаторов, столбиков графика и точек состояния: одинаково сочные в тёмной и светлой
+    # теме (кортеж выше даёт для светлой темы бледную рамку — ею нельзя рисовать кружок «узел отвечает»)
+    SOLID = {"success": "#30D158", "danger": "#FF453A", "warning": "#FF9F0A", "info": "#0A84FF", "neutral": "#8E8E93"}
+
+    def solid(self, kind: str) -> str:
+        return self.SOLID.get(kind, self.SOLID["neutral"])
+
     def color_map(self) -> dict[str, str]:
         """Все цвета палитры по именам — для перекраски inline-стилей при смене темы (см. widgets.retheme)."""
         m = {k: getattr(self, k) for k in ("text", "subtext", "card", "border", "input", "header", "hover", "button",
@@ -176,7 +183,7 @@ class Palette:
         return m
 
     def badge(self, kind: str) -> tuple[str, str, str]:
-        return {"online": self.success, "offline": self.danger, "active": self.neutral,
+        return {"online": self.success, "offline": self.danger, "active": self.neutral, "checking": self.neutral,
                 "disabled": self.danger, "warning": self.warning, "info": self.info}.get(kind, self.neutral)
 
 
@@ -314,8 +321,6 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QLabel#roleStatusLabel {{ color: {p.text}; background-color: {p.card}; border: 1px solid {p.border};
         border-radius: 8px; padding: 4px 10px; font-weight: 600; font-size: 12px; }}
     QLabel#roleStatusLabel:hover {{ border-color: {accent}; color: {accent}; background-color: {p.hover}; }}
-    QLabel#readonlyBadge {{ color: {p.warning[0]}; background-color: {p.warning[1]}; border: 1px solid {p.warning[2]};
-        border-radius: 10px; padding: 4px 10px; font-weight: 600; }}
     QLabel#updateLabel {{ color: {p.info[0]}; font-weight: 600; }}
     QListWidget::item {{ padding: 5px 8px; border-radius: 6px; border: 1px solid transparent; }}
     QListWidget::item:selected, QTreeWidget::item:selected {{ background-color: {p.selection}; color: {p.text};
@@ -385,7 +390,7 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QTableWidget, QTableView {{ qproperty-iconSize: 22px 22px; }}
     QMenu {{ icon-size: 22px; }}
     QPushButton#drivePicker {{ background: {relief(p.button, 110, 95)}; color: {p.text}; border: 1.5px solid {p.title_accent};
-        border-radius: 14px; padding: 4px 10px; font-weight: 700; font-size: 10.5pt; text-align: center; }}
+        border-radius: 14px; padding: 4px 14px 4px 18px; font-weight: 700; font-size: 10.5pt; text-align: center; }}
     QPushButton#drivePicker:hover {{ background: {p.selection}; }}
     QPushButton#drivePicker:pressed {{ background-color: {accent}; color: {p.on_accent}; }}
     QPushButton#drivePicker::menu-indicator {{ image: none; width: 0; }}

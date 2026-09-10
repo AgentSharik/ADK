@@ -183,11 +183,15 @@ class TitleBar(QWidget):
 class FramelessDialog(QDialog):
     """Безрамочный диалог. ``on_dialog_done`` вызывается при любом способе закрытия."""
 
-    def __init__(self, title: str, parent=None, size: tuple[int, int] = (480, 240)):
+    def __init__(self, title: str, parent=None, size: tuple[int, int] = (480, 240), large_font: bool = False):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.resize(*size)
+        if large_font:
+            # 3.5.4: окна, которые читают подолгу (пинг, карточка сотрудника), — шрифт на 2 pt крупнее базового
+            # (10 → 12 pt по умолчанию); правило на самом диалоге перекрывает размер из темы для всех его потомков
+            self.setStyleSheet(f"QWidget {{ font-size: {dialog_font_pt()}pt; }}")
         self._root = QVBoxLayout(self)
         self._root.setContentsMargins(10, 6, 10, 10)
         self._root.setSpacing(8)
@@ -219,6 +223,9 @@ class FramelessDialog(QDialog):
         pg = parent.frameGeometry()
         screen = self.screen() or parent.screen()
         avail = screen.availableGeometry() if screen is not None else pg
+        # 3.5.4: на мониторе 1366×768 окно 740 px высотой уходило под панель задач — ужимаем под доступную область
+        if self.width() > avail.width() - 16 or self.height() > avail.height() - 16:
+            self.resize(min(self.width(), avail.width() - 16), min(self.height(), avail.height() - 16))
         x = pg.x() + (pg.width() - self.width()) // 2
         y = pg.y() + (pg.height() - self.height()) // 2
         if self.height() <= pg.height() - self.HEADER_H:
@@ -566,6 +573,18 @@ def load_bundled_fonts() -> list[str]:
     return _fonts_loaded
 
 
+LARGE_FONT_DELTA = 2
+
+
+def dialog_font_pt() -> int:
+    """Размер шрифта «крупных» окон: базовый размер из настроек оформления + 2 pt."""
+    try:
+        from .config import settings
+        return int(settings.design.get("font_size") or 10) + LARGE_FONT_DELTA
+    except Exception:  # noqa: BLE001
+        return 10 + LARGE_FONT_DELTA
+
+
 def ui_font(family: str, size: int):
     """Шрифт приложения: семейство из настроек (Inter, если оно доступно), размер, начертание Medium —
     обычный текст (строки таблиц, подписи полей) читается так же плотно, как кнопки и бейджи."""
@@ -646,6 +665,8 @@ class DrivePicker(QPushButton):
         self._items: list[tuple[str, str]] = []   # (том, подпись: «Data · 402 из 931 ГБ»)
         self._current = ""
         self.menu = QMenu(self)
+        self.menu.setObjectName("diskMenu")        # то же меню, что у кнопки «Диск» в инспекторе: заголовок + строки томов
+        self.menu.setLayoutDirection(Qt.LayoutDirection.LeftToRight)   # кнопка RTL (стрелка справа), меню — обычное
         self.setMenu(self.menu)
         self._sync()
 
@@ -703,11 +724,14 @@ class DrivePicker(QPushButton):
         self.setIconSize(QSize(14, 14))
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)     # иконка справа от текста
         fm = self.fontMetrics()
-        self.setFixedWidth(fm.horizontalAdvance(self.text()) + 48)   # текст + стрелка, без пустого поля справа
+        # 3.5.4: буква тома упиралась в левый край кнопки — запас под текст и стрелку стал шире
+        self.setFixedWidth(fm.horizontalAdvance(self.text()) + 64)
         self.menu.clear()
+        head = self.menu.addAction("Том для карты:")
+        head.setEnabled(False)
         for drive, hint in self._items:
-            act = self.menu.addAction(icons.icon("checkmark" if drive == self._current else "circle", role="accent" if drive == self._current else "text"),
-                                      drive + (f"   {hint}" if hint else ""))
+            act = self.menu.addAction(icons.icon("internaldrive", role="accent" if drive == self._current else "text"),
+                                      f"{drive}$" + (f"    {hint}" if hint else ""))
             act.triggered.connect(lambda _c=False, d=drive: self.setCurrentText(d))
         if not self._items:
             self.menu.addAction("тома ещё не опрошены").setEnabled(False)

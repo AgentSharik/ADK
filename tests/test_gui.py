@@ -609,3 +609,59 @@ def test_power_button_menu_and_actions(qapp, fake_conn, monkeypatch):
     actions = [r[2] for r in db.audit_entries(admin="CORP\\admin")[:4]]
     assert {"lock", "shutdown", "sleep", "logoff"} <= set(actions)
     w.close()
+
+
+def test_search_shows_rows_before_network_check(qapp, fake_conn, monkeypatch):
+    """3.5.4: поиск в два шага. Строки появляются сразу (бейдж «Проверка…» и статус из инвентаря),
+    сеть проверяется вторым шагом и досылается сигналом net_ready — без пересортировки таблицы.
+
+    Проверяем на примере: WS-101 в инвентаре «в сети»; сеть отвечает через 0.4 с и говорит «не в сети».
+    До ответа в ячейке «Сеть» — «Проверка…», после — честный «Не в сети» с IP от DNS."""
+    import threading
+    import time
+    from adk import db, netutils
+    from adk.main_window import ADApp, BADGE_ROLE, COL_NET
+
+    netutils.clear_network_cache()
+    db.save_computer_for_login("ivanov", "WS-101")
+    db.batch_update_inventory([{"Hostname": "WS-101", "ActualIp": "10.0.0.9", "Status": "ACTIVE", "User": "ivanov"}],
+                              "2026-09-04 10:00:00")
+    gate = threading.Event()
+
+    def slow_probe(name, **kw):
+        gate.wait(3)
+        return ("10.0.0.99", False)
+
+    monkeypatch.setattr(netutils, "get_computer_network_info", slow_probe)
+    monkeypatch.setattr(ADApp, "start_scan", lambda self: None)
+    w = ADApp("CORP\\admin", "pwd")
+    w.show()
+    t0 = time.perf_counter()
+    w.search_input.setText("иванов")
+    w.start_search()
+    assert _wait(lambda: w.table.rowCount() >= 1, qapp)
+    assert time.perf_counter() - t0 < 2.5            # строки не ждали сеть
+    row = next(r for r in range(w.table.rowCount()) if w.table.item(r, 0).text() == "ivanov")
+    cell = w.table.item(row, COL_NET)
+    assert cell.data(BADGE_ROLE) == "checking" and "Проверка" in cell.text()
+    w.select_row(row)
+    assert "Проверка" in w.vals["status"].text()
+    gate.set()
+    assert _wait(lambda: w.table.item(row, COL_NET).data(BADGE_ROLE) == "offline", qapp)
+    assert "Не в сети" in w.table.item(row, COL_NET).text()
+    assert w.table.item(row, 0).text() == "ivanov"    # строка осталась на месте
+    assert "Не в сети" in w.vals["status"].text() and "10.0.0.99" in w.vals["pc"].text()
+    w.close()
+
+
+def test_assemble_without_defer_probes_network_synchronously(fake_conn, monkeypatch):
+    """CLI (`adk.cli`) и тесты зовут _assemble напрямую — там сеть проверяется сразу, как раньше,
+    и в строках нет `net_pending`."""
+    from adk import db, netutils
+    from adk.workers import SearchWorker
+    netutils.clear_network_cache()
+    db.save_computer_for_login("ivanov", "WS-101")
+    monkeypatch.setattr(netutils, "get_computer_network_info", lambda n, **kw: ("10.0.0.5", True))
+    rows = SearchWorker(lambda: fake_conn, "иванов")._assemble(ad.paged_search(fake_conn, "(x)", ad.USER_ATTRS))
+    r = next(x for x in rows if x["login"] == "ivanov")
+    assert r["ip"] == "10.0.0.5" and r["is_online"] is True and r["net_pending"] is False

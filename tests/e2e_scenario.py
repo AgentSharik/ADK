@@ -70,6 +70,7 @@ w.on_results([{"login":"stale","fio":"stale","is_disabled":False,"comp":"—","i
 check("устаревший ответ поиска отброшен", w.table.item(0,0).text()!="stale")
 n_before=conn.calls; w.start_search(); tg._wait(lambda: conn.calls>n_before and w.search_worker is None, app, 3000)
 check("повторный поиск после первого (был RuntimeError)", conn.calls==n_before+1 and w.search_worker is None and w.lbl_status.text().startswith("Найдено"), w.lbl_status.text())
+tg._wait(lambda: any("петров" in q.lower() for q in db.get_recent_searches()), app, 2000)   # 3.5.4: история пишется после отрисовки таблицы
 check("история поиска пишется", any("петров" in q.lower() for q in db.get_recent_searches()), str(db.get_recent_searches()))
 w.show_category("offline"); check("drill-down «не в сети»", w.table.rowCount()==1 and w.table.item(0,3).text()=="WS-102" and "свободный" in w.lbl_fio.text().lower())
 w.show_category("all"); check("drill-down «все»", w.table.rowCount()==2)

@@ -202,10 +202,8 @@ class ADApp(FramelessMainWindow):
         self.close()
 
     def apply_access(self):
-        """Скрывает кнопки запрещённых действий (ПК / AD) и показывает бейдж роли в шапке и статус-баре."""
-        self.lbl_readonly.setText(tr(access.badge_text()))
-        self.lbl_readonly.setVisible(access.is_limited())
-        self.lbl_readonly.setToolTip(access.reason())
+        """Скрывает кнопки запрещённых действий (ПК / AD); роль показывается одним местом — в строке состояния
+        (3.5.4: дублирующий бейдж «AD: только чтение» из шапки убран — внизу и так написано)."""
         if hasattr(self, "lbl_role_status"):
             self.lbl_role_status.setText(tr(access.role_title_short()))
             self.lbl_role_status.setToolTip(f"{access.role_summary()[1]}\n(Клик — подробнее о возможностях роли)")
@@ -358,13 +356,9 @@ class ADApp(FramelessMainWindow):
         btn_plugins = QPushButton(tr("🧩 Плагины"))
         btn_plugins.setToolTip("Плагины и модули автоматизации ADK")
         btn_plugins.clicked.connect(lambda: PluginsDialog(self).exec())
-        self.lbl_readonly = QLabel(tr("🔒 Только чтение"))
-        self.lbl_readonly.setObjectName("readonlyBadge")
-        self.lbl_readonly.setVisible(False)
         top.addWidget(self.search_input, 1)
         top.addWidget(btn_search)
         top.addLayout(chk)
-        top.addWidget(self.lbl_readonly)
         top.addWidget(btn_plugins)
         top.addWidget(btn_design)
         content.addLayout(top)
@@ -756,6 +750,7 @@ class ADApp(FramelessMainWindow):
         self.lbl_status.setText("🔍 Поиск…")
         w = SearchWorker(self.get_conn, q, self.chk_archive.isChecked(), self.chk_disabled.isChecked(), parent=self)
         w.results_ready.connect(self.on_results)
+        w.net_ready.connect(self.on_net_ready)
         w.error.connect(lambda m: self.lbl_status.setText(f"⚠️ {m}"))
         self._threads.append(w)
 
@@ -773,15 +768,13 @@ class ADApp(FramelessMainWindow):
     def on_results(self, rows: list, query: str, truncated: bool = False):
         if self.search_input.text().strip() != query:
             return  # устаревший ответ
-        db.save_search_query(query, self.admin_name)
-        terms = {t for r in rows for t in (r.get("login"), r.get("comp"), (r.get("full_fio") or "").split(" ")[0]) if t and t != "—"}
-        db.remember_terms(terms)
-        model = self.completer.model()
-        if model is not None and hasattr(model, "setStringList"):
-            model.setStringList(db.suggestions())
         self.results = rows
         self.stack.setCurrentIndex(1)
         self.fill_table(rows)
+        # 3.5.4: история/подсказки пишутся ПОСЛЕ отрисовки таблицы — три записи в SQLite на медленном диске
+        # (десятки мс каждая) раньше стояли между нажатием «Найти» и появлением строк
+        terms = {t for r in rows for t in (r.get("login"), r.get("comp"), (r.get("full_fio") or "").split(" ")[0]) if t and t != "—"}
+        QTimer.singleShot(0, lambda: self._after_results(query, terms))
         if truncated:
             self.lbl_status.setText(
                 f"Найдено: {len(rows)} — показаны первые {SEARCH_RESULT_LIMIT} учётных записей, уточните запрос")
@@ -793,6 +786,51 @@ class ADApp(FramelessMainWindow):
                 self.lbl_status.setText(f"🖨️ Принтеров: {len(printers)} (подключено ПК — {pcs}) · людей/ПК: {people}")
             else:
                 self.lbl_status.setText(f"Найдено: {len(rows)}")
+
+    @staticmethod
+    def net_badge(u: dict) -> "StatusItem":
+        """Ячейка «Сеть»: до проверки — «Проверка…» (нейтральная), потом честный статус."""
+        if u.get("net_pending"):
+            return StatusItem("● Проверка…", "checking")
+        return StatusItem("● В сети" if u["is_online"] else "● Не в сети", "online" if u["is_online"] else "offline")
+
+    def on_net_ready(self, net: dict, query: str) -> None:
+        """Второй шаг поиска (3.5.4): пришли DNS/доступность — обновляем IP, бейджи «Сеть» и инспектор,
+        строки не пересортировываем (таблица не должна «прыгать» под курсором)."""
+        if self.search_input.text().strip() != query:
+            return
+        sel = self.selected()
+        sel_was_pending = bool(sel and sel.get("net_pending"))
+        for u in self.results:
+            comp = db.clean_computer_name(u.get("comp") or "")
+            if comp in net:
+                ip, online = net[comp]
+                if ip != "Не найден":
+                    u["ip"] = ip
+                u["is_online"] = online
+            u["net_pending"] = False         # что не пришло (отмена/ошибка) — остаются данные инвентаря
+        for r in range(self.table.rowCount()):
+            it = self.table.item(r, COL_LOGIN)
+            idx = it.data(Qt.ItemDataRole.UserRole) if it else None
+            if isinstance(idx, int) and 0 <= idx < len(self.results):
+                u = self.results[idx]
+                cell = self.table.item(r, COL_NET)
+                if u.get("kind") != "printer" and (cell is None or cell.data(BADGE_ROLE) == "checking"):
+                    self.table.setItem(r, COL_NET, self.net_badge(u))
+        if sel is not None and sel_was_pending:
+            self._shown = None
+            self.show_user(sel)
+
+    def _after_results(self, query: str, terms: set[str]) -> None:
+        """Отложенная часть on_results: история поиска и словарь подсказок (БД), когда таблица уже на экране."""
+        try:
+            db.save_search_query(query, self.admin_name)
+            db.remember_terms(terms)
+            model = self.completer.model()
+            if model is not None and hasattr(model, "setStringList"):
+                model.setStringList(db.suggestions())
+        except Exception as exc:  # noqa: BLE001
+            log.debug("after_results: %s", exc)
 
     def fill_table(self, rows: list[dict]):
         self.table.setUpdatesEnabled(False)
@@ -823,8 +861,7 @@ class ADApp(FramelessMainWindow):
                      StatusItem(u.get("account_text") or ("Не активна" if u["is_disabled"] else "Активна"),
                                 u.get("account_kind") or ("disabled" if u["is_disabled"] else "active")),
                      QTableWidgetItem(u["comp"] or "—"),
-                     StatusItem("● В сети" if u["is_online"] else "● Не в сети",
-                                "online" if u["is_online"] else "offline")]
+                     self.net_badge(u)]
             cells += [QTableWidgetItem(str(u.get(k) or "")) for k in
                       ("phone", "ip_phone", "office", "address", "company", "dept", "title", "last_logon")]
             for c, item in enumerate(cells):
@@ -902,8 +939,12 @@ class ADApp(FramelessMainWindow):
         self.vals["login"].setText(login or "—")
         self.vals["pc"].setText(f"{comp} ({u.get('ip', 'Не найден')})" if comp else "—")
         on = bool(u.get("is_online"))
-        self.vals["status"].setText("● В сети" if on else "● Не в сети")
-        self.vals["status"].setStyleSheet(f"color: {pal.success[0] if on else pal.danger[0]}; font-weight: bold;")
+        if u.get("net_pending"):
+            self.vals["status"].setText("● Проверка…")
+            self.vals["status"].setStyleSheet(f"color: {pal.subtext}; font-weight: bold;")
+        else:
+            self.vals["status"].setText("● В сети" if on else "● Не в сети")
+            self.vals["status"].setStyleSheet(f"color: {pal.success[0] if on else pal.danger[0]}; font-weight: bold;")
         self.btn_ping.setVisible(bool(comp))
         phones = [p for p in (u.get("phone"), f"(IP: {u['ip_phone']})" if u.get("ip_phone") else "") if p]
         self.vals["phone"].setText(" ".join(phones) or "—")

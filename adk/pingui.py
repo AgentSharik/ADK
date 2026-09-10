@@ -67,7 +67,7 @@ class LatencyGraph(QWidget):
         # сетка + подписи
         p.setPen(QPen(QColor(pal.border), 1, Qt.PenStyle.DotLine))
         font = QFont(self.font())
-        font.setPointSizeF(7.5)
+        font.setPointSizeF(9.0)
         p.setFont(font)
         for k in (0.0, 0.5, 1.0):
             y = area.bottom() - area.height() * k
@@ -86,7 +86,7 @@ class LatencyGraph(QWidget):
         step = area.width() / n
         bw = max(2.0, step - 2)
         start = n - len(self.samples)
-        good, bad = QColor(pal.success[2]), QColor(pal.danger[2])
+        good, bad = QColor(pal.solid("success")), QColor(pal.solid("danger"))
         path = QPainterPath()
         first = True
         for i, s in enumerate(self.samples):
@@ -114,7 +114,7 @@ class LatencyGraph(QWidget):
         p.drawPath(path)
         if self.waiting and len(self.samples) < n:
             x = area.left() + (start + len(self.samples)) * step
-            wc = QColor(pal.warning[2])
+            wc = QColor(pal.solid("warning"))
             wc.setAlpha(110)
             p.setPen(QPen(wc, 1, Qt.PenStyle.DashLine))
             p.setBrush(Qt.BrushStyle.NoBrush)
@@ -128,12 +128,12 @@ class LatencyGraph(QWidget):
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(bgc)
             p.drawRoundedRect(plate, 4, 4)
-            p.setPen(QColor(pal.warning[2]))
+            p.setPen(QColor(pal.solid("warning")))
             p.drawText(plate, Qt.AlignmentFlag.AlignCenter, label)
         if ok:
             avg = statistics.fmean(ok)
             y = area.bottom() - area.height() * min(1.0, avg / top)
-            p.setPen(QPen(QColor(pal.warning[2]), 1, Qt.PenStyle.DashLine))
+            p.setPen(QPen(QColor(pal.solid("warning")), 1, Qt.PenStyle.DashLine))
             p.drawLine(int(area.left()), int(y), int(area.right()), int(y))
         p.end()
 
@@ -143,7 +143,7 @@ class PingDialog(FramelessDialog):
 
     def __init__(self, computer_name: str, ip: str, app=None, parent=None):
         target = ip if ip and ip != "Не найден" else computer_name
-        super().__init__(f"📡 Пинг: {computer_name}", parent, (860, 760))
+        super().__init__(f"📡 Пинг: {computer_name}", parent, (900, 800), large_font=True)
         self.computer_name, self.target, self.app = computer_name, target, app
         self.sent = self.recv = 0
         self.times: list[float] = []
@@ -175,7 +175,7 @@ class PingDialog(FramelessDialog):
         self.lbl_now.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         hl.addWidget(self.lbl_now)
         unit = QLabel("мс\nсейчас")
-        unit.setStyleSheet(f"color: {pal.subtext}; font-size: 8.5pt;")
+        unit.setStyleSheet(f"color: {pal.subtext}; font-size: 10pt;")
         hl.addWidget(unit)
         self.body.addWidget(head)
 
@@ -195,7 +195,7 @@ class PingDialog(FramelessDialog):
         for i, (key, title, unit) in enumerate((("sent", "Отправлено", ""), ("recv", "Получено", ""), ("loss", "Потери", ""),
                                                 ("min", "Мин", "мс"), ("avg", "Сред", "мс"), ("max", "Макс", "мс"), ("jit", "Джиттер", "мс"))):
             t = QLabel(title.upper() + (f" · {unit}" if unit else ""))
-            t.setStyleSheet(f"color: {pal.subtext}; font-size: 8pt; font-weight: bold; letter-spacing: 0.5px;")
+            t.setStyleSheet(f"color: {pal.subtext}; font-size: 9.5pt; font-weight: bold; letter-spacing: 0.5px;")
             t.setAlignment(Qt.AlignmentFlag.AlignCenter)
             v = QLabel("—")
             v.setStyleSheet("font-size: 13pt; font-weight: bold;")
@@ -218,7 +218,7 @@ class PingDialog(FramelessDialog):
         jh = QHBoxLayout()
         jh.addWidget(QLabel("<b>Журнал</b>"))
         self.lbl_journal = QLabel("")
-        self.lbl_journal.setStyleSheet(f"color: {pal.subtext}; font-size: 8.5pt;")
+        self.lbl_journal.setStyleSheet(f"color: {pal.subtext}; font-size: 10pt;")
         jh.addWidget(self.lbl_journal)
         jh.addStretch()
         self.filter_btns: dict[str, QPushButton] = {}
@@ -246,9 +246,9 @@ class PingDialog(FramelessDialog):
         hh = self.journal.horizontalHeader()
         hh.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         hh.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        for c, wdt in ((0, 26), (1, 50), (2, 84), (4, 84), (5, 58)):
+        for c, wdt in ((0, 28), (1, 56), (2, 96), (4, 92), (5, 64)):
             self.journal.setColumnWidth(c, wdt)
-        self.journal.verticalHeader().setDefaultSectionSize(22)
+        self.journal.verticalHeader().setDefaultSectionSize(26)
         self.journal.setMinimumHeight(230)
         jl.addWidget(self.journal, 1)
         self.events = QListWidget()   # текстовые копии для отчёта/тестов — не показываются
@@ -309,7 +309,7 @@ class PingDialog(FramelessDialog):
     def _add_row(self, kind: str, result: str, rtt: str = "", ttl: str = "", num: str = ""):
         """Строка журнала. kind: ok · fail · info · event."""
         pal = app_palette()
-        color = {"ok": pal.success[2], "fail": pal.danger[2], "event": pal.title_accent}.get(kind, pal.subtext)
+        color = {"ok": pal.solid("success"), "fail": pal.solid("danger"), "event": pal.title_accent}.get(kind, pal.subtext)
         fg = {"fail": pal.danger[0], "event": pal.title_accent, "info": pal.subtext}.get(kind, pal.text)
         r = self.journal.rowCount()
         self.journal.insertRow(r)
@@ -417,7 +417,7 @@ class PingDialog(FramelessDialog):
 
     def _set_state(self, ok: bool):
         pal = app_palette()
-        self.dot.setStyleSheet(f"font-size: 30pt; color: {pal.success[2] if ok else pal.danger[2]};")
+        self.dot.setStyleSheet(f"font-size: 30pt; color: {pal.solid('success' if ok else 'danger')};")
         self.lbl_state.setText("Узел отвечает" if ok else "Узел не отвечает")
         while self.badge_box.count():
             w = self.badge_box.takeAt(0).widget()

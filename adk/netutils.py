@@ -169,6 +169,18 @@ def clear_network_cache() -> None:
         _net_cache.clear()
 
 
+def cached_network_info(computer_name: str) -> tuple[str, bool] | None:
+    """Свежий (моложе NET_CACHE_TTL) ответ из кэша без обращения к сети; None — надо проверять.
+    3.5.4: поиск сначала показывает строки, а сеть проверяет вторым шагом — кэш позволяет не показывать
+    «Проверка…» для ПК, которые пинговались только что."""
+    name = clean_computer_name(computer_name)
+    with _net_cache_lock:
+        hit = _net_cache.get(name)
+    if hit and time.monotonic() - hit[0] < NET_CACHE_TTL:
+        return hit[1]
+    return None
+
+
 def get_computer_network_info(computer_name: str, use_cache: bool = True) -> tuple[str, bool]:
     """(ip, online). ip == 'Не найден' если DNS не знает имя. Результат кэшируется на NET_CACHE_TTL секунд."""
     name = clean_computer_name(computer_name)

@@ -70,6 +70,8 @@ def get_db_connection(path: str | None = None):
         return connect(settings.db_dsn)
     conn = sqlite3.connect(path or settings.db_path, timeout=30)
     conn.execute("PRAGMA busy_timeout=30000;")
+    with contextlib.suppress(sqlite3.Error):
+        conn.execute("PRAGMA synchronous=NORMAL")    # с WAL безопасно и заметно быстрее на обычных дисках
     return conn
 
 
@@ -150,6 +152,11 @@ def init_db() -> None:
         if sqlite:
             conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
             conn.commit()
+            # 3.5.4: WAL — фоновый сканер пишет инвентарь, а поиск в это время читает без ожиданий; на медленном
+            # SSD/HDD это заметно (раньше запись блокировала чтение до commit). Режим хранится в самом файле БД.
+            with contextlib.suppress(sqlite3.Error):
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
 
 
 # --------------------------------------------------------------------------- helpers

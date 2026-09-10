@@ -1,6 +1,6 @@
 # ADK — Active Directory Kit · руководство для продолжения работы в новом чате
 
-Актуально на 2026-09-10. Версия проекта **3.5.3**, тестов **239**, e2e 46 + 82 + 45. Раздел О — обязательный регламент работы.
+Актуально на 2026-09-11. Версия проекта **3.5.4**, тестов **241**, e2e 46 + 82 + 45. Раздел О — обязательный регламент работы.
 Внутренний документ: лежит в `extras/`, не входит в zip и не упоминается в README/CHANGELOG.
 Прочитать целиком до первой правки — здесь всё от А до Я, включая производство видео и чистку истории git.
 
@@ -84,8 +84,8 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
     ├── HANDOVER.md      этот файл
     ├── QA_ARCHITECTURE.md   приватная шпаргалка по архитектуре тестирования
     ├── adk.zip          поставка (только проект, см. раздел И)
-    ├── videos/          РОВНО ОДИН ролик: ADK_demo_25.mp4
-    ├── demo/            РОВНО ОДИН сценарий make_demo25.py + make_music.py
+    ├── videos/          РОВНО ОДИН ролик: ADK_demo_26.mp4
+    ├── demo/            РОВНО ОДИН сценарий make_demo26.py + make_music.py
     └── data/ADK/        рабочие config.ini, pc_mapping.db, adk.log автора
 ```
 
@@ -134,6 +134,11 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
 - **Оформление**: ровно 10 тем — тёмные `dark` Графит (по умолчанию), `ember` Уголь и янтарь, `pine` Хвоя, `plum` Слива, `dusk` Сумерки (градиент, `type: grad`, `c1`/`c2`); светлые `light` Светлая, `sand` Песок, `garden` Сад, `lavender` Лаванда, `dawn` Рассвет (градиент). Цвета фона пресета брать через `theme.theme_colors(t)`, не через `t["bg"]` (у градиентных его нет). **Шрифт**: встроенный Inter из `assets/fonts` (`widgets.load_bundled_fonts`, `ui_font` — начертание Medium), в QSS цепочка `'{font_family}', 'Inter', 'Segoe UI'`; в `adk.spec` папка шрифтов включена в сборку. Картинки в QSS (стрелки полей, галочка чекбокса) — **только файлами** через `theme._svg_uri` (Qt не понимает data-URI в таблицах стилей). Ведущие эмодзи заменяются иконками также в `QComboBox.addItem/addItems/insertItem` и `QMenu.addAction/addMenu`. Темы различаются тоном фона/панелей, не только акцентом (тест `test_ten_unique_themes_without_navy_and_black` проверяет попарные расстояния). Кнопки-предупреждения (`btnWarning`) — янтарь `theme.WARNING_FILL` с тёмным текстом `WARNING_TEXT`. Заливки непрозрачные; кнопки/панели объёмные (`relief`); иконки 22 px в кнопках, 19 px в подписях, контрастные на заливных кнопках; ничего не сливается с фоном. Свой выбор цвета («было» = «стало»). Никаких двойных иконок рядом (эмодзи + иконка, ★ + иконка), если это не две разные функции.
 - **Пинг**: индикатор, живой график, статистика, лента (по умолчанию только события); офлайн-ПК не отвечает (согласовано с «Сеть»). Полная переработка — ждёт описания автора.
 - **БД/CSV** ничем не портить.
+- **3.5.4 (партия 22):** верхняя надпись роли удалена — роль только внизу справа (`lbl_role_status`); в окнах пинга и карточки
+  шрифт 12 pt (`large_font=True`), при добавлении кнопок в карточку следить, чтобы ряд помещался в 1200 px; поиск показывает
+  строки сразу, «● Проверка…» в столбце «Сеть» до ответа сети — это честный промежуточный статус, а не «не в сети»;
+  индикаторные цвета брать через `pal.solid(kind)`, а не `pal.badge(kind)[2]`; кнопка выбора тома в «Здоровье» — как «Диск».
+  Замеры быстродействия интерфейса — в CHANGELOG 3.5.4 («Быстродействие»), чтобы не мерить заново.
 
 ---
 
@@ -164,7 +169,8 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
 сравнивать через `icons.strip()` или `btn._adk_icon`; ячейки с иконкой — `item.icon().isNull()`.
 
 e2e: `for f in e2e_scenario e2e_round2 e2e_round3; do PYTHONPATH=/home/user QT_QPA_PLATFORM=offscreen python tests/$f.py 2>&1 | grep -v propagate | tail -n 1; done`
-→ `46/46`, `82/82`, `45/45`.
+→ `46/46`, `82/82`, `45/45`. В `e2e_scenario` проверка «история поиска пишется» ждёт через `tg._wait` — с 3.5.4 история
+пишется после отрисовки таблицы (`QTimer.singleShot(0, …)`), сразу после `start_search` её ещё нет.
 
 ---
 
@@ -219,7 +225,7 @@ curl -s https://api.github.com/repos/AgentSharik/ADK/commits/main | grep -m1 '"s
 **Новый ролик никогда не короче предыдущего** (см. длительности в разделе М; сцены только добавляются, не удаляются).
 Тема на видео — тёмная «Графит» (`PRESET_THEMES["dark"]`), не зелёная.
 
-**Обязательные сцены** (все есть в `make_demo25.py`, в этом порядке): вход (показать/скрыть пароль, «запомнить»);
+**Обязательные сцены** (все есть в `make_demo26.py`, в этом порядке): вход (показать/скрыть пароль, «запомнить»);
 дашборд → окно «Роль и права доступа» (роль AD) → бейдж роли; менеджер плагинов (создать шаблон → в папку кладётся
 «настоящий» плагин `message.py` «Сообщение» с `place = "header"` → «Перечитать» → кнопка «Сообщение» рядом с ФИО →
 нажатие: `InputDialog` в стиле ADK, текст, `MessageBox` «отправлено» → в менеджере «Выключить» → кнопка исчезла
@@ -247,16 +253,16 @@ curl -s https://api.github.com/repos/AgentSharik/ADK/commits/main | grep -m1 '"s
 - Финал: `w.quit_app()`, закрыть pipe, `make_music.py <сек> music.wav`, ffmpeg мультиплексирует, `framesNN` удаляется.
 
 **Как сделать следующий ролик (NN+1):**
-1. `cp extras/demo/make_demo25.py extras/demo/make_demo26.py`; заменить в нём `frames25`→`frames26`, `ADK_demo_25`→`ADK_demo_26`,
+1. `cp extras/demo/make_demo26.py extras/demo/make_demo27.py`; заменить в нём `frames26`→`frames27`, `ADK_demo_26`→`ADK_demo_27`,
    `VERSION`. Добавить новые сцены (по образцу существующих), старые не удалять.
-2. `python -m pyflakes extras/demo/make_demo26.py`.
+2. `python -m pyflakes extras/demo/make_demo27.py`.
 3. Быстрый прогон на ошибки (1–3 минуты): временная копия с `def sec(s): return 1`, `wait(min(ms,60))`, `live` ≤ 1 с и
    путями в `/tmp` — сценарий должен дойти до конца (падение на `make_music.py` из-за пути в копии — нормально).
 4. Реальный рендер (10–15 минут, через `start_process`, а не bash):
-   `cd /home/user && rm -rf extras/demo/frames26 && QT_QPA_PLATFORM=offscreen timeout 1750 python extras/demo/make_demo26.py`
-5. Проверка: `FF=$(python -c "import imageio_ffmpeg,os;print(imageio_ffmpeg.get_ffmpeg_exe())"); $FF -i extras/videos/ADK_demo_26.mp4 2>&1 | grep -E "Duration|Stream"`
+   `cd /home/user && rm -rf extras/demo/frames27 && QT_QPA_PLATFORM=offscreen timeout 1750 python extras/demo/make_demo27.py`
+5. Проверка: `FF=$(python -c "import imageio_ffmpeg,os;print(imageio_ffmpeg.get_ffmpeg_exe())"); $FF -i extras/videos/ADK_demo_27.mp4 2>&1 | grep -E "Duration|Stream"`
    — есть Video и Audio, длительность ≥ предыдущей. Контактный лист кадров (ffmpeg `-vf fps=1/20` → PIL) — посмотреть глазами.
-6. Удалить **предыдущие** `extras/demo/make_demo25.py` и `extras/videos/ADK_demo_25.mp4` (актуальные остаются),
+6. Удалить **предыдущие** `extras/demo/make_demo26.py` и `extras/videos/ADK_demo_26.mp4` (актуальные остаются),
    обновить этот файл (разделы В, К, М: длительность, номер следующего ролика).
 7. Коммит + push, затем чистка истории (раздел Л). **Полный пошаговый стандарт с готовыми скриптами — раздел О; он главный.**
 
@@ -337,7 +343,7 @@ du -sh .git      # для контроля; свежий клон должен �
 текстом; подписи свободного IP переписаны; баннер роли убран из карточки; «Клавиши вызова ADK» с пояснением; кнопка и
 окно «Уведомления» удалены (`NotifySettingsDialog` больше нет, SMTP настраивается в `config.ini`); темы переработаны
 (6 тёмных / 4 светлые). Тестов 236.
-**3.5.3** (текущая) — единый шрифт интерфейса Inter из `assets/fonts` (`widgets.load_bundled_fonts`/`ui_font`, старые значения
+**3.5.3** — единый шрифт интерфейса Inter из `assets/fonts` (`widgets.load_bundled_fonts`/`ui_font`, старые значения
 `font_family` мигрируются через `LEGACY_FONTS`; шрифты добавлены в `adk.spec`); все тексты приведены к плотному начертанию,
 бледные цвета убраны (пинг, S.M.A.R.T.-карточки, ошибки, легенды); стрелки выпадающих списков и галочки чекбоксов рисуются из
 SVG-файлов во временной папке (`theme._svg_uri` — QSS не понимает data:-URI); эмодзи в QComboBox/QMenu заменены иконками
@@ -346,14 +352,28 @@ SVG-файлов во временной папке (`theme._svg_uri` — QSS н
 массовый пинг совпадает с таблицей; DHCP-бейдж/предупреждение/легенда свободного IP только при настроенном DHCP-сервере,
 квадрат «выбранный результат» из легенды убран; темы: «Вино» и «Мокко» заменены градиентными «Сумерки» (dusk) и «Рассвет» (dawn)
 (`type: grad`, `c1`/`c2`, `theme_colors()`), плашки тем в «Оформлении» показывают градиент. Тестов 239. Видео —
-`extras/videos/ADK_demo_25.mp4` (сценарий `extras/demo/make_demo25.py`, с субтитрами, одна версия 3.5.3 в титрах,
-длительность — в заметке ниже).
+видео 25 (заменено 26-м).
+**3.5.4** (текущая) — поиск в два шага: `SearchWorker._assemble(defer_net=True)` кладёт в строки статус из инвентаря и
+`net_pending=True` для ПК без свежего кэша (`netutils.cached_network_info`), `results_ready` уходит сразу, потом
+`_probe_network` → сигнал `net_ready(dict, query)` → `ADApp.on_net_ready` обновляет IP/бейджи «Сеть»/инспектор на месте
+(бейдж `checking` = «● Проверка…», нейтральный; `ADApp.net_badge(u)`); CLI и тесты зовут `_assemble` без `defer_net` — сеть
+проверяется сразу, как раньше. `on_results` пишет историю/подсказки после отрисовки (`QTimer.singleShot(0, _after_results)`).
+SQLite: `journal_mode=WAL` + `synchronous=NORMAL` (`db.init_db`/`get_db_connection`). Верхняя надпись роли (`lbl_readonly`,
+`#readonlyBadge`) удалена — остаётся `lbl_role_status` внизу справа. `FramelessDialog(large_font=True)` → `dialog_font_pt()`
+(размер из «Оформления» + `LARGE_FONT_DELTA=2`, по умолчанию 12 pt) для `PingDialog` (900×800) и `UserCardDialog` (1200×720;
+кнопки с уже подписями «Смена пароля» / «Разблокировать» / «Отключить учётку» и `padding 10px`; подсказка внизу с переносом);
+`FramelessDialog._place_below_parent_header` ужимает окно под доступную область экрана. `Palette.SOLID`/`solid(kind)` — насыщенные
+цвета индикаторов (точка и график пинга, шкалы Здоровья) вместо `[2]` из бейджа. `DrivePicker` — меню `QMenu#diskMenu` как в
+инспекторе (заголовок «Том для карты:», иконка `internaldrive`, подсказка `C$`, `setLayoutDirection(LeftToRight)` — иначе иконки
+не рисуются у RTL-кнопки; без checkable). `adk.spec`: убраны hiddenimports `qrcode`/`PIL`. Тестов 241 (2 новых в
+`tests/test_gui.py`: двухшаговый поиск и `_assemble` без отложенной сети). Видео — `extras/videos/ADK_demo_26.mp4`
+(сценарий `extras/demo/make_demo26.py`; новая сцена после набора «сидоров»: шлюз `_gate` задерживает сеть → «Проверка…» → результат).
 
-Длительность роликов (для правила «не короче предыдущего»): 21 — 8:51 (531 с); 23 — 9:22 (562 с); 24 — 9:36 (576 с); **25 — 9:39 (579 с)** (файл ~20 МБ).
-Темп статичных пауз задаётся константой `HOLD_SCALE` в `make_demo25.py` (сейчас 1.25) — если новый ролик выходит короче,
+Длительность роликов (для правила «не короче предыдущего»): 21 — 8:51 (531 с); 23 — 9:22 (562 с); 24 — 9:36 (576 с); 25 — 9:39 (579 с); **26 — 9:42 (582 с)** (файл ~20 МБ).
+Темп статичных пауз задаётся константой `HOLD_SCALE` в `make_demo26.py` (сейчас 1.25) — если новый ролик выходит короче,
 проще всего поднять её, а не резать сцены; живые сегменты пинга — `live(S, 14.0)` / `live(S, 12.0)`.
 
-Открытые задачи: **полная переработка окна «Пинг»** (автор ещё не описал желаемое); при следующем видео — номер 26.
+Открытые задачи: **полная переработка окна «Пинг»** (автор ещё не описал желаемое; в 3.5.4 сделан только крупный шрифт); при следующем видео — номер 27.
 
 ---
 
@@ -531,43 +551,44 @@ d.grab().save("/tmp/audit/s_card.png"); d.close(); w.close()
 
 Шаг 1 — копия скрипта и пути (замена **всех** вхождений, не только первого):
 ```bash
-cd /home/user && cp extras/demo/make_demo25.py extras/demo/make_demo26.py
+cd /home/user && cp extras/demo/make_demo26.py extras/demo/make_demo27.py
 python - <<'PYEOF'
-p = 'extras/demo/make_demo26.py'; s = open(p, encoding='utf-8').read()
-for a, b in (('frames25', 'frames26'), ('ADK_demo_25', 'ADK_demo_26'), ('VERSION = "3.5.3"', 'VERSION = "X.Y.Z"')):
+p = 'extras/demo/make_demo27.py'; s = open(p, encoding='utf-8').read()
+for a, b in (('frames26', 'frames27'), ('ADK_demo_26', 'ADK_demo_27'), ('VERSION = "3.5.4"', 'VERSION = "X.Y.Z"')):
     assert a in s, a; s = s.replace(a, b)
 open(p, 'w', encoding='utf-8').write(s)
 PYEOF
-grep -n "OUT_DIR =\|OUT_MP4 =\|VERSION =" extras/demo/make_demo26.py     # все три строки — про 26 и новую версию
+grep -n "OUT_DIR =\|OUT_MP4 =\|VERSION =" extras/demo/make_demo27.py     # все три строки — про 27 и новую версию
 ```
 Шаг 2 — новые сцены по образцу существующих: `cap("…")` → `move_to(S, кнопка)` → `press(S, кнопка)` → диалог через
 `show_dialog(S, dlg)` / `hide_dialog(S, dlg)` → `hold(S, сек)`. Каждая новая кнопка или окно в приложении → своя сцена.
 Если в сценарии AD-действие вызывается напрямую (`ad.reset_password(...)`), сразу вызвать и локальное обновление окна
 (`card._forget_password_age(must)`, `card._forget_lockout()`), иначе окно покажет старое состояние.
 
-Шаг 3 — pyflakes: `python -m pyflakes extras/demo/make_demo25.py`.
+Шаг 3 — pyflakes: `python -m pyflakes extras/demo/make_demo27.py`.
 
 Шаг 4 — сухой прогон (≈3 мин; те же сцены, 1 кадр на паузу; ловит все ошибки атрибутов и логики ДО долгого рендера).
 Пути сухого прогона — **только в `/tmp/audit`**, иначе он перезапишет настоящий ролик:
 ```bash
 python - <<'PYEOF'
-s = open('/home/user/extras/demo/make_demo25.py', encoding='utf-8').read()
-s = s.replace('OUT_DIR = "/home/user/extras/demo/frames25"', 'OUT_DIR = "/tmp/audit/frames25dry"')
-s = s.replace('OUT_MP4 = "/home/user/extras/videos/ADK_demo_25.mp4"', 'OUT_MP4 = "/tmp/audit/dry25.mp4"')
+s = open('/home/user/extras/demo/make_demo27.py', encoding='utf-8').read()
+s = s.replace('OUT_DIR = "/home/user/extras/demo/frames27"', 'OUT_DIR = "/tmp/audit/frames27dry"')
+s = s.replace('OUT_MP4 = "/home/user/extras/videos/ADK_demo_27.mp4"', 'OUT_MP4 = "/tmp/audit/dry27.mp4"')
 s = s.replace('def sec(s):\n    return max(1, int(s * FPS))', 'def sec(s):\n    return 1')
 s = s.replace('def wait(ms):\n    tg._wait(lambda: False, app, ms)', 'def wait(ms):\n    tg._wait(lambda: False, app, min(ms, 60))')
 s = s.replace('def live(widgets, seconds, step=0.3):', 'def live(widgets, seconds, step=0.3):\n    seconds = min(seconds, 1.0)')
 s = s.replace('os.path.join(os.path.dirname(os.path.abspath(__file__)), "make_music.py")', '"/home/user/extras/demo/make_music.py"')
-assert '/tmp/audit/dry25.mp4' in s and 'frames25dry' in s and 'return 1' in s
-import os; os.makedirs('/tmp/audit', exist_ok=True); open('/tmp/audit/dry25.py', 'w').write(s)
+assert '/tmp/audit/dry27.mp4' in s and 'frames27dry' in s and 'return 1' in s
+import os; os.makedirs('/tmp/audit', exist_ok=True); open('/tmp/audit/dry27.py', 'w').write(s)
 PYEOF
-grep -n "OUT_MP4 =" /tmp/audit/dry25.py                       # ОБЯЗАТЕЛЬНО /tmp/audit/dry25.mp4
-QT_QPA_PLATFORM=offscreen timeout 900 python /tmp/audit/dry25.py 2>&1 | grep -v propagate | tail -2   # exit 0, «frames=… → /tmp/audit/dry25.mp4»
+grep -n "OUT_MP4 =" /tmp/audit/dry27.py                       # ОБЯЗАТЕЛЬНО /tmp/audit/dry27.mp4
+cp extras/demo/make_music.py /tmp/audit/   # иначе копия упадёт на генерации музыки (ищет make_music.py рядом с собой)
+QT_QPA_PLATFORM=offscreen timeout 900 python /tmp/audit/dry27.py 2>&1 | grep -v propagate | tail -2   # exit 0, «frames=… → /tmp/audit/dry27.mp4»
 ```
 Шаг 5 — контактный лист сухого прогона (смотреть глазами **каждый** лист — это главная проверка сценария):
 ```bash
 FF=$(python -c "import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())")
-rm -rf /tmp/audit/cs && mkdir -p /tmp/audit/cs && $FF -loglevel error -i /tmp/audit/dry25.mp4 -vf "fps=1/3,scale=466:-1" /tmp/audit/cs/f%03d.png
+rm -rf /tmp/audit/cs && mkdir -p /tmp/audit/cs && $FF -loglevel error -i /tmp/audit/dry27.mp4 -vf "fps=1/3,scale=466:-1" /tmp/audit/cs/f%03d.png
 python - <<'PYEOF'
 from PIL import Image; import glob
 fs = sorted(glob.glob('/tmp/audit/cs/f*.png')); cols = 3; w, h = Image.open(fs[0]).size
@@ -583,13 +604,13 @@ PYEOF
 Шаг 6 — реальный рендер **только через `start_process`** (10–15 минут; bash убьёт по таймауту), затем
 `get_process_output … wait_for=exit` до завершения:
 ```bash
-cd /home/user && rm -rf extras/demo/frames25 && QT_QPA_PLATFORM=offscreen timeout 1750 python extras/demo/make_demo25.py 2>&1 | grep -v propagate | tail -5
+cd /home/user && rm -rf extras/demo/frames27 && QT_QPA_PLATFORM=offscreen timeout 1750 python extras/demo/make_demo27.py 2>&1 | grep -v propagate | tail -5
 ```
 Шаг 7 — проверка результата (всё):
 ```bash
 FF=$(python -c "import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())")
-$FF -i extras/videos/ADK_demo_25.mp4 2>&1 | grep -E "Duration|Stream"     # Video h264 1400x820 25 fps + Audio aac; Duration ≥ предыдущей
-mkdir -p /tmp/audit/t && for t in 1.5 60 200 330 470 <END-2>; do $FF -loglevel error -y -ss $t -i extras/videos/ADK_demo_25.mp4 -frames:v 1 -vf scale=466:-1 /tmp/audit/t/f_$t.png; done
+$FF -i extras/videos/ADK_demo_27.mp4 2>&1 | grep -E "Duration|Stream"     # Video h264 1400x820 25 fps + Audio aac; Duration ≥ предыдущей
+mkdir -p /tmp/audit/t && for t in 1.5 60 200 330 470 <END-2>; do $FF -loglevel error -y -ss $t -i extras/videos/ADK_demo_27.mp4 -frames:v 1 -vf scale=466:-1 /tmp/audit/t/f_$t.png; done
 ```
 Собрать лист (как в шаге 5) и посмотреть: **первый и последний кадр — одинаковые титры с одной версией**, остальные —
 живые окна с субтитрами. Если ролик короче предыдущего — поднять `HOLD_SCALE` на 0.1–0.25 или добавить `hold`/`live`,
@@ -597,8 +618,8 @@ mkdir -p /tmp/audit/t && for t in 1.5 60 200 330 470 <END-2>; do $FF -loglevel e
 
 Шаг 8 — ротация и документы:
 ```bash
-rm -rf extras/demo/frames26 extras/demo/make_demo25.py extras/videos/ADK_demo_25.mp4
-# HANDOVER: раздел В (имена файлов), К (номер ролика), М («Длительность роликов»: добавить «26 — M:SS (N с)», «при следующем видео — номер 27»)
+rm -rf extras/demo/frames27 extras/demo/make_demo26.py extras/videos/ADK_demo_26.mp4
+# HANDOVER: раздел В (имена файлов), К (номер ролика), М («Длительность роликов»: добавить «27 — M:SS (N с)», «при следующем видео — номер 28»)
 ```
 Шаг 9 — zip (раздел И), коммит, **чистка истории (раздел Л) и force-push**; проверка: свежий `git clone` в /tmp,
 `du -sh .git` — десятки МБ, среди блобов > 1 МБ ровно один `.mp4` и один `adk.zip`.

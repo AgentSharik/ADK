@@ -34,7 +34,7 @@ def _bar(value: int, warn: int = 80, danger: int = 90) -> QProgressBar:
     b.setValue(max(0, min(100, int(value))))
     b.setFormat(f"{int(value)}%")
     b.setFixedHeight(18)
-    color = pal.danger[2] if value >= danger else pal.warning[2] if value >= warn else pal.success[2]
+    color = pal.solid("danger") if value >= danger else pal.solid("warning") if value >= warn else pal.solid("success")
     b.setStyleSheet(f"QProgressBar {{ background-color: {pal.input}; border: 1px solid {pal.border}; text-align: center; "
                     f"color: {pal.text}; font-weight: bold; font-size: 9pt; }} QProgressBar::chunk {{ background-color: {color}; }}")
     return b
