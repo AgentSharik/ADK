@@ -619,3 +619,138 @@ rm -rf extras/demo/frames25 extras/demo/make_demo24.py extras/videos/ADK_demo_24
 фраза причины); отдельно видео (файл, длительность, что показано); отдельно репозиторий (HEAD, число тестов, чистка
 истории); последней строкой — что осталось открытым. Без английских вставок, без рассказов о внутренней кухне
 видеопроизводства, без ссылок на источники стиля.
+
+### О.9. Анатомия видео-скрипта — что внутри `make_demoNN.py` и как это работает
+
+Скрипт — обычный Python-файл ~1500 строк, выполняется сверху вниз. Он **не запускает готовую программу и не снимает
+экран** — он создаёт окна ADK в offscreen-режиме Qt, управляет ими из кода и после каждого шага сам делает снимок
+окна. Так каждый кадр детерминирован, нет мигания, курсора ОС, задержек и чужих окон. Структура блоков:
+
+**Блок 1. Шапка (строки 1–70).** Константы `ROOT`, `OUT_DIR` (временная папка кадров/музыки), `OUT_MP4`, `FPS = 25`,
+`W, H = 1400, 820` (главное окно ресайзится ровно до размера кадра). Подмена `pythoncom/win32com/win32crypt` пустыми
+модулями (мы не на Windows). `config.settings.db_path` → временная БД. Импорт `tests/test_gui.py` как `tg` — оттуда
+берутся `FakeEntry`, `FakeAttr`, `FakeConn`, `_wait`. Создание `QApplication` и **сразу** `apply_theme({**design,
+**theme_design(PRESET_THEMES["dark"])})` — без этого все окна будут без стилей.
+
+**Блок 2. Демо-данные (строки 70–230).** Всё вымышленное и воспроизводимое (`random.seed(6)`):
+- `people` — 5 главных сотрудников (ivanov/WS-101 в сети; sidorov/WS-133 не в сети, заблокирован, пароль 88 дней;
+  kuznetsova отключена; …) → `entries` = список `tg.FakeEntry` с атрибутами AD (`pwdLastSet`, `lockoutTime`,
+  `memberOf`, `company="ООО «Пример»"`, почта `@example.local`).
+- `EXTRA` — 115 сгенерированных сотрудников (фамилии/имена/отделы из списков, транслит для логина), часть «в архиве».
+- `DemoConn(tg.FakeConn)` — заглушка LDAP: `search()` фильтрует `entries` по подстроке в displayName/логине/отделе/
+  организации/должности и по флагу «отключённые»; `conn.extend = _Ext()` — чтобы `ad.reset_password` (использует
+  `conn.extend.microsoft.modify_password`) не падал. `ad.make_connection = lambda *a, **k: conn`.
+- `online`/`ips` — словари состояния ПК; `netutils.get_computer_network_info = lambda n, **kw: (ips.get(n,"Не найден"), online.get(n, False))`.
+- БД: `db.save_computer_for_login`, `db.batch_update_inventory` (инвентарь), `audit_cache` (архивы), `pc_history`,
+  заметки, MAC, `software.cache_software`, записи `audit_log`, недавние запросы.
+- Принтеры: словарь `PRINTERS` → CSV-файлы в формате инвентаря (`cp1251`, `;`) во временной `invent_hardware_dir` +
+  `netutils.index_printers(PRINTERS)`; `_live` — JSON «живого опроса» для сцены «Опросить сейчас».
+- Заглушки сети: `pingui.PingWorker = FakePingWorker` (WS-133 — только таймауты каждые 2.4 с; остальные — ответы
+  4±1.5 мс с двумя потерями и всплеском на 14–16 пакете, 0.3 с между ответами — из-за этого сцена пинга должна
+  сниматься через `live`, а не `hold`); `_dhcp.query` → разобранный JSON с арендами/резервами/исключениями;
+  `netutils.is_host_alive` — «живы» только .60/.72/.73/.78; `_socket.gethostbyaddr` — PTR есть только у .77/.79;
+  `health.*` — JSON S.M.A.R.T./карты диска/событий; `_logons` — входы за 24 ч.
+
+**Блок 3. Видео-пайплайн (строки 230–420).**
+```python
+_encoder = subprocess.Popen([_ffmpeg, "-y", "-loglevel", "error",
+    "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-framerate", str(FPS), "-i", "pipe:0",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-preset", "fast", _temp_video], stdin=subprocess.PIPE)
+
+def qimg_to_pil(widget):                       # снимок виджета → PIL.Image RGB
+    qimg = widget.grab().toImage(); ptr = qimg.constBits(); ptr.setsize(qimg.sizeInBytes())
+    return Image.frombuffer("RGBA", (qimg.width(), qimg.height()), bytes(ptr), "raw", "BGRA", qimg.bytesPerLine(), 1).convert("RGB")
+
+def render(widgets, caption_alpha=1.0, cursor=True):
+    base = qimg_to_pil(widgets[0])             # слой 0 — главное окно (или _Bg для сцены входа)
+    for dlg in widgets[1:]:                    # остальные слои — диалоги: тень + вставка по центру (не выше y=64) или dlg._demo_pos
+        im = qimg_to_pil(dlg); ...; base.paste(im, (ox, oy))
+    draw_caption(base, _caption[0], caption_alpha)   # плашка субтитра внизу
+    if cursor: draw_cursor(base, *_cursor)     # нарисованная стрелка курсора
+    return base
+
+def _write(img): _encoder.stdin.write(img.tobytes()); _frame_no += 1
+def snap(widgets, hold=1): img = render(widgets); [ _write(img) for _ in range(hold) ]   # один снимок, hold кадров
+def sec(s): return max(1, int(s * FPS))
+def wait(ms): tg._wait(lambda: False, app, ms)  # дать Qt отработать события/таймеры
+HOLD_SCALE = 1.25                               # общий темп статичных пауз
+def hold(widgets, seconds, text=None): snap(widgets, sec(seconds * HOLD_SCALE))
+def cap(text): _caption[0] = text               # сменить субтитр — покажется со следующего snap
+def move_to(widgets, widget, frames=16, offset=None):   # плавное движение курсора к центру виджета (ease-in-out), кадр на шаг
+def press(widgets, button, hold=4): move_to(...); button.setDown(True); snap(widgets, hold); button.setDown(False)
+def click_fx(widgets, hold=4): snap(widgets, hold)      # «клик» без кнопки (по строке таблицы, вкладке)
+def type_text(widgets, line_edit, text, per_char=0.09): # посимвольный набор, кадр(ы) на символ
+def show_dialog(widgets, dlg): dlg.show(); wait(400); ws = widgets + [dlg]; snap(ws, 3); return ws
+def hide_dialog(widgets, dlg): dlg.close(); wait(250); ws = widgets[:-1]; snap(ws, 3); return ws
+def live(widgets, seconds, step=0.3):           # реальное время: wait(step) + snap на каждый шаг — для пинга/графиков
+def title_card(lines, hold_sec=3.0):            # заставка: логотип assets/logo.png + строки (big/mid/small), фон (28,28,30)
+```
+Субтитр: `draw_caption` переносит текст до 58 символов в строке (≤3 строк), рисует скруглённую плашку `(28,28,30,215)`
+с обводкой `(10,132,255)` и белый текст DejaVuSans-Bold 22 px, внизу кадра по центру. Шрифты — из
+`/usr/share/fonts/truetype/dejavu/` (ставятся `fonts-dejavu-core`).
+
+**Блок 4. Сцены (строки 590–1510).** `S` — текущий список слоёв. Сцена — это всегда одна и та же грамматика:
+```python
+# ============================================================ N. Название сцены
+cap("Одна фраза о том, что показывается")                 # субтитр
+b = [b for b in w.findChildren(QPushButton) if "Принтеры парка" in b.text()][0]   # найти кнопку по тексту БЕЗ эмодзи
+move_to(S, b, 12)                                          # подвести курсор (12 кадров)
+press(S, b)                                                # нажать (визуально)
+dlg = PrintersDialog(w, w)                                 # создать окно САМИМ (не через exec — он заблокирует скрипт)
+S = show_dialog(S, dlg)                                    # добавить слой
+tg._wait(lambda: dlg.table.rowCount() >= 1, app, 3000)     # дождаться данных
+hold(S, 2.6)                                               # подержать
+move_to(S, dlg.text, 10); type_text(S, dlg.text, "Kyocera", 0.1); hold(S, 1.8)   # взаимодействие
+S = hide_dialog(S, dlg)                                    # убрать слой
+```
+Правила сцен: действия, которые в приложении делает обработчик кнопки, в сценарии вызываются напрямую
+(`plg._toggle()`, `card._forget_lockout()`, `dd.preset(key)`), потому что `press` — только картинка; модальные
+`MessageBox`/`InputDialog` создаются вручную (`MessageBox(card, "…", "…", "question", yes_no=True); q.show(); S = S + [q]`)
+и закрываются `hide_dialog`; всплывающие меню — `S = S + [menu]` с `menu._demo_pos`; после ухода с окна поиска —
+`w.search_input.clear(); w.on_text_changed("")`. Каждый ролик начинается сценой входа (`LoginDialog` на фоне `_Bg`) и
+заканчивается `title_card(TITLE)`; `TITLE` строится из `VERSION`.
+
+**Блок 5. Финал (строки 1510–1545).** `w.quit_app()`, закрыть pipe и дождаться ffmpeg; `make_music.py <сек+0.5>
+music.wav` (numpy-синтез: ре-минор ~104 BPM, бас/пад/арпеджио/удары, длительность ровно под ролик); финальный ffmpeg:
+`-i video_stream.mp4 -i music.wav -c:v copy -c:a aac -b:a 128k -shortest -movflags +faststart OUT_MP4`; удалить
+`OUT_DIR`; напечатать `frames=… duration=… → путь (размер)`. Эта строка — то, что читается из `get_process_output`.
+
+**Как добавить сцену для новой функции (алгоритм):**
+1. Найти в `adk/` кнопку/диалог: имя класса, `objectName`/текст кнопки, метод, который выполняет действие.
+2. Подготовить данные в блоке 2 (если нужен новый ПК/принтер/запись — добавить туда, а не в сцену).
+3. Вставить сцену в нужное место сценария (рядом с родственными), по грамматике выше, с `cap`.
+4. Если функция ходит в сеть/AD — подменить в блоке «Конфигурация воркеров» (`netutils.* = lambda …`), как сделано для
+   `is_host_alive`, `probe_printer`, `PingWorker`.
+5. Сухой прогон → контактный лист → если сцена не видна (пустое окно) — не хватило `tg._wait`/`wait()` или окно
+   создано без `parent=w`.
+
+### О.10. Как выглядит одна партия правок целиком (пример 3.5.2 — повторять этот цикл)
+
+1. **Запрос** — 9 пунктов автора + «верни субтитры» + «хронометраж не меньше». Переписал списком.
+2. **Разведка** (30–40 минут): `grep -n` по каждому пункту (`btnWarning`, `refresh_state`, `MassPingDialog._one`,
+   `_set_checks`, `NotifySettingsDialog`, `lbl_ro_hint`, `Глобальная горячая`, `PRINTER_CONN`, `PRESET_THEMES`,
+   `_add_plugin_buttons`); лист всех тем через offscreen-скрипт, чтобы увидеть проблему глазами.
+3. **Правки** — патч-скриптами по модулям: `theme.py` (палитры, `WARNING_FILL/TEXT`), `icons.py` (цвет иконки на
+   янтаре), `ad.py` (`set_local_attr`), `dialogs.py` (карточка: `_forget_password_age`, `refresh_state` на все
+   строки; удаление баннера; подпись клавиш), `fleet.py` + `db.known_ip`, `freeip_ui.py`/`workers.py` (тексты),
+   `main_window.py` (`_apply_printer_columns`, строка «Проверка», кнопки плагинов у ФИО, удаление кнопки
+   «Уведомления»), `netutils.probe_printer`, `plugins.py` (`place`, `ctx`, шаблон), `extras.py` (удалён класс).
+   После каждого модуля — pyflakes.
+4. **Тесты** — сначала прогон: упали `test_ip_of_printer…` (новая сетевая проверка) и `test_ten_unique_themes` (стало
+   6 тёмных) → подмена `probe_printer` в `conftest`, обновлён тест тем (+ попарные расстояния), поправлены e2e
+   (`plum` теперь другие цвета, `probe_printer` в шапке round3). Затем новые тесты на баг автора
+   (`test_password_reset_updates_card_inspector_and_table`, `test_set_local_attr_…`). Полный прогон: 236 passed,
+   e2e 46/82/45.
+5. **Визуальный смоук** — лист из 6 окон (принтер по IP, карточка, свободный IP, «Интерфейс», массовый пинг, темы);
+   заметил и исправил по картинке (выравнивание галочки, дубль «DHCP: DHCP»).
+6. **Видео** — по О.6: копия 23→24, тема «Графит», субтитры включены (`cap` в 32 местах), сцена плагина переписана,
+   сцена «Уведомления» удалена, `_forget_password_age` в сцену пароля; pyflakes; сухой прогон (ошибка: перезаписал
+   23-й ролик из-за `replace(...,1)` → `git checkout`, исправил); контактные листы; рендер через `start_process`
+   (≈12 мин) → 576 с ≥ 562 с; кадры титров и середины.
+7. **Документы и поставка** — версия 3.5.2 в 4 местах, CHANGELOG (Новое/Исправлено/Тесты с причинами), FEATURES,
+   HANDOVER (В, Г, Д, К, М, Н), zip, повторный полный прогон.
+8. **Git** — коммит по-русски; ротация (удалить 23-й ролик и скрипт); `filter-repo` по путям видео/скриптов/zip;
+   вернуть актуальные файлы отдельным коммитом; `gc`; force-push; проверка свежим клоном (54 МБ, один mp4, один zip).
+9. **Итог автору** — по его 9 пунктам с причинами, отдельно видео и репозиторий, последняя строка — открытое (окно «Пинг»).
+
+Время партии такого размера — 3–4 часа работы; из них ~1 час — видео (сухой прогон + рендер + проверка).
