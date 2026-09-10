@@ -34,6 +34,7 @@ class Action:
     needs_pc: bool = False
     modifying: bool = False
     order: int = 100
+    place: str = "actions"     # "actions" — сетка «Действия с ПК»; "header" — кнопка рядом с ФИО в инспекторе
 
     def enabled(self, ctx: dict) -> bool:  # можно переопределить
         return bool(ctx.get("comp")) if self.needs_pc else True
@@ -106,6 +107,8 @@ needs_pc   : bool — True: кнопка активна, только если �
 modifying  : bool — True: действие ЧТО-ТО МЕНЯЕТ на ПК/в системе → показывается только роли «ПК»
                     (право pc_admin_groups). False: только чтение — доступно всем ролям.
 order      : int  — порядок среди кнопок плагинов (меньше — левее/выше). По умолчанию 100.
+place      : str  — где показать кнопку: "actions" (по умолчанию) — в сетке «Действия с ПК»;
+                    "header" — компактная кнопка рядом с ФИО сотрудника (для частых действий).
 
 ═══════════════════════════════════════════════════════════════════════════════
 МЕТОДЫ
@@ -131,11 +134,16 @@ ctx["ip"]           — IP этого ПК по последнему скани�
 ctx["admin"]        — логин администратора, который нажал кнопку (для журналов)
 ctx["entry"]        — объект ldap3 Entry пользователя (ctx["entry"].mail.value и т.п.), может быть None
 ctx["conn_factory"] — функция без аргументов → новое соединение ldap3 (не забудьте conn.unbind())
+ctx["window"]       — главное окно ADK (QWidget): родитель для своих окон, чтобы они были в стиле программы
+ctx["mail"]         — почта пользователя (может быть "")
 
 ═══════════════════════════════════════════════════════════════════════════════
 ПОЛЕЗНОЕ ИЗ ADK, ЧТО МОЖНО ИМПОРТИРОВАТЬ
 ═══════════════════════════════════════════════════════════════════════════════
 from adk import netutils   # netutils.ping(host) -> bool, netutils.get_computer_network_info(name)
+from adk import nettools   # nettools.send_message(comp, text, seconds) — сообщение на экран ПК (msg.exe)
+from adk.widgets import MessageBox, InputDialog   # окна в стиле ADK: MessageBox.information(parent, заголовок, текст),
+                                                  # InputDialog.get_text(parent, заголовок, подпись) -> (текст, ok)
 from adk import db         # db.log_action(admin, action, target, details) — своя запись в журнал
 from adk import ad         # ad.get_ad_value(entry, "mail"), ad.paged_search(conn, filter, attrs)
 from adk.config import settings   # settings.domain_netbios, settings.plugins_dir …
@@ -166,6 +174,25 @@ class OpenUserProfile(Action):
         subprocess.Popen(["explorer", path])          # не ждём завершения — окно не замирает
         return f"Открыта папка {path}"                # текст в строку состояния и журнал
 
+
+# ── Пример: кнопка рядом с ФИО, своё окно в стиле ADK и сообщение на экран ПК ────────────────
+# class Message(Action):
+#     name = "Сообщение"
+#     icon = "✉️"
+#     needs_pc = True
+#     modifying = True            # что-то делает на ПК → только роль «ПК»
+#     place = "header"            # компактная кнопка рядом с ФИО
+#
+#     def run(self, ctx: dict):
+#         from adk.widgets import InputDialog, MessageBox
+#         from adk import nettools
+#         text, ok = InputDialog.get_text(ctx["window"], f"Сообщение для {ctx['fio']}",
+#                                         f"Текст появится на экране {ctx['comp']}:")
+#         if not ok or not text.strip():
+#             return "Отменено"
+#         sent, info = nettools.send_message(ctx["comp"], text)
+#         (MessageBox.information if sent else MessageBox.warning)(ctx["window"], "Сообщение", info)
+#         return info
 
 # ── Второй пример: действие, которое что-то МЕНЯЕТ (видно только роли «ПК») ─────────────────
 # class RestartSpooler(Action):

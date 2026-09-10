@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPixmap
@@ -643,12 +643,6 @@ class UserCardDialog(FramelessDialog):
         self._ad_widgets.append(self.btn_toggle)
         self.body.addLayout(bar)
 
-        self.lbl_ro_hint = QLabel("🔒 Роль «ПК»: карточка только для просмотра — атрибуты, группы и состояние учётки меняет "
-                                  "администратор с правом «AD». Всё, что касается ПК, доступно.")
-        self.lbl_ro_hint.setObjectName("readonlyBadge")
-        self.lbl_ro_hint.setWordWrap(True)
-        self.lbl_ro_hint.setVisible(False)
-        self.body.addWidget(self.lbl_ro_hint)
         tabs = self.tabs = QTabWidget()
         self.body.addWidget(tabs, 1)
         tabs.addTab(self._build_info_tab(), "👤 Профиль")
@@ -761,7 +755,6 @@ class UserCardDialog(FramelessDialog):
             cb.setToolTip("Только просмотр: состояние задаёт администратор с правом «AD»")
         self.groups_all.setToolTip("Только просмотр: добавление в группы недоступно для вашей роли")
         self.groups_list.setToolTip("Только просмотр: двойной клик покажет участников группы")
-        self.lbl_ro_hint.setVisible(True)
 
     def reset_password(self, after_unlock: bool = False):
         """Смена пароля. ``after_unlock=True`` — вызвано из сценария «сняли блокировку → задать пароль?»:
@@ -789,6 +782,7 @@ class UserCardDialog(FramelessDialog):
         def done(_):
             db.log_action(self.app.admin_name, "reset_password", self.login,
                           "смена при входе" if must_change else "без принудительной смены")
+            self._forget_password_age(must_change)   # строка «Пароль» сразу показывает новую дату / «смена при входе»
             if unlock:
                 self._forget_lockout()          # галочка «Снять блокировку» — упоминание блокировки исчезает сразу
             QApplication.clipboard().setText(pwd)
@@ -1092,12 +1086,17 @@ class UserCardDialog(FramelessDialog):
     def _forget_lockout(self):
         """Локально отражаем lockoutTime = 0: бейдж, вкладка «Учётная запись», кнопка и главное окно
         обновляются сразу, не дожидаясь нового поиска в AD."""
-        try:
-            attrs = getattr(self.entry, "_a", None)
-            if isinstance(attrs, dict):
-                attrs.pop("lockoutTime", None)
-        except Exception as exc:  # noqa: BLE001
-            log.debug("forget_lockout: %s", exc)
+        ad.set_local_attr(self.entry, "lockoutTime", [])
+        ad.set_local_attr(self.entry, "badPwdCount", [0])
+        self._entry_changed = True
+        self.refresh_state()
+
+    def _forget_password_age(self, must_change: bool):
+        """Локально отражаем смену пароля: pwdLastSet = сейчас (или 0 — «смена при следующем входе»),
+        счётчик неудачных входов — 0. Иначе вкладка «Учётная запись» и инспектор до нового поиска показывали
+        бы старую дату пароля."""
+        ad.set_local_attr(self.entry, "pwdLastSet", [0] if must_change else [datetime.now(timezone.utc)])
+        ad.set_local_attr(self.entry, "badPwdCount", [0])
         self._entry_changed = True
         self.refresh_state()
 
@@ -1113,13 +1112,17 @@ class UserCardDialog(FramelessDialog):
         self.btn_unlock.setVisible(bool(st["locked"]) and self.btn_toggle.isVisible())
         reason = ad.account_inactive_reason(self.entry)
         vals = {"Состояние": ((("Не активна — " + reason) if reason else "Активна — пользователь работает"), bool(reason)),
+                "Пароль": (st["pwd_text"], bool(st["pwd_warn"]) or (st["pwd_days_left"] is not None and st["pwd_days_left"] <= 0)),
                 "Блокировка": ((st["locked_text"] if st["locked"] else "нет"), bool(st["locked"])),
+                "Срок действия": (st["expires_text"] or "бессрочно", bool(st["expired"])),
                 "Неудачных входов": (str(st["bad_pwd"] or 0), bool(st["bad_pwd"]))}
         for name, (value, warn) in vals.items():
             lbl = self.account_vals.get(name)
             if lbl is not None:
                 lbl.setText(value)
                 lbl.setStyleSheet(f"color: {pal.danger[0]}; font-weight: bold;" if warn else "")
+        if hasattr(self, "lbl_account"):
+            self.lbl_account.setText("\n".join(f"{n}: {v}" for n, (v, _) in vals.items()))
         if hasattr(self.app, "update_account_state_in_ui"):
             self.app.update_account_state_in_ui(self.login, self.entry)
 
@@ -2161,9 +2164,16 @@ class DesignSettingsDialog(FramelessDialog):
         self.chk_tray.setChecked(settings.minimize_to_tray)
         self.hotkey = QLineEdit(settings.global_hotkey)
         self.hotkey.setPlaceholderText("Ctrl+Shift+A (пусто — выключить)")
+        self.hotkey.setToolTip("Сочетание клавиш, которое работает из любой программы Windows: разворачивает ADK "
+                               "(в том числе из трея) и ставит курсор в строку поиска")
         uf.addRow("Язык:", self.lang)
         uf.addRow(self.chk_tray)
-        uf.addRow("Глобальная горячая клавиша:", self.hotkey)
+        uf.addRow("Клавиши вызова ADK:", self.hotkey)
+        hk_hint = QLabel("Сочетание работает из любой программы: разворачивает ADK (даже из трея) и ставит курсор "
+                         "в строку поиска. Например, Ctrl+Shift+A. Пусто — выключено.")
+        hk_hint.setObjectName("subtle")
+        hk_hint.setWordWrap(True)
+        uf.addRow("", hk_hint)
         lay.addLayout(uf)
         save_ui = QPushButton("💾 Сохранить настройки интерфейса")
         save_ui.setObjectName("btnPrimary")

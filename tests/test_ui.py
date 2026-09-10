@@ -279,12 +279,12 @@ def test_login_error_box_not_clipped_and_legend_beside_map(qapp):
 
 
 def test_ten_unique_themes_without_navy_and_black():
-    """Ровно 10 тем (5 тёмных / 5 светлых), все цвета разные, нет чистого чёрного и тёмно-синих фонов."""
+    """Ровно 10 тем (6 тёмных / 4 светлые), все цвета разные, нет чистого чёрного и тёмно-синих фонов."""
     from PyQt6.QtGui import QColor
     from adk.theme import PRESET_THEMES, theme_design
     assert len(PRESET_THEMES) == 10
     darks = [k for k, t in PRESET_THEMES.items() if t["is_dark"]]
-    assert len(darks) == 5
+    assert len(darks) == 6
     names = [t["name"] for t in PRESET_THEMES.values()]
     assert len(set(names)) == 10
     bgs = set()
@@ -299,6 +299,17 @@ def test_ten_unique_themes_without_navy_and_black():
         d = theme_design(t)
         assert d["is_dark"] == t["is_dark"] and d["accent_color"] == t["accent"] and d["panel_color"] == t["panel"]
     assert len(bgs) == 10                                    # фоны не повторяются
+    # темы различимы не только акцентом: фон и панель у любых двух тем одной «стороны» отличаются заметно
+    def dist(a, b):
+        ca, cb = QColor(a), QColor(b)
+        return abs(ca.red() - cb.red()) + abs(ca.green() - cb.green()) + abs(ca.blue() - cb.blue())
+    items = list(PRESET_THEMES.items())
+    for i, (k1, t1) in enumerate(items):
+        for k2, t2 in items[i + 1:]:
+            if t1["is_dark"] != t2["is_dark"]:
+                continue
+            assert dist(t1["bg"], t2["bg"]) + dist(t1["panel"], t2["panel"]) >= 24, (k1, k2)
+            assert dist(t1["accent"], t2["accent"]) >= 60, (k1, k2)
 
 
 def test_buttons_get_outline_icons_instead_of_emoji(qapp):

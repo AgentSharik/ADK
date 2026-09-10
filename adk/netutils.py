@@ -88,6 +88,77 @@ def is_printer_alive(ip: str, timeout: float = 0.8) -> bool:
     return alive
 
 
+def probe_printer(ip: str, timeout: float = 0.6) -> dict:
+    """Честная проверка «а принтер ли по этому IP». Возвращает
+    ``{"alive": bool, "is_printer": True|False|None, "evidence": str}``.
+
+    * ``is_printer=True`` — открыт порт печати 9100 (JetDirect/RAW) или 631 (IPP), либо веб-панель отдала
+      заголовок Server/титул, характерный для принтеров/МФУ (HP, Kyocera, Canon, Xerox, Brother, Epson, Ricoh…).
+    * ``is_printer=False`` — узел отвечает, но признаков принтера нет (открыт 445/3389 — это ПК, либо только ping).
+    * ``is_printer=None`` — узел не отвечает: проверить нельзя, честно говорим «не проверено».
+    Без SNMP и без записи куда-либо; каждое соединение — ≤ ``timeout`` с.
+    """
+    if not ip:
+        return {"alive": False, "is_printer": None, "evidence": "нет IP"}
+
+    def port_open(port: int) -> bool:
+        try:
+            with socket.create_connection((ip, port), timeout=timeout):
+                return True
+        except OSError:
+            return False
+
+    alive = False
+    for port in (9100, 631):
+        if port_open(port):
+            return {"alive": True, "is_printer": True, "evidence": f"открыт порт печати {port}"}
+    for port in (445, 3389, 135):
+        if port_open(port):
+            return {"alive": True, "is_printer": False, "evidence": f"открыт порт {port} — это компьютер, а не принтер"}
+    for port in (80, 443):
+        if not port_open(port):
+            continue
+        alive = True
+        try:
+            import http.client
+            cls = http.client.HTTPSConnection if port == 443 else http.client.HTTPConnection
+            conn = cls(ip, port, timeout=timeout) if port == 80 else cls(ip, port, timeout=timeout, context=_insecure_ssl())
+            conn.request("GET", "/")
+            resp = conn.getresponse()
+            head = (resp.getheader("Server") or "") + " " + resp.read(4096).decode("latin-1", "ignore")
+            conn.close()
+        except Exception:  # noqa: BLE001
+            head = ""
+        low = head.lower()
+        if any(k in low for k in PRINTER_WEB_MARKERS):
+            return {"alive": True, "is_printer": True, "evidence": f"веб-панель принтера (порт {port})"}
+        return {"alive": True, "is_printer": False, "evidence": f"веб-сервер на порту {port} без признаков принтера"}
+    if not alive:
+        try:
+            res = subprocess.run(ping_args(ip), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                 timeout=max(1.0, timeout * 2), creationflags=CREATE_NO_WINDOW)
+            alive = res.returncode == 0 and (b"TTL=" in res.stdout.upper() or b"ttl=" in res.stdout)
+        except (subprocess.SubprocessError, OSError):
+            alive = False
+    if alive:
+        return {"alive": True, "is_printer": False, "evidence": "отвечает на ping, портов печати нет"}
+    return {"alive": False, "is_printer": None, "evidence": "узел не отвечает — проверить невозможно"}
+
+
+PRINTER_WEB_MARKERS = ("hp-chai", "hp http server", "laserjet", "officejet", "designjet", "kyocera", "ecosys", "taskalfa",
+                       "canon", "imagerunner", "xerox", "workcentre", "versalink", "brother", "epson", "ricoh", "lexmark",
+                       "konica", "bizhub", "pantum", "samsung printer", "printer", "принтер", "мфу", "ipp", "embedded web server",
+                       "ews", "cups")
+
+
+def _insecure_ssl():
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 NET_CACHE_TTL = 20.0  # с; при наборе «ива» → «иван» → «иванов» одни и те же ПК не пингуются трижды
 _net_cache: dict[str, tuple[float, tuple[str, bool]]] = {}
 _net_cache_lock = threading.Lock()

@@ -163,6 +163,7 @@ class SearchWorker(BaseWorker):
         if not groups or self.cancelled:
             return []
         alive: dict[str, bool] = {}
+        probes: dict[str, dict] = {}
         ips = sorted({g["ip"] for g in groups if g["ip"]})
         if ips:
             with ThreadPoolExecutor(max_workers=min(16, len(ips))) as ex:
@@ -174,7 +175,23 @@ class SearchWorker(BaseWorker):
                         alive[futs[f]] = f.result()
                     except Exception:  # noqa: BLE001
                         alive[futs[f]] = False
-        return [self.printer_row(g, alive.get(g["ip"], False)) for g in groups]
+            if netutils.is_ip_query(key):
+                # запрос — конкретный IP: честно проверяем, принтер ли это на самом деле (порты печати / веб-панель)
+                with ThreadPoolExecutor(max_workers=min(16, len(ips))) as ex:
+                    futs = {ex.submit(netutils.probe_printer, ip): ip for ip in ips}
+                    for f in as_completed(futs):
+                        if self.cancelled:
+                            return []
+                        try:
+                            probes[futs[f]] = f.result()
+                        except Exception:  # noqa: BLE001
+                            probes[futs[f]] = {"alive": False, "is_printer": None, "evidence": "проверка не удалась"}
+        rows = []
+        for g in groups:
+            row = self.printer_row(g, alive.get(g["ip"], False))
+            row["probe"] = probes.get(g["ip"])
+            rows.append(row)
+        return rows
 
     PRINTER_ROWS_LIMIT = 20
 
@@ -606,7 +623,7 @@ class FreeIPWorker(BaseWorker):
     def verdict(self, ip: str) -> dict:
         """Что DHCP думает о найденном адресе (для подписи в диалоге)."""
         if not self.use_dhcp:
-            return {"status": "n/a", "text": "DHCP не настроен ([Scanner] dhcp_servers) — сверьте вручную", "detail": ""}
+            return {"status": "n/a", "text": "сверка не выполнялась — сервер DHCP не указан в настройках, проверьте адрес на DHCP вручную", "detail": ""}
         if not self.dhcp_data or not self.dhcp_data.get("scopes"):
             return {"status": "unavailable", "text": "DHCP недоступен — сверьте вручную", "detail": "; ".join(self.dhcp_data.get("errors") or []) if self.dhcp_data else ""}
         from . import dhcp

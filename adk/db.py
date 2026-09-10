@@ -730,6 +730,16 @@ def audit_admins() -> list[str]:
     return [r[0] for r in rows if r[0]]
 
 
+def known_ip(computer_name: str) -> str:
+    """Последний известный IP ПК из инвентаря (pc_inventory), «» если ПК не сканировался или адрес не найден."""
+    name = clean_computer_name(computer_name)
+    if not name:
+        return ""
+    row = db_execute_with_retry("SELECT ip_address FROM pc_inventory WHERE computer_name = ?", (name,), fetch="one")
+    ip = (row[0] if row else "") or ""
+    return "" if ip in ("", "Не найден", "Не указан") else ip
+
+
 def last_seen_online(computer_name: str) -> str | None:
     row = db_execute_with_retry("SELECT last_seen_online FROM pc_inventory WHERE computer_name = ?",
                                 (clean_computer_name(computer_name),), fetch="one")

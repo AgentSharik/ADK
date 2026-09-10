@@ -12,6 +12,7 @@ import re
 import secrets
 import ssl
 import string
+from types import SimpleNamespace
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
@@ -284,10 +285,12 @@ def account_status(entry: Any, max_pwd_age_days: int, now: "datetime | None" = N
             left = max_pwd_age_days - age
             res["pwd_days_left"] = left
             res["pwd_warn"] = left <= 7
-            res["pwd_text"] = f"сменён {age} дн. назад, " + (
+            when = "сегодня" if age == 0 else f"{age} дн. назад"
+            res["pwd_text"] = f"сменён {when}, " + (
                 f"истекает через {left} дн." if left > 0 else f"ИСТЁК {-left} дн. назад")
         else:
-            res["pwd_text"] = f"сменён {age} дн. назад ({pwd_set:%d.%m.%Y})"
+            when = "сегодня" if age == 0 else f"{age} дн. назад"
+            res["pwd_text"] = f"сменён {when} ({pwd_set:%d.%m.%Y})"
     lock = get_ad_datetime(entry, "lockoutTime")
     if lock is not None:
         res["locked"] = True
@@ -349,6 +352,38 @@ def account_inactive_reason(entry: Any, now: "datetime | None" = None) -> str:
     if get_ad_datetime(entry, "lockoutTime") is not None:
         return "заблокирована"
     return ""
+
+
+def set_local_attr(entry: Any, attr: str, values: list) -> bool:
+    """Локально (без запроса к AD) подменить значение атрибута уже загруженной записи.
+
+    Нужно, чтобы карточка, инспектор и таблица сразу показали результат действия (смена пароля → pwdLastSet,
+    снятие блокировки → lockoutTime), не дожидаясь нового поиска. Работает и с ldap3 Entry, и с тестовыми
+    заглушками. Возвращает True, если значение удалось записать.
+    """
+    if entry is None:
+        return False
+    try:
+        a = entry[attr]
+    except (KeyError, AttributeError, TypeError):
+        a = None
+    if a is not None:
+        try:
+            a.values = list(values)
+            try:
+                a.value = values[0] if len(values) == 1 else (list(values) or None)
+            except AttributeError:
+                pass                     # ldap3: value — свойство, считается из values
+            return True
+        except Exception as exc:  # noqa: BLE001
+            log.debug("set_local_attr %s: %s", attr, exc)
+            return False
+    for holder in ("_a", None):
+        store = getattr(entry, holder, None) if holder else getattr(getattr(entry, "_state", None), "attributes", None)
+        if isinstance(store, dict):
+            store[attr] = SimpleNamespace(key=attr, values=list(values), value=values[0] if len(values) == 1 else list(values))
+            return True
+    return False
 
 
 def account_badge(entry: Any, now: "datetime | None" = None) -> tuple[str, str]:

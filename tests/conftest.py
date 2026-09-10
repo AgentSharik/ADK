@@ -25,6 +25,10 @@ def temp_db(tmp_path, monkeypatch):
     # окно «Роль и права доступа» после входа в тестах не показываем (иначе всплывает поверх главного окна);
     # его собственные тесты включают показ явно
     monkeypatch.setattr(config.settings, "hide_role_welcome", True)
+    # проверка «а принтер ли по IP» ходит в сеть (TCP 9100/631/80) — в тестах подменяем на быстрый ответ
+    from adk import netutils
+    monkeypatch.setattr(netutils, "probe_printer",
+                        lambda ip, **kw: {"alive": True, "is_printer": True, "evidence": "открыт порт печати 9100"})
     db.init_db()
     yield
 

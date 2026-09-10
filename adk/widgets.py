@@ -367,9 +367,11 @@ class InputDialog(FramelessDialog):
 
 # --------------------------------------------------------------------------- мелочи
 def make_badge(text: str, kind: str, palette: Palette) -> QLabel:
+    """Бейдж-подпись. Ведущий эмодзи/галочка заменяется контурной иконкой (см. icons) и выравнивается по центру
+    строки текста — иконка и подпись на одной высоте."""
     fg, bg, bd = palette.badge(kind)
     lbl = QLabel(text)
-    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
     lbl.setStyleSheet(f"background-color: {bg}; color: {palette.text}; border: 1px solid {bd}; "
                       "font-weight: bold; font-size: 9pt; border-radius: 4px; padding: 4px 10px;")
     return lbl

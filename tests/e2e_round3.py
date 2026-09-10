@@ -19,6 +19,7 @@ from adk.widgets import apply_theme, MessageBox, BadgeButton  # noqa: E402
 from adk.workers import SearchWorker, PCScannerWorker  # noqa: E402
 app = QApplication([]); apply_theme(config.settings.design)
 _orig_netinfo = netutils.get_computer_network_info
+netutils.probe_printer = lambda ip, **kw: {"alive": True, "is_printer": True, "evidence": "открыт порт печати 9100"}  # без сети
 MessageBox._show = classmethod(lambda cls, *a, **k: cls.YES)
 R = []
 def check(name, cond, note=""):

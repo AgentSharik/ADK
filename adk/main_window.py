@@ -22,7 +22,6 @@ from .dialogs import (
     AuditLogDialog, DesignSettingsDialog, FreeIPDialog, InventoryDialog, PingDialog, PluginsDialog, PrintersDialog,
     RegisterUserDialog, RoleInfoDialog, RoleWelcomeDialog, UserCardDialog,
 )
-from .extras import NotifySettingsDialog
 from .fleet import ComparePCDialog, LogonsDialog, MassPingDialog, SoftwareDialog, wake_single
 from .i18n import tr
 from .tools import BulkOperationsDialog, GroupCompareDialog, HealthDialog, HistoryDialog, NotesDialog
@@ -431,8 +430,7 @@ class ADApp(FramelessMainWindow):
                                  ("🖨️ Принтеры парка", self.printers_overview, ""),
                                  ("➕ Новый пользователь AD", self.new_user, "create_user"),
                                  ("📜 Журнал действий", lambda: AuditLogDialog(self, self).exec(), ""),
-                                 ("📦 ПО парка", lambda: SoftwareDialog("", self, self).exec(), ""),
-                                 ("📣 Уведомления", lambda: NotifySettingsDialog(self, self).exec(), "")):
+                                 ("📦 ПО парка", lambda: SoftwareDialog("", self, self).exec(), "")):
             b = QPushButton(tr(text))
             b.clicked.connect(fn)
             if action:
@@ -489,6 +487,9 @@ class ADApp(FramelessMainWindow):
         self.btn_copy.clicked.connect(self.copy_card)
         head.addWidget(self.lbl_fio)
         head.addWidget(self.btn_copy)
+        self._header_plugins = QHBoxLayout()       # кнопки плагинов с place = "header" — рядом с ФИО
+        self._header_plugins.setSpacing(6)
+        head.addLayout(self._header_plugins)
         head.addStretch()
         il.addLayout(head)
         self.lbl_sub = QLabel("")
@@ -832,6 +833,7 @@ class ADApp(FramelessMainWindow):
         # найден принтер (по IP показывается только он) — столбец «Имя ПК» становится «Подключение»
         only_printers = bool(rows) and all(x.get("kind") == "printer" for x in rows)
         self.table.horizontalHeaderItem(COL_PC).setText("Подключение" if only_printers else COLUMNS[COL_PC])
+        self._apply_printer_columns(only_printers)
         fit_columns(self.table, max_width=280, min_width=70, wrap=False, stretch_last=True)
         self.table.setUpdatesEnabled(True)
         if rows:
@@ -841,6 +843,22 @@ class ADApp(FramelessMainWindow):
             self.lbl_fio.setText("❌ Ничего не найдено")
             self.lbl_sub.setText("Измените запрос")
             self.details.setVisible(False)
+
+    PRINTER_IRRELEVANT = ("Телефон", "IP-тел")     # у принтера их нет — в режиме принтера столбцы прячутся
+
+    def _apply_printer_columns(self, printer_mode: bool):
+        """Результат — только принтеры: столбцы «Телефон»/«IP-тел» временно скрыты (настройка пользователя
+        не трогается: при обычном поиске они возвращаются, как были)."""
+        if printer_mode == getattr(self, "_printer_mode", False):
+            return
+        self._printer_mode = printer_mode
+        if printer_mode:
+            self._cols_before_printer = {c: self.table.isColumnHidden(c) for c in range(self.table.columnCount())}
+            for name in self.PRINTER_IRRELEVANT:
+                self.table.setColumnHidden(COLUMNS.index(name), True)
+        else:
+            for c, hidden in (getattr(self, "_cols_before_printer", None) or {}).items():
+                self.table.setColumnHidden(c, hidden)
 
     # ------------------------------------------------------------------ инспектор
     def selected(self) -> dict | None:
@@ -918,8 +936,8 @@ class ADApp(FramelessMainWindow):
         grid.setColumnMinimumWidth(0, 130)
         grid.setColumnStretch(1, 1)
         self.pvals: dict[str, QLabel] = {}
-        for r, (key, label) in enumerate((("ip", "IP-адрес:"), ("status", "Доступность:"), ("kind", "Подключение:"),
-                                          ("port", "Порт:"), ("count", "Подключено ПК:"))):
+        for r, (key, label) in enumerate((("ip", "IP-адрес:"), ("status", "Доступность:"), ("probe", "Проверка:"),
+                                          ("kind", "Подключение:"), ("port", "Порт:"), ("count", "Подключено ПК:"))):
             grid.addWidget(QLabel(f"<b>{label}</b>"), r, 0)
             v = QLabel("—")
             v.setWordWrap(True)
@@ -954,7 +972,9 @@ class ADApp(FramelessMainWindow):
         self.printer_pcs.setColumnWidth(3, 80)
         self.printer_pcs.itemDoubleClicked.connect(lambda it: self._open_printer_pc(it.row()))
         lay.addWidget(self.printer_pcs, 1)
-        hint = QLabel("Принтеры берутся из инвентарных CSV (кэш pc_printers). Доступность — TCP 9100/631/80, затем ping.")
+        hint = QLabel("Принтеры берутся из инвентарных CSV. Доступность — TCP 9100/631/80, затем ping. «Проверка» при "
+                      "поиске по IP: порты печати 9100/631 или веб-панель принтера — значит принтер; открытые 445/3389 — "
+                      "это уже компьютер.")
         hint.setObjectName("subtle")
         hint.setWordWrap(True)
         lay.addWidget(hint)
@@ -977,6 +997,23 @@ class ADApp(FramelessMainWindow):
         self.btn_printer_web.setVisible(bool(ip))
         self.pvals["kind"].setText(kind)
         self.pvals["port"].setText(g.get("port") or "—")
+        pr = u.get("probe")
+        if not ip:
+            self.pvals["probe"].setText("не сетевой — проверка по IP не применима")
+            self.pvals["probe"].setStyleSheet("")
+        elif not pr:
+            self.pvals["probe"].setText("по данным инвентаря (запрос не по IP — устройство по адресу не проверялось)")
+            self.pvals["probe"].setStyleSheet("")
+        elif pr.get("is_printer") is True:
+            self.pvals["probe"].setText(f"по адресу действительно принтер — {pr.get('evidence', '')}")
+            self.pvals["probe"].setStyleSheet(f"color: {pal.success[0]}; font-weight: bold;")
+        elif pr.get("is_printer") is False:
+            self.pvals["probe"].setText(f"внимание: по адресу сейчас НЕ принтер — {pr.get('evidence', '')}. "
+                                        "Возможно, адрес переназначен — проверьте DHCP/DNS")
+            self.pvals["probe"].setStyleSheet(f"color: {pal.danger[0]}; font-weight: bold;")
+        else:
+            self.pvals["probe"].setText(f"не проверено — {pr.get('evidence', 'узел не отвечает')}")
+            self.pvals["probe"].setStyleSheet(f"color: {pal.warning[0]}; font-weight: bold;")
         pcs = g.get("pcs") or []
         self.pvals["count"].setText(f"{len(pcs)} (в сети: {sum(1 for x in pcs if x['is_online'])})")
         self.printer_pcs.setRowCount(len(pcs))
@@ -1515,15 +1552,20 @@ class ADApp(FramelessMainWindow):
     def _add_plugin_buttons(self):
         """Кнопки плагинов в сетке «Действия с ПК» (после встроенных действий)."""
         bg = self._actions_grid
-        start = sum(1 for k in self.action_buttons if not k.startswith("plugin:"))
-        for i, act in enumerate(self.plugin_actions, start=start):
+        i = sum(1 for k in self.action_buttons if not k.startswith("plugin:"))
+        for act in self.plugin_actions:
             b = QPushButton(act.label)
             b.setToolTip(f"Плагин: {act.name}")
             b.clicked.connect(lambda _, a=act: self.run_plugin(a))
             if act.modifying:
                 self._modifying_buttons.append((b, "plugin_modifying"))
             self.action_buttons[f"plugin:{act.name}"] = b
-            bg.addWidget(b, i // 2, i % 2)
+            if getattr(act, "place", "actions") == "header":
+                b.setObjectName("historyBtn")
+                self._header_plugins.addWidget(b)
+            else:
+                bg.addWidget(b, i // 2, i % 2)
+                i += 1
 
     def reload_plugins(self):
         """Перечитать папку плагинов (менеджер плагинов): старые кнопки убрать, новые добавить, права применить."""
@@ -1531,6 +1573,8 @@ class ADApp(FramelessMainWindow):
             b = self.action_buttons.pop(key)
             self._modifying_buttons = [(x, a) for x, a in self._modifying_buttons if x is not b]
             self._actions_grid.removeWidget(b)
+            self._header_plugins.removeWidget(b)
+            b.setParent(None)
             b.deleteLater()
         self.plugin_actions = plugins.load_plugins(settings.plugins_dir)
         self._add_plugin_buttons()
@@ -1545,7 +1589,7 @@ class ADApp(FramelessMainWindow):
         comp = db.clean_computer_name(u.get("comp", ""))
         ctx = {"login": u.get("login", ""), "comp": comp, "ip": u.get("ip") if u.get("ip") != "Не найден" else "",
                "fio": u.get("full_fio") or u.get("fio") or "", "admin": self.admin_name, "entry": u.get("entry"),
-               "conn_factory": self.get_conn}
+               "conn_factory": self.get_conn, "window": self, "mail": u.get("mail") or ""}
         if not act.enabled(ctx):
             MessageBox.information(self, act.name, "Действие недоступно для этой строки (нужен ПК).")
             return

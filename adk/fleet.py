@@ -94,6 +94,10 @@ class MassPingDialog(FramelessDialog):
         r = self.rows.get(comp)
         if r is None:
             return
+        if (not ip or ip == "Не найден") and not online:
+            # DNS не ответил — покажем адрес из последнего сканирования парка, честно пометив источник
+            known = db.known_ip(comp)
+            ip = f"{known} (по данным сканирования)" if known else "Не найден"
         self.result[comp] = (ip, online)
         self.table.item(r, 1).setText(ip)
         it = self.table.item(r, 2)

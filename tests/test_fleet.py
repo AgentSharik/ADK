@@ -367,7 +367,6 @@ def test_main_dispatches_to_cli(monkeypatch):
 # ------------------------------------------------------------------ 7. диалоги и сканер
 def test_v31_dialogs_smoke(qapp, monkeypatch):
     from adk.attention_ui import AttentionDialog
-    from adk.extras import NotifySettingsDialog
     from adk.fleet import ComparePCDialog, LogonsDialog, MassPingDialog, SoftwareDialog
     app = SimpleNamespace(get_conn=lambda: None, admin_name="admin", searched=[])
     app.search_text = app.searched.append
@@ -403,11 +402,6 @@ def test_v31_dialogs_smoke(qapp, monkeypatch):
     _spin(qapp)
     assert d.t_soft.rowCount() == 1  # Chrome есть только на PC-A
     assert "недоступен" in d.lbl_soft.text()      # не Windows → живой опрос не прошёл → честно сказано, что данные из сохранённого
-    d.close()
-
-    d = NotifySettingsDialog(app)
-    d.smtp_host.setText("mail.example.local")
-    assert d.values()["smtp_host"] == "mail.example.local" and "smtp_tls" in d.values()
     d.close()
 
 

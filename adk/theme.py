@@ -6,28 +6,29 @@ from dataclasses import dataclass
 from PyQt6.QtGui import QColor
 
 PRESET_THEMES = {
-    # Десять тем: нейтральный фон с лёгким подтоном + насыщенный акцент.
+    # Десять тем, каждая со своим характером: у тёмных — разный подтон фона и панелей (нейтральный графит,
+    # тёплый уголь, хвойный, сливовый, винный, мокко), у светлых — заметно окрашенный фон (бумага, песок, сад, лаванда).
     # Ключи "dark"/"light" — те, что берутся в режиме «как в системе». Градиентов нет — только спокойные заливки.
     "dark": {"name": "Графит", "type": "solid", "bg": "#1C1C1E", "panel": "#2C2C2E", "text": "#F5F5F7",
              "border": "#48484A", "is_dark": True, "accent": "#0A84FF"},
-    "emerald": {"name": "Тёмная мята", "type": "solid", "bg": "#1A1E1B", "panel": "#28302B", "text": "#F2F7F3",
-                "border": "#465049", "is_dark": True, "accent": "#30D158"},
-    "plum": {"name": "Тёмная слива", "type": "solid", "bg": "#1E1B22", "panel": "#2C2831", "text": "#F6F3F9",
-             "border": "#4A4552", "is_dark": True, "accent": "#BF5AF2"},
-    "zinc": {"name": "Тёплый графит", "type": "solid", "bg": "#201E1C", "panel": "#2E2B28", "text": "#F7F4F1",
-             "border": "#4C4844", "is_dark": True, "accent": "#FF9F0A"},
-    "amethyst": {"name": "Тёмный кварц", "type": "solid", "bg": "#211C1E", "panel": "#30282B", "text": "#F8F3F5",
-                 "border": "#4E4448", "is_dark": True, "accent": "#FF375F"},
+    "ember": {"name": "Уголь и янтарь", "type": "solid", "bg": "#17140F", "panel": "#282219", "text": "#F8F1E4",
+              "border": "#4E4433", "is_dark": True, "accent": "#FFB020"},
+    "pine": {"name": "Хвоя", "type": "solid", "bg": "#0E1813", "panel": "#1A2A21", "text": "#EAF6EE",
+             "border": "#355243", "is_dark": True, "accent": "#3DD68C"},
+    "plum": {"name": "Слива", "type": "solid", "bg": "#1A1222", "panel": "#2B1F36", "text": "#F6EEFB",
+             "border": "#54406A", "is_dark": True, "accent": "#C084FC"},
+    "wine": {"name": "Бордо", "type": "solid", "bg": "#1E1115", "panel": "#321E26", "text": "#FBEFF2",
+             "border": "#5E3B48", "is_dark": True, "accent": "#FB7185"},
+    "mocha": {"name": "Мокко", "type": "solid", "bg": "#1B1715", "panel": "#2C2622", "text": "#F5EFEA",
+              "border": "#554A43", "is_dark": True, "accent": "#E8956D"},
     "light": {"name": "Светлая", "type": "solid", "bg": "#F2F2F7", "panel": "#FFFFFF", "text": "#1D1D1F",
               "border": "#D1D1D6", "is_dark": False, "accent": "#007AFF"},
-    "sand": {"name": "Персик", "type": "solid", "bg": "#F7F2EC", "panel": "#FFFFFF", "text": "#1D1D1F",
-             "border": "#DCD2C6", "is_dark": False, "accent": "#FF9500"},
-    "sage": {"name": "Мята", "type": "solid", "bg": "#EFF5F1", "panel": "#FFFFFF", "text": "#1D1D1F",
-             "border": "#C9D8CE", "is_dark": False, "accent": "#34C759"},
-    "frost": {"name": "Лаванда", "type": "solid", "bg": "#F3F1F8", "panel": "#FFFFFF", "text": "#1D1D1F",
-              "border": "#D5D0E0", "is_dark": False, "accent": "#AF52DE"},
-    "quartz": {"name": "Индиго", "type": "solid", "bg": "#F1F1F6", "panel": "#FFFFFF", "text": "#1D1D1F",
-               "border": "#CFCFDA", "is_dark": False, "accent": "#5856D6"},
+    "sand": {"name": "Песок", "type": "solid", "bg": "#F3E9DA", "panel": "#FFFBF4", "text": "#2A211A",
+             "border": "#DCCBB2", "is_dark": False, "accent": "#C2410C"},
+    "garden": {"name": "Сад", "type": "solid", "bg": "#E4F0E6", "panel": "#F8FCF8", "text": "#16241A",
+               "border": "#BFD6C4", "is_dark": False, "accent": "#15803D"},
+    "lavender": {"name": "Лаванда", "type": "solid", "bg": "#ECE7F7", "panel": "#FBFAFF", "text": "#1F1A2E",
+                 "border": "#CFC5E6", "is_dark": False, "accent": "#7C3AED"},
 }
 DEFAULT_THEME = "dark"
 
@@ -71,6 +72,17 @@ def is_color_dark(hex_str: str) -> bool:
 def contrast_text(bg_hex: str) -> str:
     """Текст на заливке акцентом: белый на насыщенных цветах, тёмный — только на очень светлых."""
     return "#ffffff" if luminance(bg_hex) < 185 else "#1D1D1F"
+
+
+WARNING_FILL = "#F5B324"     # янтарь: заливка кнопок-предупреждений (смена пароля, снятие блокировки)
+WARNING_TEXT = "#1F1A0E"     # текст/иконка на янтаре — тёмные: белый на жёлтом не читался
+
+
+def button_text_color(object_name: str, fill: str) -> str:
+    """Цвет текста заливной кнопки: на янтарной («btnWarning») всегда тёмный, на остальных — по яркости заливки."""
+    if object_name == "btnWarning":
+        return WARNING_TEXT
+    return contrast_text(fill)
 
 
 def readable_accent(accent: str, is_dark: bool) -> str:
@@ -188,7 +200,7 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
 
     # заливка семантических кнопок (тёмная / светлая тема)
     sem_fill = {"btnSuccess": ("#30D158", "#34C759"), "btnDanger": ("#FF453A", "#FF3B30"),
-                "btnWarning": ("#FF9F0A", "#FF9500"), "btnInfo": ("#0A84FF", "#007AFF")}
+                "btnWarning": (WARNING_FILL, WARNING_FILL), "btnInfo": ("#0A84FF", "#007AFF")}
 
     def solid_btn(sel: str, base_hex: str, fg: str) -> str:
         """Заливная кнопка (акцентная и семантические): градиент с бликом сверху, тёмная кромка снизу,
@@ -205,7 +217,7 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
 
     def btn(name: str, _colors: tuple[str, str, str]) -> str:
         fill = sem_fill[name][0 if is_dark else 1]
-        return solid_btn(f"QPushButton#{name}", fill, contrast_text(fill))
+        return solid_btn(f"QPushButton#{name}", fill, button_text_color(name, fill))
 
     return f"""
     QMainWindow, QWidget#bgWidget {{ {bg_style} }}

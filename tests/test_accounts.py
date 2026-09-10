@@ -73,6 +73,7 @@ def test_ip_of_printer_returns_only_printer_row(qapp, fake_conn, monkeypatch):
     db.replace_printers("WS-101", [hp])
     db.replace_printers("WS-102", [hp])
     monkeypatch.setattr(netutils, "is_printer_alive", lambda ip, **kw: True)
+    monkeypatch.setattr(netutils, "probe_printer", lambda ip, **kw: {"alive": True, "is_printer": True, "evidence": "открыт порт печати 9100"})
     w = _main(qapp, fake_conn, monkeypatch)
     w.search_input.setText("10.0.2.50")
     w.start_search()
@@ -92,6 +93,7 @@ def test_printer_prefix_query_still_lists_owners(qapp, fake_conn, monkeypatch):
     db.db_execute_with_retry("INSERT OR REPLACE INTO pc_inventory (computer_name, ip_address, current_user, is_online, last_checked) "
                              "VALUES ('WS-101', '10.0.2.11', 'ivanov', 1, '2026-09-05 10:00:00')")
     monkeypatch.setattr(netutils, "is_printer_alive", lambda ip, **kw: True)
+    monkeypatch.setattr(netutils, "probe_printer", lambda ip, **kw: {"alive": True, "is_printer": True, "evidence": "открыт порт печати 9100"})
     w = _main(qapp, fake_conn, monkeypatch)
     w.search_input.setText("printer: Kyocera")
     w.start_search()
@@ -302,7 +304,6 @@ def test_pc_role_card_is_view_only(qapp, fake_conn, monkeypatch):
         d.show()
         for b in (d.btn_reset, d.btn_unlock, d.btn_toggle, d.btn_save, d.btn_group_add, d.btn_group_rm):
             assert b.isHidden(), b.text()
-        assert d.lbl_ro_hint.isVisible() and "Роль «ПК»" in d.lbl_ro_hint.text()
         assert all(le.isReadOnly() for le in d.inputs.values())
         assert not d.smartcard.isEnabled() and d.smartcard.isChecked()            # состояние видно
         assert not d.skype.isEnabled()
@@ -319,7 +320,6 @@ def test_pc_role_card_is_view_only(qapp, fake_conn, monkeypatch):
     d = UserCardDialog(e, app)
     d.show()
     assert not d.btn_reset.isHidden() and not d.btn_save.isHidden() and d.smartcard.isEnabled()
-    assert d.lbl_ro_hint.isHidden()
     d.close()
 
 
@@ -377,3 +377,87 @@ def test_dashboard_role_card_differs_by_role(qapp, fake_conn, monkeypatch):
         access.reset(); w.apply_access()
     assert "Полный доступ" in w.lbl_role_status.text()
     w.close()
+
+
+# ------------------------------------------------------------------ 3.5.2. смена пароля сразу видна везде
+def test_password_reset_updates_card_inspector_and_table(qapp, fake_conn, monkeypatch):
+    """Дано: пароль ivanov сменён 88 дней назад (истекает через 2 дня), 3 неудачных входа, учётка заблокирована.
+    Сценарий А: «Смена пароля» без принудительной смены + снять блокировку → строка «Пароль» = «сменён сегодня…»,
+    «Блокировка» = нет, «Неудачных входов» = 0, бейдж «Активна»; инспектор главного окна тоже обновился.
+    Сценарий Б: смена с «Потребовать смену при входе» → «Пароль» = «требуется смена при следующем входе».
+    Раньше карточка до нового поиска показывала старую дату пароля."""
+    from datetime import datetime, timedelta, timezone
+    from adk import config, dialogs
+    from adk.dialogs import ResetPasswordDialog, UserCardDialog
+    from tests.test_gui import FakeAttr
+    now = datetime.now(timezone.utc)
+    ENTRIES[0]._a["pwdLastSet"] = FakeAttr([now - timedelta(days=88)])
+    ENTRIES[0]._a["badPwdCount"] = FakeAttr([3])
+    ENTRIES[0]._a["lockoutTime"] = FakeAttr([now - timedelta(minutes=5)])
+    monkeypatch.setattr(config.settings, "max_password_age_days", 90)
+    monkeypatch.setattr(config.settings, "use_ssl", True)
+    monkeypatch.setattr(dialogs.MessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr(dialogs, "run_in_background", lambda owner, work, done, *a, **k: done(work()))
+    written = []
+    monkeypatch.setattr(ad, "reset_password", lambda conn, dn, pwd, must_change=True, unlock=True: written.append((pwd, must_change, unlock)))
+    plan = {"must": False, "unlock": True}
+
+    def fake_exec(self):
+        self.password.setText("Qwerty-123456")
+        self.must_change.setChecked(plan["must"])
+        self.unlock.setChecked(plan["unlock"])
+        return 1
+    monkeypatch.setattr(ResetPasswordDialog, "exec", fake_exec)
+    try:
+        w = _main(qapp, fake_conn, monkeypatch)
+        w.search_input.setText("ivanov")
+        w.start_search()
+        assert _wait(lambda: w.table.rowCount() > 0, qapp, 3000)
+        row = next(r for r in range(w.table.rowCount()) if w.table.item(r, 0).text() == "ivanov")
+        w.select_row(row)
+        assert "88 дн." in w.vals["account"].text() and "ЗАБЛОКИРОВАНА" in w.vals["account"].text()
+        d = UserCardDialog(w.results[row]["entry"], w, w)
+        assert d.account_vals["Пароль"].text().startswith("сменён 88 дн. назад") and d.account_vals["Неудачных входов"].text() == "3"
+        assert d.badge_state.text() == "Не активна"
+        # А: смена без принудительной смены, со снятием блокировки
+        d.reset_password()
+        assert written == [("Qwerty-123456", False, True)]
+        assert d.account_vals["Пароль"].text().startswith("сменён сегодня"), d.account_vals["Пароль"].text()
+        assert "истекает через 90 дн." in d.account_vals["Пароль"].text()
+        assert d.account_vals["Пароль"].styleSheet() == ""                    # не красная — тревоги больше нет
+        assert d.account_vals["Блокировка"].text() == "нет" and d.account_vals["Неудачных входов"].text() == "0"
+        assert d.badge_state.text() == "Активна" and d.btn_unlock.isHidden()
+        assert "сегодня" in w.vals["account"].text() and "ЗАБЛОКИРОВАНА" not in w.vals["account"].text()
+        assert w.table.item(row, 2).text() == "Активна"
+        # Б: с требованием смены при входе
+        plan["must"] = True
+        d.reset_password()
+        assert written[-1] == ("Qwerty-123456", True, True)
+        assert d.account_vals["Пароль"].text() == "требуется смена при следующем входе"
+        assert "требуется смена" in w.vals["account"].text()
+        assert "Пароль: требуется смена" in d.lbl_account.text()
+        d.close()
+        w.close()
+    finally:
+        for k in ("pwdLastSet", "badPwdCount", "lockoutTime"):
+            ENTRIES[0]._a.pop(k, None)
+
+
+def test_set_local_attr_works_for_ldap3_like_and_fake_entries():
+    """ad.set_local_attr пишет и в тестовую заглушку (_a), и в объект с атрибутом-свойством как у ldap3 (values → value)."""
+    from tests.test_gui import FakeEntry
+
+    class LdapLikeAttr:
+        def __init__(self, values): self.values = list(values)
+        @property
+        def value(self): return self.values[0] if len(self.values) == 1 else (self.values or None)
+
+    class LdapLikeEntry:
+        def __init__(self): self._attrs = {"pwdLastSet": LdapLikeAttr([1])}
+        def __getitem__(self, k): return self._attrs[k]
+    e = LdapLikeEntry()
+    assert ad.set_local_attr(e, "pwdLastSet", [0]) and e["pwdLastSet"].value == 0
+    f = FakeEntry("CN=x", sAMAccountName="x")
+    assert ad.set_local_attr(f, "badPwdCount", [0]) and ad.get_ad_int_value(f, "badPwdCount", 7) == 0   # атрибута не было — создан
+    assert ad.set_local_attr(f, "lockoutTime", []) and ad.get_ad_datetime(f, "lockoutTime") is None
+    assert not ad.set_local_attr(None, "x", [1])

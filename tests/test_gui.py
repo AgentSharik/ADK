@@ -393,6 +393,7 @@ def test_printer_badges_and_click_search(qapp, fake_conn, monkeypatch):
     assert [b.text() for b in badges] == ["HP LaserJet M404 · 10.0.2.50 · по умолчанию", "Canon LBP"]
     assert all(not b.icon().isNull() for b in badges)
     monkeypatch.setattr(netutils, "is_printer_alive", lambda ip, **kw: ip == "10.0.2.50")
+    monkeypatch.setattr(netutils, "probe_printer", lambda ip, **kw: {"alive": ip == "10.0.2.50", "is_printer": True if ip == "10.0.2.50" else None, "evidence": "открыт порт печати 9100"})
     badges[0].click()                                   # → просто IP принтера, без префикса
     assert w.search_input.text() == "10.0.2.50"
     assert _wait(lambda: "Принтеров: 1" in w.lbl_status.text(), qapp, 3000)

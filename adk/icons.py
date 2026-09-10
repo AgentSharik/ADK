@@ -210,7 +210,10 @@ def button_icon_color(btn, role: str) -> str:
     obj = btn.objectName() if hasattr(btn, "objectName") and callable(btn.objectName) else ""
     if obj == "btnPrimary":
         return pal.on_accent
-    if obj in ("btnSuccess", "btnDanger", "btnWarning", "btnInfo", "btnClose"):
+    if obj == "btnWarning":
+        from .theme import WARNING_TEXT
+        return WARNING_TEXT
+    if obj in ("btnSuccess", "btnDanger", "btnInfo", "btnClose"):
         return "#ffffff"
     if obj == "chipBtn" and getattr(btn, "isChecked", lambda: False)():
         return pal.on_accent
@@ -258,7 +261,7 @@ def pixmap(name: str, size: int = ICON_PX, color: str | None = None, role: str =
 def img_html(name: str, size: int = LABEL_PX, color: str | None = None, role: str = "text") -> str:
     """<img> с SVG для rich-text QLabel."""
     b64 = base64.b64encode(svg(name, color or role_color(role), size)).decode()
-    return f'<img src="data:image/svg+xml;base64,{b64}" width="{size}" height="{size}">'
+    return f'<img src="data:image/svg+xml;base64,{b64}" width="{size}" height="{size}" style="vertical-align: middle">'
 
 
 def emoji_role(text: str) -> str:

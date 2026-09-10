@@ -300,8 +300,8 @@ class FreeIPDialog(FramelessDialog):
         self.status.setObjectName("subtle")
         dhcp_note = (f"Сверяется с DHCP: {', '.join(settings.dhcp_servers)} (аренды, резервирования, исключения)."
                      if settings.dhcp_servers else "Сверка с DHCP выключена — укажите серверы в [Scanner] dhcp_servers.")
-        self.status.setToolTip("Свободным считается адрес, которого нет среди ПК последнего скана парка, который сейчас "
-                               "не отвечает на ping и не имеет имени в DNS (PTR). " + dhcp_note)
+        self.status.setToolTip("Свободным считается адрес, который не занят ни одним ПК по последнему сканированию, "
+                               "на который сейчас никто не отвечает на ping и у которого нет записи в DNS (PTR). " + dhcp_note)
         self.lbl_map.setToolTip(self.status.toolTip())
         self.body.addWidget(self.status)
 
@@ -391,11 +391,12 @@ class FreeIPDialog(FramelessDialog):
         st = info.get("status", "n/a")
         icon = DHCP_ICON.get(st, "❌")
         dhcp_kind = "online" if st in ("free", "excluded") else "info" if st == "outside" else "warning"
-        self._set_checks([("✓ нет среди ПК парка", "online"), ("✓ не отвечает на ping", "online"), ("✓ нет имени в DNS", "online"),
-                          (f"{icon} DHCP", dhcp_kind)])
+        self._set_checks([("✓ не занят ни одним ПК", "online"), ("✓ никто не отвечает на ping", "online"),
+                          ("✓ не записан в DNS", "online"), (f"{icon} DHCP", dhcp_kind)])
         txt = info.get("text", "не сверялось")
         txt = "адрес не выдан" if txt == "не выдан DHCP" else txt
         dhcp_txt = f"DHCP: {txt}" + (f" ({info['detail']})" if info.get("detail") else "")
+        dhcp_txt = dhcp_txt.replace("DHCP: DHCP", "DHCP:")
         self.lbl_dhcp.setText(f"{icon} {dhcp_txt}")
         self.status.setText(f"Готово: {ip}. Следующий поиск начнётся с .{min(254, host + 1)}.")
         if ip not in self.history:
