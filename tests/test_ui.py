@@ -279,25 +279,33 @@ def test_login_error_box_not_clipped_and_legend_beside_map(qapp):
 
 
 def test_ten_unique_themes_without_navy_and_black():
-    """Ровно 10 тем (6 тёмных / 4 светлые), все цвета разные, нет чистого чёрного и тёмно-синих фонов."""
+    """Ровно 10 тем (5 тёмных / 5 светлых), среди них по одной градиентной на каждую сторону;
+    все цвета разные, нет чистого чёрного и тёмно-синих фонов."""
     from PyQt6.QtGui import QColor
-    from adk.theme import PRESET_THEMES, theme_design
+    from adk.theme import PRESET_THEMES, theme_colors, theme_design
     assert len(PRESET_THEMES) == 10
     darks = [k for k, t in PRESET_THEMES.items() if t["is_dark"]]
-    assert len(darks) == 6
+    assert len(darks) == 5
+    grads = {k: t for k, t in PRESET_THEMES.items() if t["type"] == "grad"}
+    assert len(grads) == 2 and sorted(t["is_dark"] for t in grads.values()) == [False, True]
     names = [t["name"] for t in PRESET_THEMES.values()]
     assert len(set(names)) == 10
     bgs = set()
     for key, t in PRESET_THEMES.items():
-        cols = [t.get("bg") or t["c1"], t.get("c2") or "", t["panel"], t["accent"], t["text"]]
+        c1, c2 = theme_colors(t)
+        cols = [c1, c2, t["panel"], t["accent"], t["text"]]
         for c in cols:
             assert c.lower() != "#000000", key
-        c = QColor(t.get("bg") or t["c1"])
+        c = QColor(c1)
         # тёмно-синий: синий заметно доминирует над красным при тёмном фоне
         assert not (t["is_dark"] and c.blue() > c.red() + 25 and c.blue() > c.green() + 15), key
-        bgs.add((t.get("bg") or t["c1"]).lower())
+        bgs.add(c1.lower())
         d = theme_design(t)
         assert d["is_dark"] == t["is_dark"] and d["accent_color"] == t["accent"] and d["panel_color"] == t["panel"]
+        if t["type"] == "grad":
+            assert c1 != c2 and "qlineargradient" in d["bg_style"] and c1 in d["bg_style"] and c2 in d["bg_style"]
+        else:
+            assert d["bg_style"] == f"background-color: {c1};"
     assert len(bgs) == 10                                    # фоны не повторяются
     # темы различимы не только акцентом: фон и панель у любых двух тем одной «стороны» отличаются заметно
     def dist(a, b):
@@ -308,8 +316,29 @@ def test_ten_unique_themes_without_navy_and_black():
         for k2, t2 in items[i + 1:]:
             if t1["is_dark"] != t2["is_dark"]:
                 continue
-            assert dist(t1["bg"], t2["bg"]) + dist(t1["panel"], t2["panel"]) >= 24, (k1, k2)
+            assert dist(theme_colors(t1)[0], theme_colors(t2)[0]) + dist(t1["panel"], t2["panel"]) >= 24, (k1, k2)
             assert dist(t1["accent"], t2["accent"]) >= 60, (k1, k2)
+
+
+def test_gradient_theme_tile_and_preset_apply(qapp):
+    """Дано: тема «Сумерки» (градиент). Выбираем её в «Оформлении».
+    Ожидаем: bg_style — градиент с обоими цветами, is_dark=True, плитка помечена выбранной, «Графит» — нет."""
+    from types import SimpleNamespace
+    from adk import config
+    from adk.dialogs import DesignSettingsDialog
+    from adk.theme import PRESET_THEMES
+    app = SimpleNamespace(on_theme_changed=lambda: None)
+    d = DesignSettingsDialog(app)
+    d.preset("dusk")
+    bg = config.settings.design["bg_style"]
+    t = PRESET_THEMES["dusk"]
+    assert "qlineargradient" in bg and t["c1"] in bg and t["c2"] in bg
+    assert config.settings.design["is_dark"] is True and config.settings.design["panel_color"] == t["panel"]
+    assert d.tiles["dusk"]._selected and not d.tiles["dark"]._selected
+    d.preset("dawn")
+    assert config.settings.design["is_dark"] is False and PRESET_THEMES["dawn"]["c2"] in config.settings.design["bg_style"]
+    d.preset("dark")
+    d.close()
 
 
 def test_buttons_get_outline_icons_instead_of_emoji(qapp):

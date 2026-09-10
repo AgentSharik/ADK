@@ -24,7 +24,8 @@ a = Analysis(
     pathex=[ROOT],
     binaries=[],
     datas=[(os.path.join(ROOT, "config.example.ini"), "."), (os.path.join(ROOT, "assets", "icon.png"), "assets"),
-           (os.path.join(ROOT, "assets", "logo.png"), "assets")],
+           (os.path.join(ROOT, "assets", "logo.png"), "assets"),
+           (os.path.join(ROOT, "assets", "fonts"), os.path.join("assets", "fonts"))],   # встроенный шрифт интерфейса
     hiddenimports=hidden,
     hookspath=[],
     runtime_hooks=[],

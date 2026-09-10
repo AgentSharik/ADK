@@ -7,8 +7,9 @@ from PyQt6.QtGui import QColor
 
 PRESET_THEMES = {
     # Десять тем, каждая со своим характером: у тёмных — разный подтон фона и панелей (нейтральный графит,
-    # тёплый уголь, хвойный, сливовый, винный, мокко), у светлых — заметно окрашенный фон (бумага, песок, сад, лаванда).
-    # Ключи "dark"/"light" — те, что берутся в режиме «как в системе». Градиентов нет — только спокойные заливки.
+    # тёплый уголь, хвойный, сливовый), у светлых — заметно окрашенный фон (бумага, песок, сад, лаванда).
+    # Две темы градиентные («Сумерки» тёмная и «Рассвет» светлая): фон окна — диагональный переход двух цветов,
+    # панели и карточки при этом сплошные. Ключи "dark"/"light" — те, что берутся в режиме «как в системе».
     "dark": {"name": "Графит", "type": "solid", "bg": "#1C1C1E", "panel": "#2C2C2E", "text": "#F5F5F7",
              "border": "#48484A", "is_dark": True, "accent": "#0A84FF"},
     "ember": {"name": "Уголь и янтарь", "type": "solid", "bg": "#17140F", "panel": "#282219", "text": "#F8F1E4",
@@ -17,10 +18,8 @@ PRESET_THEMES = {
              "border": "#355243", "is_dark": True, "accent": "#3DD68C"},
     "plum": {"name": "Слива", "type": "solid", "bg": "#1A1222", "panel": "#2B1F36", "text": "#F6EEFB",
              "border": "#54406A", "is_dark": True, "accent": "#C084FC"},
-    "wine": {"name": "Бордо", "type": "solid", "bg": "#1E1115", "panel": "#321E26", "text": "#FBEFF2",
-             "border": "#5E3B48", "is_dark": True, "accent": "#FB7185"},
-    "mocha": {"name": "Мокко", "type": "solid", "bg": "#1B1715", "panel": "#2C2622", "text": "#F5EFEA",
-              "border": "#554A43", "is_dark": True, "accent": "#E8956D"},
+    "dusk": {"name": "Сумерки", "type": "grad", "c1": "#1F1526", "c2": "#4A2236", "panel": "#33252F", "text": "#FBEFF4",
+             "border": "#63505C", "is_dark": True, "accent": "#F472B6"},
     "light": {"name": "Светлая", "type": "solid", "bg": "#F2F2F7", "panel": "#FFFFFF", "text": "#1D1D1F",
               "border": "#D1D1D6", "is_dark": False, "accent": "#007AFF"},
     "sand": {"name": "Песок", "type": "solid", "bg": "#F3E9DA", "panel": "#FFFBF4", "text": "#2A211A",
@@ -29,6 +28,8 @@ PRESET_THEMES = {
                "border": "#BFD6C4", "is_dark": False, "accent": "#15803D"},
     "lavender": {"name": "Лаванда", "type": "solid", "bg": "#ECE7F7", "panel": "#FBFAFF", "text": "#1F1A2E",
                  "border": "#CFC5E6", "is_dark": False, "accent": "#7C3AED"},
+    "dawn": {"name": "Рассвет", "type": "grad", "c1": "#FFE3D2", "c2": "#DCD7FA", "panel": "#FFFFFF", "text": "#241C1F",
+             "border": "#E0D3D9", "is_dark": False, "accent": "#DB2777"},
 }
 DEFAULT_THEME = "dark"
 
@@ -38,6 +39,13 @@ def theme_bg_style(t: dict) -> str:
     if t["type"] == "solid":
         return f"background-color: {t['bg']};"
     return f"background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 {t['c1']}, stop:1 {t['c2']});"
+
+
+def theme_colors(t: dict) -> tuple[str, str]:
+    """(первый, второй) цвет фона пресета; у сплошных тем оба одинаковые — удобно для плиток и тестов."""
+    if t["type"] == "solid":
+        return t["bg"], t["bg"]
+    return t["c1"], t["c2"]
 
 
 def theme_design(t: dict) -> dict:
@@ -115,7 +123,7 @@ class Palette:
     def text(self):
         return self.text_color if QColor(self.text_color).isValid() else ("#F5F5F7" if self.is_dark else "#1D1D1F")
     @property
-    def subtext(self): return _mix(self.text, self._panel.name(), 0.30)      # secondaryLabel: читается на любой панели
+    def subtext(self): return _mix(self.text, self._panel.name(), 0.22)      # вторичная подпись: приглушена, но не блёклая
     @property
     def card(self): return self._panel.name()
     @property
@@ -144,7 +152,7 @@ class Palette:
     # заливка = цвет, разбавленный панелью; текст = сам цвет (тёмная тема) или его «доступный» вариант (светлая)
     def _sem(self, dark_fg: str, base: str, light_fg: str, light_bg: str, light_bd: str) -> tuple[str, str, str]:
         if self.is_dark:
-            return (dark_fg, _mix(self._panel.name(), base, 0.20), _mix(self._panel.name(), base, 0.55))
+            return (dark_fg, _mix(self._panel.name(), base, 0.34), _mix(self._panel.name(), base, 0.80))
         return (light_fg, light_bg, light_bd)
 
     @property
@@ -170,6 +178,29 @@ class Palette:
     def badge(self, kind: str) -> tuple[str, str, str]:
         return {"online": self.success, "offline": self.danger, "active": self.neutral,
                 "disabled": self.danger, "warning": self.warning, "info": self.info}.get(kind, self.neutral)
+
+
+_QSS_IMG_CACHE: dict[str, str] = {}
+
+
+def _svg_uri(svg: str) -> str:
+    """Путь к SVG-файлу для ``image: url(...)`` в QSS. Qt не понимает data-URI в таблицах стилей,
+    поэтому картинка один раз пишется во временную папку (имя — по хэшу содержимого) и дальше берётся из кэша."""
+    import hashlib
+    import os
+    import tempfile
+    key = hashlib.sha1(svg.encode()).hexdigest()[:16]
+    path = _QSS_IMG_CACHE.get(key)
+    if path and os.path.exists(path):
+        return path.replace("\\", "/")
+    folder = os.path.join(tempfile.gettempdir(), "adk-qss")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{key}.svg")
+    if not os.path.exists(path):
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(svg)
+    _QSS_IMG_CACHE[key] = path
+    return path.replace("\\", "/")
 
 
 def relief(color: str, top: int = 108, bottom: int = 96) -> str:
@@ -215,6 +246,16 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
                 f"{sel}:pressed {{ background: {prs}; border-color: {edge}; padding-top: 8px; padding-bottom: 6px; }}"
                 f"{sel}:disabled {{ background: {p.header}; color: {p.subtext}; border-color: {p.border}; }}")
 
+    chev_down = _svg_uri(f'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{p.text}" '
+                         f'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>')
+    chev_up = _svg_uri(f'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{p.text}" '
+                       f'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>')
+    chev_dim = _svg_uri(f'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{p.subtext}" '
+                        f'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>')
+    check_img = _svg_uri(f'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{p.on_accent}" '
+                         'stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5 9.5-10"/></svg>')
+    sel_edge = _mix(p.selection, accent, 0.55)    # обводка выделенной строки/элемента — заметная, но не кричащая
+
     def btn(name: str, _colors: tuple[str, str, str]) -> str:
         fill = sem_fill[name][0 if is_dark else 1]
         return solid_btn(f"QPushButton#{name}", fill, button_text_color(name, fill))
@@ -222,7 +263,7 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     return f"""
     QMainWindow, QWidget#bgWidget {{ {bg_style} }}
     QDialog {{ background-color: {p.card}; border: 1px solid {p.border}; border-top-color: {card_top}; border-bottom-color: {card_bottom}; border-radius: 12px; }}
-    QWidget {{ font-family: '{font_family}', 'SF Pro Text', 'Segoe UI', sans-serif; font-size: {font_size}pt; color: {p.text}; }}
+    QWidget {{ font-family: '{font_family}', 'Inter', 'Segoe UI', sans-serif; font-size: {font_size}pt; color: {p.text}; }}
     QLabel {{ color: {p.text}; }}
     QLineEdit, QComboBox, QSpinBox, QDateTimeEdit {{ background-color: {p.input}; border: 1px solid {p.border}; border-top-color: {input_top};
         border-radius: {R}px; padding: 7px 11px; color: {p.text}; selection-background-color: {accent}; selection-color: {p.on_accent}; }}
@@ -243,14 +284,31 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QRadioButton::indicator {{ border-radius: 9px; }}
     QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border-color: {accent}; }}
     QCheckBox::indicator:checked, QRadioButton::indicator:checked {{ background: {relief(accent, 112, 94)}; border-color: {acc_edge};
-        image: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjMuMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJtNiAxMi41IDQgNCA4LTkiLz48L3N2Zz4=); }}
+        image: url({check_img}); }}
     QRadioButton::indicator:checked {{ image: none; border: 5px solid {accent}; background-color: #ffffff; }}
     QCheckBox::indicator:disabled {{ border-color: {p.border}; background-color: {p.header}; }}
     QPlainTextEdit, QTextEdit, QTextBrowser {{ background-color: {p.input}; border: 1px solid {p.border}; border-radius: {R}px; color: {p.text};
         selection-background-color: {accent}; selection-color: {p.on_accent}; padding: 6px; }}
     QComboBox QAbstractItemView {{ background-color: {p.card}; color: {p.text}; border: 1px solid {p.border}; border-radius: 8px;
         selection-background-color: {p.selection}; selection-color: {p.text}; outline: none; padding: 4px; }}
-    QComboBox::drop-down {{ border: none; width: 24px; }}
+    QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 26px; border: none;
+        border-left: 1px solid {p.border}; margin: 4px 0; }}
+    QComboBox::down-arrow {{ image: url({chev_down}); width: 14px; height: 14px; }}
+    QComboBox::down-arrow:disabled {{ image: url({chev_dim}); }}
+    QDateTimeEdit::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 26px; border: none;
+        border-left: 1px solid {p.border}; margin: 4px 0; }}
+    QDateTimeEdit::down-arrow {{ image: url({chev_down}); width: 14px; height: 14px; }}
+    QSpinBox {{ padding-right: 28px; }}
+    QSpinBox::up-button, QSpinBox::down-button {{ subcontrol-origin: padding; width: 24px; border: none;
+        border-left: 1px solid {p.border}; background: {relief(p.button, 110, 95)}; }}
+    QSpinBox::up-button {{ subcontrol-position: top right; border-top-right-radius: {R}px; border-bottom: 1px solid {p.border}; }}
+    QSpinBox::down-button {{ subcontrol-position: bottom right; border-bottom-right-radius: {R}px; }}
+    QSpinBox::up-button:hover, QSpinBox::down-button:hover {{ background: {relief(p.hover, 110, 95)}; }}
+    QSpinBox::up-button:pressed, QSpinBox::down-button:pressed {{ background: {p.selection}; }}
+    QSpinBox::up-arrow {{ image: url({chev_up}); width: 11px; height: 11px; }}
+    QSpinBox::down-arrow {{ image: url({chev_down}); width: 11px; height: 11px; }}
+    QSpinBox::up-arrow:disabled, QSpinBox::up-arrow:off {{ image: url({chev_dim}); }}
+    QSpinBox::down-arrow:disabled, QSpinBox::down-arrow:off {{ image: url({chev_dim}); }}
     QLabel#subtle {{ color: {p.subtext}; }}
     QLabel#statusLabel {{ color: {p.subtext}; }}
     QLabel#roleStatusLabel {{ color: {p.text}; background-color: {p.card}; border: 1px solid {p.border};
@@ -259,8 +317,9 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QLabel#readonlyBadge {{ color: {p.warning[0]}; background-color: {p.warning[1]}; border: 1px solid {p.warning[2]};
         border-radius: 10px; padding: 4px 10px; font-weight: 600; }}
     QLabel#updateLabel {{ color: {p.info[0]}; font-weight: 600; }}
-    QListWidget::item {{ padding: 5px 8px; border-radius: 6px; }}
-    QListWidget::item:selected, QTreeWidget::item:selected {{ background-color: {p.selection}; color: {p.text}; }}
+    QListWidget::item {{ padding: 5px 8px; border-radius: 6px; border: 1px solid transparent; }}
+    QListWidget::item:selected, QTreeWidget::item:selected {{ background-color: {p.selection}; color: {p.text};
+        border: 1px solid {sel_edge}; }}
     QListWidget::item:hover, QTreeWidget::item:hover {{ background-color: {p.hover}; }}
     QSplitter::handle {{ background-color: {p.border}; }}
     QScrollArea {{ background: transparent; border: none; }}
@@ -291,8 +350,9 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
         gridline-color: {p.border}; selection-background-color: {p.selection}; selection-color: {p.text}; outline: none; }}
     QTableWidget::item, QTableView::item {{ padding: 4px; border-bottom: 1px solid {p.border}; border-right: 1px solid {p.border}; }}
     QTableWidget::item:selected, QTableView::item:selected {{ background-color: {p.selection}; color: {p.text};
-        border-bottom: 1px solid {sel_line}; border-right: 1px solid {sel_line}; }}
+        border-top: 1px solid {sel_edge}; border-bottom: 1px solid {sel_edge}; border-right: 1px solid {sel_line}; padding-top: 3px; }}
     QTableWidget::item:selected:first, QTableView::item:selected:first {{ border-left: 4px solid {accent}; padding-left: 2px; }}
+    QTableWidget::item:selected:last, QTableView::item:selected:last {{ border-right: 1px solid {sel_edge}; }}
     QAbstractScrollArea::viewport {{ background-color: {p.card}; }}
     QHeaderView::section {{ background: {relief(p.header, 105, 98)}; color: {p.subtext}; padding: 9px 12px; border: none;
         border-right: 1px solid {p.border}; border-bottom: 1px solid {p.border}; font-weight: 600; }}
@@ -312,7 +372,7 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     #sideCard, #dashCard {{ background: {relief(p.card, 103, 99)}; border: 1px solid {p.border}; border-top-color: {card_top};
         border-bottom-color: {card_bottom}; border-radius: 12px; padding: 14px; }}
     #sideCard QLabel, #dashCard QLabel {{ background: transparent; border: none; }}
-    #specBox {{ background-color: {p.input}; border: 1px solid {p.border}; border-radius: 8px; padding: 8px; font-family: 'SF Mono', Consolas, monospace; font-size: 9.5pt; }}
+    #specBox {{ background-color: {p.input}; border: 1px solid {p.border}; border-radius: 8px; padding: 8px; font-family: Consolas, 'DejaVu Sans Mono', monospace; font-size: 9.5pt; }}
     QTabWidget::pane {{ border: 1px solid {p.border}; border-top-color: {card_top}; border-radius: 10px; background: {p.card}; top: 6px; }}
     QTabBar {{ qproperty-iconSize: 22px 22px; qproperty-drawBase: 0; background: {p.input}; border: 1px solid {input_top}; border-radius: 10px; }}
     QTabBar::tab {{ background: transparent; color: {p.subtext}; padding: 7px 16px; margin: 3px 2px; border-radius: 8px;
@@ -324,9 +384,9 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QListWidget, QTreeWidget {{ background-color: {p.card}; border: 1px solid {p.border}; border-radius: 8px; outline: none; qproperty-iconSize: 22px 22px; }}
     QTableWidget, QTableView {{ qproperty-iconSize: 22px 22px; }}
     QMenu {{ icon-size: 22px; }}
-    QPushButton#drivePicker {{ background-color: {p.button}; color: {p.title_accent}; border: 1px solid {p.border};
-        border-radius: 14px; padding: 4px 8px; font-weight: 600; font-size: 10.5pt; text-align: center; }}
-    QPushButton#drivePicker:hover {{ border-color: {accent}; }}
+    QPushButton#drivePicker {{ background: {relief(p.button, 110, 95)}; color: {p.text}; border: 1.5px solid {p.title_accent};
+        border-radius: 14px; padding: 4px 10px; font-weight: 700; font-size: 10.5pt; text-align: center; }}
+    QPushButton#drivePicker:hover {{ background: {p.selection}; }}
     QPushButton#drivePicker:pressed {{ background-color: {accent}; color: {p.on_accent}; }}
     QPushButton#drivePicker::menu-indicator {{ image: none; width: 0; }}
     QMenu {{ background-color: {p.card}; border: 1px solid {p.border}; border-radius: 10px; padding: 6px; }}

@@ -14,7 +14,7 @@ from PyQt6.QtCore import QDateTime, QPointF, QRectF, Qt
 from PyQt6.QtGui import QBrush, QColor, QFont, QLinearGradient, QPainter, QPen
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDateTimeEdit, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
-    QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem, QTabWidget,
+    QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem, QTabWidget,
     QVBoxLayout, QWidget,
 )
 
@@ -64,6 +64,7 @@ def _tile(title: str, value: str, sub: str = "", kind: str = "", compact: bool =
     return f
 
 
+TOP_FILES = 60          # сколько самых больших файлов показывать в «Карте диска» (отдельной настройки нет — как в WinDirStat)
 EVENT_ICON = {1: "🟥", 2: "🔴", 3: "🟡", 4: "🔵", 5: "⚪"}
 
 
@@ -497,11 +498,6 @@ class HealthDialog(FramelessDialog):
         self.cb_drive = DrivePicker(tooltip="Том для карты: любой диск ПК (C:, D:, …); список появляется после опроса")
         self.cb_drive.addItem("C:")
         top.addWidget(self.cb_drive)
-        top.addWidget(QLabel("Файлов в топе:"))
-        self.sp_top = QSpinBox()
-        self.sp_top.setRange(10, 200)
-        self.sp_top.setValue(40)
-        top.addWidget(self.sp_top)
         self.btn_usage = QPushButton("🗺️ Построить карту")
         self.btn_usage.setObjectName("btnInfo")
         self.btn_usage.clicked.connect(self.load_usage)
@@ -884,7 +880,7 @@ class HealthDialog(FramelessDialog):
         drive = self.cb_drive.currentText() or "C:"
         self.btn_usage.setEnabled(False)
         self.lbl_usage.setText(f"⏳ Обхожу \\\\{self.comp}\\{drive.rstrip(':')}$ — это может занять несколько минут…")
-        run_in_background(self, lambda: health.get_disk_usage(self.comp, drive, self.sp_top.value()), self.show_usage,
+        run_in_background(self, lambda: health.get_disk_usage(self.comp, drive, TOP_FILES), self.show_usage,
                           lambda m: self.show_usage({"error": m}))
 
     def show_usage(self, u: dict):

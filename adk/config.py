@@ -88,7 +88,7 @@ _DEFAULTS: dict[str, dict[str, str]] = {
         # по умолчанию — тема «Графит» (см. theme.PRESET_THEMES["dark"])
         "bg_style": "background-color: #1C1C1E;",
         "is_dark": "true",
-        "font_family": "Segoe UI",
+        "font_family": "Inter",       # встроенный шрифт из assets/fonts; свой выбирается в «Оформление → Шрифт»
         "font_size": "10",
         "accent_color": "#0A84FF",
         "panel_color": "#2C2C2E",

@@ -431,6 +431,54 @@ def install() -> None:
 
     QTabWidget.setTabText = _set_tab_text
 
+    # выпадающие списки: «🌐 сетевой» → иконка + «сетевой» (иначе эмодзи без глифа в шрифте даёт квадратик)
+    from PyQt6.QtWidgets import QComboBox
+    _cb_add, _cb_ins = QComboBox.addItem, QComboBox.insertItem
+
+    def _cb_split(args):
+        args = list(args)
+        for i, x in enumerate(args):
+            if isinstance(x, str):
+                f = find_leading(x)
+                if f and not any(isinstance(y, QIcon) for y in args):
+                    args[i] = f[1].strip()
+                    args.insert(i, icon(f[0], role=emoji_role(x)))
+                break
+        return args
+
+    def _cb_add_item(self, *a, **k):
+        return _cb_add(self, *_cb_split(a), **k)
+
+    def _cb_insert_item(self, index, *a, **k):
+        return _cb_ins(self, index, *_cb_split(a), **k)
+
+    QComboBox.addItem, QComboBox.insertItem = _cb_add_item, _cb_insert_item
+
+    def _cb_add_items_(self, texts):
+        for t in texts:
+            self.addItem(t)
+    QComboBox.addItems = _cb_add_items_
+
+    # меню: QMenu.addAction("📡 Пинг", slot) / addMenu("⏻ Питание ПК")
+    from PyQt6.QtWidgets import QMenu
+    _m_add, _m_menu = QMenu.addAction, QMenu.addMenu
+
+    def _menu_add_action(self, *a, **k):
+        if a and isinstance(a[0], str):
+            f = find_leading(a[0])
+            if f:
+                a = (icon(f[0], role=emoji_role(a[0])), f[1].strip()) + tuple(a[1:])
+        return _m_add(self, *a, **k)
+
+    def _menu_add_menu(self, *a, **k):
+        if a and isinstance(a[0], str):
+            f = find_leading(a[0])
+            if f:
+                a = (icon(f[0], role=emoji_role(a[0])), f[1].strip()) + tuple(a[1:])
+        return _m_menu(self, *a, **k)
+
+    QMenu.addAction, QMenu.addMenu = _menu_add_action, _menu_add_menu
+
     for cls in (QListWidgetItem, QTableWidgetItem):
         _i_init, _i_set = cls.__init__, cls.setText
 

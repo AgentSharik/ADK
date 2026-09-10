@@ -194,6 +194,35 @@ def test_free_ip_dialog_bad_prefix_shows_error(qapp):
     d.close()
 
 
+def test_free_ip_dhcp_only_when_configured(qapp, monkeypatch):
+    """Дано: DHCP-сервер не указан. Ожидаем: в легенде нет пунктов DHCP, столбец DHCP скрыт, среди бейджей
+    найденного адреса нет «DHCP» и предупреждение под ним пустое. С сервером — пункты и бейдж появляются."""
+    from PyQt6.QtWidgets import QLabel
+    from adk import config
+    from adk.dialogs import FreeIPDialog
+
+    def legend_texts(d):
+        return [lbl.text() for lbl in d.legend_box.findChildren(QLabel) if lbl.text()]
+
+    monkeypatch.setattr(config.settings, "dhcp_servers", ())
+    d = FreeIPDialog(None)
+    assert not any("DHCP" in t for t in legend_texts(d)) and d.table.isColumnHidden(2)
+    d.prefix.setText("10.0.2")
+    d.on_dhcp({"status": "n/a", "text": "сверка не выполнялась", "detail": ""})
+    d.on_done("10.0.2.61")
+    assert d.lbl_dhcp.text() == "" and not any("DHCP" in b.text() for b in d.check_badges)
+    assert d.lbl_ip.text() == "10.0.2.61" and d.table.rowCount() == 1
+    d.close()
+
+    monkeypatch.setattr(config.settings, "dhcp_servers", ("dhcp01",))
+    d = FreeIPDialog(None)
+    assert sum("DHCP" in t for t in legend_texts(d)) == 2 and not d.table.isColumnHidden(2)
+    d.on_dhcp({"status": "free", "text": "не выдан DHCP", "detail": ""})
+    d.on_done("10.0.2.61")
+    assert "DHCP" in d.lbl_dhcp.text() and any("DHCP" in b.text() for b in d.check_badges)
+    d.close()
+
+
 def test_fill_table_resets_user_sort(qapp, monkeypatch):
     """После сортировки по колонке новые результаты снова идут «онлайн первыми»."""
     from adk.main_window import ADApp

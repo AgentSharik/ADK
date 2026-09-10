@@ -1987,7 +1987,16 @@ class ThemeTile(QPushButton):
         # превью «экрана»
         scr = QRectF(8, 8, w - 16, h - 36)
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(t.get("bg") or t.get("c1", "#1C1C1E")))
+        from .theme import theme_colors
+        c1, c2 = theme_colors(t)
+        if c1 == c2:
+            p.setBrush(QColor(c1))
+        else:                                   # градиентная тема — на плитке тот же диагональный переход
+            from PyQt6.QtGui import QLinearGradient
+            g = QLinearGradient(scr.topLeft(), scr.bottomRight())
+            g.setColorAt(0.0, QColor(c1))
+            g.setColorAt(1.0, QColor(c2))
+            p.setBrush(g)
         p.drawRoundedRect(scr, 7, 7)
         panel = QRectF(scr.left() + 8, scr.top() + 8, scr.width() - 16, scr.height() - 16)
         p.setBrush(QColor(t["panel"]))
@@ -2014,8 +2023,9 @@ class DesignSettingsDialog(FramelessDialog):
     ACCENTS = (("#007AFF", "Синий"), ("#34C759", "Зелёный"), ("#5856D6", "Индиго"), ("#FF9500", "Оранжевый"),
                ("#FF2D55", "Розовый"), ("#AF52DE", "Фиолетовый"), ("#FF3B30", "Красный"), ("#5AC8FA", "Бирюзовый"),
                ("#FFCC00", "Жёлтый"), ("#8E8E93", "Серый"))
-    BACKGROUNDS = ("#1C1C1E", "#1A1E1B", "#1E1B22", "#201E1C", "#211C1E", "#242426", "#2C2C2E",
-                   "#F2F2F7", "#F7F2EC", "#EFF5F1", "#F3F1F8", "#F1F1F6", "#FFFFFF")
+    # готовые фоны — заметно разные оттенки, а не семь почти одинаковых серых
+    BACKGROUNDS = ("#1C1C1E", "#17140F", "#0E1813", "#1A1222", "#1E1115", "#12181F", "#2C2C2E",
+                   "#F2F2F7", "#F3E9DA", "#E4F0E6", "#ECE7F7", "#FDE8E8", "#FFFFFF")
 
     def __init__(self, app, parent=None):
         super().__init__("🎨 Оформление", parent, (760, 620))

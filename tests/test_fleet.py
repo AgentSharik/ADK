@@ -142,6 +142,21 @@ def test_mass_ping_uses_network_info(monkeypatch):
     assert sorted(calls) == ["PC-A", "PC-B"]  # дубли и пустые не опрашиваются
 
 
+def test_mass_ping_falls_back_to_inventory_ip(monkeypatch):
+    """Дано: DNS не знает PC-OLD, но в инвентаре у него IP 10.0.5.7, и этот адрес отвечает на ping.
+    Ожидаем: массовый пинг честно показывает «в сети» и адрес с пометкой источника — а не «нет» из-за DNS.
+    Для PC-GONE адреса в инвентаре нет → «Не найден», не в сети."""
+    pinged = []
+    monkeypatch.setattr(netutils, "get_computer_network_info", lambda h, use_cache=True: ("Не найден", False))
+    monkeypatch.setattr(netutils, "is_host_alive", lambda ip, timeout=1.0: pinged.append(ip) or ip == "10.0.5.7")
+    monkeypatch.setattr(db, "known_ip", lambda c: {"PC-OLD": "10.0.5.7", "PC-DEAD": "10.0.5.8"}.get(c, ""))
+    res = {c: (ip, on) for c, ip, on in nettools.mass_ping(["PC-OLD", "PC-DEAD", "PC-GONE"])}
+    assert res["PC-OLD"] == ("10.0.5.7 (по данным сканирования)", True)
+    assert res["PC-DEAD"] == ("10.0.5.8 (по данным сканирования)", False)
+    assert res["PC-GONE"] == ("Не найден", False)
+    assert sorted(pinged) == ["10.0.5.7", "10.0.5.8"]        # PC-GONE пинговать нечего
+
+
 def test_msg_command_shape():
     argv = nettools.msg_command("PC-001", "Перезагрузка через 5 минут", 30)
     assert argv[:2] == ["msg", "*"] and "/server:PC-001" in argv and "/time:30" in argv and argv[-1].startswith("Перезагрузка")
@@ -383,6 +398,17 @@ def test_v31_dialogs_smoke(qapp, monkeypatch):
     d = MassPingDialog(["PC-A", "PC-B"], app)
     _spin(qapp, 800)
     assert "не в сети: 2" in d.status.text()
+    d.close()
+
+    # DNS молчит, но инвентарь помнит адрес и он отвечает → в окне «в сети», IP с пометкой источника
+    monkeypatch.setattr(nettools, "get_computer_network_info", lambda h, use_cache=True: ("Не найден", False))
+    monkeypatch.setattr(netutils, "is_host_alive", lambda ip, timeout=1.0: ip == "10.0.7.1")
+    monkeypatch.setattr(db, "known_ip", lambda c: "10.0.7.1" if c == "PC-A" else "")
+    d = MassPingDialog(["PC-A", "PC-B"], app)
+    _spin(qapp, 800)
+    assert "В сети: 1 · не в сети: 1" in d.status.text()
+    assert d.table.item(0, 1).text() == "10.0.7.1 (по данным сканирования)" and "в сети" in d.table.item(0, 2).text()
+    assert d.table.item(1, 1).text() == "Не найден"
     d.close()
 
     software.cache_software("PC-A", [{"name": "Chrome", "version": "1", "publisher": "", "installed": ""}])

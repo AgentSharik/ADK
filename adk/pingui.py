@@ -100,7 +100,7 @@ class LatencyGraph(QWidget):
             h = area.height() * min(1.0, s / top)
             p.setPen(Qt.PenStyle.NoPen)
             c = QColor(good)
-            c.setAlpha(150)
+            c.setAlpha(210)
             p.setBrush(c)
             p.drawRoundedRect(QRectF(x, area.bottom() - h, bw, h), 2, 2)
             pt = (x + bw / 2, area.bottom() - h)

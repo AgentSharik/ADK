@@ -209,18 +209,17 @@ class FreeIPDialog(FramelessDialog):
         legend.setHorizontalSpacing(6)
         legend.setVerticalSpacing(4)
         legend.setVerticalSpacing(7)
-        for i, key in enumerate(("free", "found", "lease", "reserved", "alive", "ptr")):
+        # пункты DHCP показываются только когда сверка настроена ([Scanner] dhcp_servers) — иначе они лишь путают
+        keys = ("free", "lease", "reserved", "alive", "ptr") if settings.dhcp_servers else ("free", "alive", "ptr")
+        for i, key in enumerate(keys):
             sw = QLabel()
             sw.setFixedSize(16, 16)
-            if key == "found":
-                sw.setStyleSheet(f"background: {pal.input}; border: 2.5px solid {pal.text}; border-radius: 4px;")
-            else:
-                sw.setStyleSheet(f"background: {self.map._color(pal, CELL[key][1]).name()}; border: none; border-radius: 4px;")
+            sw.setStyleSheet(f"background: {self.map._color(pal, CELL[key][1]).name()}; border: none; border-radius: 4px;")
             t = QLabel(CELL[key][0])
             t.setStyleSheet(f"color: {pal.text}; font-size: 9.5pt;")
             legend.addWidget(sw, i, 0)
             legend.addWidget(t, i, 1)
-        legend.setRowStretch(6, 1)
+        legend.setRowStretch(len(keys), 1)
         self.legend_box = QWidget()
         self.legend_box.setLayout(legend)
         row_map.addWidget(self.legend_box, 1, Qt.AlignmentFlag.AlignTop)
@@ -246,6 +245,7 @@ class FreeIPDialog(FramelessDialog):
         self.lbl_ip.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.lbl_ip.setStyleSheet(f"font-size: 30pt; font-weight: 800; color: {pal.title_accent};")
         rl.addWidget(self.lbl_ip)
+        self.check_badges: list[QLabel] = []
         self.checks = QHBoxLayout()
         self.checks.setSpacing(6)
         rl.addLayout(self.checks)
@@ -286,8 +286,9 @@ class FreeIPDialog(FramelessDialog):
         self.table.setHorizontalHeaderLabels(["Адрес", "Время", "DHCP"])
         hh = self.table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch if not settings.dhcp_servers else QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnHidden(2, not settings.dhcp_servers)     # столбец DHCP — только при настроенной сверке
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -317,10 +318,12 @@ class FreeIPDialog(FramelessDialog):
             if wdg is not None:
                 wdg.hide()
                 wdg.deleteLater()
+        self.check_badges = []
         for text, kind in items:
             b = make_badge(text, kind, self.pal)
             self.checks.addWidget(b)
             b.show()
+            self.check_badges.append(b)
         self.checks.addStretch()
         self.checks.activate()
 
@@ -389,15 +392,20 @@ class FreeIPDialog(FramelessDialog):
         self.map.mark(host, "free")
         info = self._dhcp or {}
         st = info.get("status", "n/a")
-        icon = DHCP_ICON.get(st, "❌")
-        dhcp_kind = "online" if st in ("free", "excluded") else "info" if st == "outside" else "warning"
-        self._set_checks([("✓ не занят ни одним ПК", "online"), ("✓ никто не отвечает на ping", "online"),
-                          ("✓ не записан в DNS", "online"), (f"{icon} DHCP", dhcp_kind)])
-        txt = info.get("text", "не сверялось")
-        txt = "адрес не выдан" if txt == "не выдан DHCP" else txt
-        dhcp_txt = f"DHCP: {txt}" + (f" ({info['detail']})" if info.get("detail") else "")
-        dhcp_txt = dhcp_txt.replace("DHCP: DHCP", "DHCP:")
-        self.lbl_dhcp.setText(f"{icon} {dhcp_txt}")
+        checks = [("✓ не занят ни одним ПК", "online"), ("✓ никто не отвечает на ping", "online"), ("✓ не записан в DNS", "online")]
+        if settings.dhcp_servers:
+            # сверка с DHCP есть только когда сервер указан в настройках; без него бейдж и предупреждение не показываем
+            icon = DHCP_ICON.get(st, "❌")
+            dhcp_kind = "online" if st in ("free", "excluded") else "info" if st == "outside" else "warning"
+            checks.append((f"{icon} DHCP", dhcp_kind))
+            txt = info.get("text", "не сверялось")
+            txt = "адрес не выдан" if txt == "не выдан DHCP" else txt
+            dhcp_txt = f"DHCP: {txt}" + (f" ({info['detail']})" if info.get("detail") else "")
+            dhcp_txt = dhcp_txt.replace("DHCP: DHCP", "DHCP:")
+            self.lbl_dhcp.setText(f"{icon} {dhcp_txt}")
+        else:
+            self.lbl_dhcp.setText("")
+        self._set_checks(checks)
         self.status.setText(f"Готово: {ip}. Следующий поиск начнётся с .{min(254, host + 1)}.")
         if ip not in self.history:
             self.history.append(ip)
@@ -405,7 +413,7 @@ class FreeIPDialog(FramelessDialog):
             self.table.insertRow(r)
             self.table.setItem(r, 0, QTableWidgetItem(ip))
             self.table.setItem(r, 1, QTableWidgetItem(f"{datetime.now():%H:%M:%S}"))
-            self.table.setItem(r, 2, QTableWidgetItem(f"{icon} {info.get('text', 'не сверялось')}"))
+            self.table.setItem(r, 2, QTableWidgetItem(f"{DHCP_ICON.get(st, '❌')} {info.get('text', 'не сверялось')}"))
             self.btn_copy_all.setEnabled(True)
 
     def on_dialog_done(self):

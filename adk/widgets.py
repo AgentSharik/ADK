@@ -372,8 +372,11 @@ def make_badge(text: str, kind: str, palette: Palette) -> QLabel:
     fg, bg, bd = palette.badge(kind)
     lbl = QLabel(text)
     lbl.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
-    lbl.setStyleSheet(f"background-color: {bg}; color: {palette.text}; border: 1px solid {bd}; "
+    # текст — основной цвет темы (семантический на подкрашенной заливке читался хуже), рамка — насыщенная
+    lbl.setStyleSheet(f"background-color: {bg}; color: {palette.text}; border: 1.5px solid {bd}; "
                       "font-weight: bold; font-size: 9pt; border-radius: 4px; padding: 4px 10px;")
+    from .icons import LABEL_PX
+    lbl.setFixedHeight(LABEL_PX + 12)      # одна высота у бейджей с иконкой и без — в ряду они не «пляшут»
     return lbl
 
 
@@ -541,20 +544,54 @@ def app_palette() -> Palette:
                    d.get("border_color") or "")
 
 
-def apply_theme(design: dict) -> None:
-    from PyQt6.QtGui import QFont
+BUNDLED_FONT = "Inter"          # шрифт интерфейса по умолчанию — лежит в assets/fonts, одинаков на любом ПК
+LEGACY_FONTS = ("", None, "Segoe UI", "Sans Serif", "MS Shell Dlg 2", "MS Sans Serif")   # прежние значения по умолчанию
+_fonts_loaded: list[str] = []
 
+
+def load_bundled_fonts() -> list[str]:
+    """Зарегистрировать шрифты из assets/fonts (один раз). Возвращает список семейств; пустой — если файлов нет."""
+    if _fonts_loaded:
+        return _fonts_loaded
+    import glob
+    import os
+    from PyQt6.QtGui import QFontDatabase
+    from .tray import asset_path
+    for path in sorted(glob.glob(os.path.join(asset_path("fonts"), "*.[ot]tf"))):
+        fid = QFontDatabase.addApplicationFont(path)
+        if fid >= 0:
+            for fam in QFontDatabase.applicationFontFamilies(fid):
+                if fam not in _fonts_loaded:
+                    _fonts_loaded.append(fam)
+    return _fonts_loaded
+
+
+def ui_font(family: str, size: int):
+    """Шрифт приложения: семейство из настроек (Inter, если оно доступно), размер, начертание Medium —
+    обычный текст (строки таблиц, подписи полей) читается так же плотно, как кнопки и бейджи."""
+    from PyQt6.QtGui import QFont
+    f = QFont(family, size)
+    f.setWeight(QFont.Weight.Medium)
+    f.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+    return f
+
+
+def apply_theme(design: dict) -> None:
     from .theme import build_stylesheet, design_for_system
     from .config import settings
     design = design_for_system(dict(design))
-    settings.design = dict(design)  # палитра виджетов всегда читает актуальную тему отсюда
     app = QApplication.instance()
+    if app is not None:
+        fams = load_bundled_fonts()
+        if design.get("font_family") in LEGACY_FONTS and BUNDLED_FONT in fams:
+            design["font_family"] = BUNDLED_FONT      # старые config.ini с системным шрифтом переезжают на встроенный
+    settings.design = dict(design)  # палитра виджетов всегда читает актуальную тему отсюда
     if app is None:
         return
     app.setStyleSheet(build_stylesheet(design["bg_style"], design["is_dark"], design["font_family"],
                                        design["font_size"], design["accent_color"], design.get("panel_color") or "",
                                        design.get("text_color") or "", design.get("border_color") or ""))
-    app.setFont(QFont(design["font_family"], design["font_size"]))
+    app.setFont(ui_font(design["font_family"], design["font_size"]))
     from . import icons
     icons.install()                      # 3.4.0: ведущие эмодзи → контурные иконки в цвете темы
     new_pal = app_palette()
@@ -659,12 +696,18 @@ class DrivePicker(QPushButton):
 
     # --- отрисовка
     def _sync(self) -> None:
-        self.setText(f"{self._current or '—'}  ▾")
+        from . import icons
+        from PyQt6.QtCore import QSize
+        self.setText(self._current or "—")
+        self.setIcon(icons.icon("chevron.down", role="accent"))
+        self.setIconSize(QSize(14, 14))
+        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)     # иконка справа от текста
         fm = self.fontMetrics()
-        self.setFixedWidth(fm.horizontalAdvance(self.text()) + 30)   # ровно под текст — без пустого поля справа
+        self.setFixedWidth(fm.horizontalAdvance(self.text()) + 48)   # текст + стрелка, без пустого поля справа
         self.menu.clear()
         for drive, hint in self._items:
-            act = self.menu.addAction((f"●  {drive}" if drive == self._current else f"○  {drive}") + (f"   {hint}" if hint else ""))
+            act = self.menu.addAction(icons.icon("checkmark" if drive == self._current else "circle", role="accent" if drive == self._current else "text"),
+                                      drive + (f"   {hint}" if hint else ""))
             act.triggered.connect(lambda _c=False, d=drive: self.setCurrentText(d))
         if not self._items:
             self.menu.addAction("тома ещё не опрошены").setEnabled(False)

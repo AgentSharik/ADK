@@ -13,7 +13,10 @@ from typing import Callable, Iterable
 
 from . import db
 from .config import CREATE_NO_WINDOW
+from . import netutils
 from .netutils import get_computer_network_info, is_valid_hostname
+
+_ORIG_NET_INFO = get_computer_network_info
 
 log = logging.getLogger(__name__)
 
@@ -81,13 +84,33 @@ def learn_mac(computer_name: str, ip: str) -> str:
 
 
 # --------------------------------------------------------------------------- массовый пинг
+def probe_host(comp: str) -> tuple[str, bool]:
+    """(ip, online) для одного ПК. Сначала DNS + ping по имени; если DNS имя не знает — берём последний адрес
+    из инвентаря (``db.known_ip``) и честно пингуем его: ПК может быть в сети, даже когда запись в DNS устарела.
+    Возвращаемый ip в этом случае помечается « (по данным сканирования)»."""
+    # берём актуальную функцию из netutils (её подменяют в тестах/демо); прямой импорт выше — для обратной совместимости
+    fn = netutils.get_computer_network_info if get_computer_network_info is _ORIG_NET_INFO else get_computer_network_info
+    ip, online = fn(comp, use_cache=False)
+    if ip and ip not in ("Не найден", "Не указан"):
+        return ip, online
+    known = db.known_ip(comp)
+    if not known:
+        return "Не найден", False
+    try:
+        alive = bool(netutils.is_host_alive(known))
+    except Exception as exc:  # noqa: BLE001
+        log.debug("ping %s (%s): %s", comp, known, exc)
+        alive = False
+    return f"{known} (по данным сканирования)", alive
+
+
 def mass_ping(hosts: Iterable[str], progress: Callable[[str, str, bool], None] | None = None, workers: int = 32,
               cancelled: Callable[[], bool] | None = None) -> list[tuple[str, str, bool]]:
     """Параллельно проверяет список ПК → [(comp, ip, online)]. ``progress(comp, ip, online)`` — по мере готовности."""
     hosts = [h for h in dict.fromkeys(hosts) if h]
     out: list[tuple[str, str, bool]] = []
     with cf.ThreadPoolExecutor(max_workers=max(1, min(workers, len(hosts) or 1))) as ex:
-        futs = {ex.submit(get_computer_network_info, h, use_cache=False): h for h in hosts}
+        futs = {ex.submit(probe_host, h): h for h in hosts}
         for fut in cf.as_completed(futs):
             if cancelled and cancelled():
                 break

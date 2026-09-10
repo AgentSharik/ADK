@@ -94,10 +94,10 @@ class MassPingDialog(FramelessDialog):
         r = self.rows.get(comp)
         if r is None:
             return
-        if (not ip or ip == "Не найден") and not online:
-            # DNS не ответил — покажем адрес из последнего сканирования парка, честно пометив источник
-            known = db.known_ip(comp)
-            ip = f"{known} (по данным сканирования)" if known else "Не найден"
+        if not ip:
+            ip = "Не найден"
+        # если DNS имя не знает, nettools.probe_host уже подставил адрес из инвентаря с пометкой источника
+        # и пропинговал именно его — поэтому «в сети» здесь честное, а не «нет» из-за устаревшей записи DNS
         self.result[comp] = (ip, online)
         self.table.item(r, 1).setText(ip)
         it = self.table.item(r, 2)
@@ -107,8 +107,9 @@ class MassPingDialog(FramelessDialog):
             db.set_pc_online(comp, online)
         except Exception as exc:  # noqa: BLE001
             log.debug("set_pc_online: %s", exc)
-        if online and ip and ip != "Не найден" and not db.get_mac(comp):
-            run_in_background(self, lambda: nettools.learn_mac(comp, ip),
+        bare_ip = ip.split(" ", 1)[0]
+        if online and bare_ip and bare_ip != "Не найден" and not db.get_mac(comp):
+            run_in_background(self, lambda: nettools.learn_mac(comp, bare_ip),
                               lambda m, row=r: self.table.item(row, 3).setText(m or "—"), lambda m: None)
 
     def _done(self):
