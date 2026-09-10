@@ -452,6 +452,8 @@ class FlowLayout(QLayout):
     def _do_layout(self, rect, test_only: bool) -> int:
         x, y, line_h = rect.x(), rect.y(), 0
         for it in self._items:
+            if it.isEmpty():            # скрытая кнопка (например «Снять блокировку» у незаблокированной учётки) места не занимает
+                continue
             w, h = it.sizeHint().width(), it.sizeHint().height()
             if x + w > rect.right() and line_h > 0:
                 x, y, line_h = rect.x(), y + line_h + self._sp, 0

@@ -21,7 +21,8 @@ from .config import ACCOUNT_DISABLE_FLAG, CREATE_NO_WINDOW, SMARTCARD_REQUIRED_F
 from .credentials import clear_credentials, save_credentials
 from .theme import PRESET_THEMES, is_color_dark
 from .widgets import (
-    FramelessDialog, InputDialog, MessageBox, app_palette, apply_theme, fit_columns, make_badge, run_in_background, safe_rich,
+    FlowLayout, FramelessDialog, InputDialog, MessageBox, app_palette, apply_theme, fit_columns, make_badge, run_in_background,
+    safe_rich,
 )
 
 log = logging.getLogger(__name__)
@@ -561,7 +562,7 @@ class UserCardDialog(FramelessDialog):
         self.dn = entry.entry_dn
         self._entry_changed = False      # были ли изменения состояния — главное окно тогда перечитает AD
         fio = ad.get_full_fio(entry, "Пользователь")
-        super().__init__(f"👤 Карточка: {fio}", parent, (1200, 720), large_font=True)
+        super().__init__(f"👤 Карточка: {fio}", parent, (1000, 740), large_font=True)
         self.login = ad.get_ad_value(entry, "sAMAccountName")
         self.original_uac = ad.get_ad_int_value(entry, "userAccountControl")
         self.current_comp = db.get_computer_by_login(self.login)
@@ -602,7 +603,10 @@ class UserCardDialog(FramelessDialog):
         self.body.addWidget(head)
 
         # ---------------------------------------------------------------- панель кнопок: только про учётку
-        bar = QHBoxLayout()
+        # 3.5.4: шрифт карточки 12 pt — семь кнопок с прежними подписями в одну строку уже не помещаются в 1000 px,
+        # поэтому ряд переносится на вторую строку (FlowLayout), а не растягивает окно и не режет подписи
+        bar_holder = QWidget()
+        bar = FlowLayout(bar_holder, spacing=6)
         b_copy = QPushButton("📋 Копировать")
         b_copy.setObjectName("btnSuccess")
         b_copy.clicked.connect(self.copy_to_clipboard)
@@ -620,15 +624,14 @@ class UserCardDialog(FramelessDialog):
             b_cmp.setToolTip("Сравнить группы с эталонным сотрудником и выровнять членство")
             b_cmp.clicked.connect(lambda: GroupCompareDialog(self.entry, self.app, self).exec())
             bar.addWidget(b_cmp)
-        bar.addStretch()
-        self.btn_reset = QPushButton("🔑 Смена пароля")
+        self.btn_reset = QPushButton("🔑 Смена пароля…")
         self.btn_reset.setObjectName("btnWarning")
         self.btn_reset.setToolTip("Новый пароль по политике или свой; крупно на экране, карточка для сотрудника, снятие блокировки")
         self.btn_reset.clicked.connect(self.reset_password)
         bar.addWidget(self.btn_reset)
         self._ad_widgets.append(self.btn_reset)
         st = ad.account_status(self.entry, settings.max_password_age_days)
-        self.btn_unlock = QPushButton("🔓 Разблокировать")
+        self.btn_unlock = QPushButton("🔓 Снять блокировку")
         self.btn_unlock.setObjectName("btnWarning")
         self.btn_unlock.setToolTip("lockoutTime = 0 — снимает блокировку после неверных паролей, учётку не включает")
         self.btn_unlock.clicked.connect(self.unlock)
@@ -636,18 +639,14 @@ class UserCardDialog(FramelessDialog):
         bar.addWidget(self.btn_unlock)
         self._ad_widgets.append(self.btn_unlock)
         disabled = bool(self.original_uac & ACCOUNT_DISABLE_FLAG)
-        self.btn_toggle = QPushButton("✅ Включить учётку" if disabled else "⛔ Отключить учётку")
+        self.btn_toggle = QPushButton("✅ Включить учётную запись" if disabled else "⛔ Отключить учётную запись")
         self.btn_toggle.setObjectName("btnSuccess" if disabled else "btnDanger")
         self.btn_toggle.setToolTip("Включить учётную запись (UAC −= 2)" if disabled else
                                    "Отключить учётную запись — увольнение / декрет: UAC += 2" + (" и экспорт ящика в PST" if settings.pst_backup_base else ""))
         self.btn_toggle.clicked.connect(self.toggle_disabled)
         bar.addWidget(self.btn_toggle)
         self._ad_widgets.append(self.btn_toggle)
-        for i in range(bar.count()):        # 3.5.4: при 12 pt семь кнопок не помещались в ширину — уже отступы
-            b = bar.itemAt(i).widget()
-            if isinstance(b, QPushButton):
-                b.setStyleSheet("padding-left: 10px; padding-right: 10px;")
-        self.body.addLayout(bar)
+        self.body.addWidget(bar_holder)
         self.body.addSpacing(6)     # 3.5.4: при крупном шрифте вкладки упирались в ряд кнопок — воздух между ними
 
         tabs = self.tabs = QTabWidget()
@@ -1041,7 +1040,7 @@ class UserCardDialog(FramelessDialog):
             except Exception as exc:  # noqa: BLE001
                 log.debug("uac local update: %s", exc)
             now_disabled = not disabled
-            self.btn_toggle.setText("✅ Включить учётку" if now_disabled else "⛔ Отключить учётку")
+            self.btn_toggle.setText("✅ Включить учётную запись" if now_disabled else "⛔ Отключить учётную запись")
             self.btn_toggle.setObjectName("btnSuccess" if now_disabled else "btnDanger")
             self.btn_toggle.style().unpolish(self.btn_toggle)
             self.btn_toggle.style().polish(self.btn_toggle)
@@ -2071,7 +2070,6 @@ class DesignSettingsDialog(FramelessDialog):
         lay = QVBoxLayout(w)
         lay.setSpacing(12)
         lay.addWidget(QLabel("<b>Готовые темы</b>"))
-        from .widgets import FlowLayout
         holder = QWidget()
         flow = FlowLayout(holder, spacing=8)
         self.tiles: dict[str, ThemeTile] = {}
