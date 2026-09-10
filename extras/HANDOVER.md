@@ -1,12 +1,15 @@
 # ADK — Active Directory Kit · руководство для продолжения работы в новом чате
 
-Актуально на 2026-09-10. Версия проекта **3.5.2**, тестов **236**, e2e 46 + 82 + 45.
+Актуально на 2026-09-10. Версия проекта **3.5.2**, тестов **236**, e2e 46 + 82 + 45. Раздел О — обязательный регламент работы.
 Внутренний документ: лежит в `extras/`, не входит в zip и не упоминается в README/CHANGELOG.
 Прочитать целиком до первой правки — здесь всё от А до Я, включая производство видео и чистку истории git.
 
 ---
 
 ## А. Первые 10 минут в новом чате
+
+> **Главное правило:** всё делается по разделу **О** («Стандарт работы») — те же команды, тот же порядок, те же проверки.
+> Остальные разделы — справочник; при расхождении приоритет у раздела О.
 
 Песочница между сессиями сбрасывается (пакеты, apt, процессы), а воркплейс `/home/user` может отставать от GitHub.
 Поэтому строго по порядку:
@@ -251,8 +254,9 @@ curl -s https://api.github.com/repos/AgentSharik/ADK/commits/main | grep -m1 '"s
    `cd /home/user && rm -rf extras/demo/frames24 && QT_QPA_PLATFORM=offscreen timeout 1750 python extras/demo/make_demo24.py`
 5. Проверка: `FF=$(python -c "import imageio_ffmpeg,os;print(imageio_ffmpeg.get_ffmpeg_exe())"); $FF -i extras/videos/ADK_demo_24.mp4 2>&1 | grep -E "Duration|Stream"`
    — есть Video и Audio, длительность ≥ предыдущей. Контактный лист кадров (ffmpeg `-vf fps=1/20` → PIL) — посмотреть глазами.
-6. Удалить `extras/demo/make_demo24.py` и `extras/videos/ADK_demo_24.mp4`, обновить этот файл (разделы В, К, М).
-7. Коммит + push, затем чистка истории (раздел Л).
+6. Удалить **предыдущие** `extras/demo/make_demo24.py` и `extras/videos/ADK_demo_24.mp4` (актуальные остаются),
+   обновить этот файл (разделы В, К, М: длительность, номер следующего ролика).
+7. Коммит + push, затем чистка истории (раздел Л). **Полный пошаговый стандарт с готовыми скриптами — раздел О; он главный.**
 
 Грабли: ffmpeg берётся из `imageio_ffmpeg` (apt-версии может не быть); `ad.reset_password` требует `conn.extend.microsoft`
 (`_Ext`); диалоги создавать с `parent=w`, чтобы тема применилась; `PluginsDialog.reload()` дергает `w.reload_plugins()` —
@@ -357,3 +361,261 @@ du -sh .git      # для контроля; свежий клон должен �
   не понимает `<wbr/>`. pyflakes игнорирует `# noqa: F401` — использовать `__all__`.
 - `git show <commit>:extras/demo/make_demoXX.py` для вычищенных файлов не работает — только по хэшу blob через `git cat-file -p`.
 - Реальный `.exe` в песочнице не собрать (это делает CI).
+
+---
+
+## О. Стандарт работы — делать в точности так (методика одного исполнителя)
+
+Это не «рекомендации», а **регламент**. Разные чаты собирали видео и проверяли код по-разному — ролики выходили
+разными, ошибки повторялись. Ниже ровно те шаги, команды и скрипты, которыми делались версии 3.5.1–3.5.2.
+Отступать можно только по прямому указанию автора.
+
+### О.1. Старт сессии (каждый раз, в этом порядке)
+
+Песочница между сессиями теряет pip-пакеты, apt-библиотеки, `.git/config` и иногда `.git/refs/` — поэтому первые шаги
+одинаковы всегда:
+
+```bash
+cd /home/user
+mkdir -p .git/refs/heads .git/refs/tags                       # без этого git говорит «not a git repository»
+ls .git/config 2>/dev/null || printf '[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n\tlogallrefupdates = true\n[remote "origin"]\n\turl = https://github.com/AgentSharik/ADK.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n[branch "main"]\n\tremote = origin\n\tmerge = refs/heads/main\n' > .git/config
+git fetch -q origin main && git rev-parse HEAD FETCH_HEAD     # должны совпадать; если HEAD отстал и правок нет → git reset --hard FETCH_HEAD
+git status --short                                            # « D extras/videos/…» после сброса песочницы → git checkout -- <файлы>
+pip install -q -r requirements.txt -r requirements-dev.txt reportlab imageio-ffmpeg git-filter-repo
+sudo -n apt-get install -y -qq libxkbcommon0 libxkbcommon-x11-0 libegl1 libgl1 libglib2.0-0 libfontconfig1 libdbus-1-3 fonts-dejavu-core
+export QT_QPA_PLATFORM=offscreen
+python -m pytest -q 2>&1 | tail -1                            # база должна быть зелёной ДО правок
+```
+Прочитать разделы А, Д, Е этого файла; сверить `adk/__init__.py` с верхним блоком CHANGELOG.
+
+### О.2. Разбор запроса автора
+
+1. Переписать запрос по пунктам (1, 2, 3…) в формулировках автора. Итоговый ответ строится по этим же номерам.
+2. По каждому пункту **сначала посмотреть код и картинку**, потом решать: `grep -n` по `adk/`, при необходимости
+   offscreen-скриншот окна (О.5). Не чинить «по памяти» — часть жалоб оказывается уже исправленной или лежит в другом месте.
+3. Если пункт неоднозначен и цена ошибки высока — спросить автора **одним** сообщением со всеми вопросами сразу;
+   мелкие развилки решать самому и упомянуть в итоге.
+4. Скриншоты автора — кадры из видео (плеер на телефоне): по ним видно окно и тему, но не версию. Сверять с текущим кодом.
+
+### О.3. Как вносятся правки в код
+
+- **Только патч-скриптом**; никогда «переписать файл целиком», никогда `sed` для многострочных фрагментов:
+  ```python
+  p = 'adk/dialogs.py'; s = open(p, encoding='utf-8').read()
+  a = '''точный старый фрагмент (скопирован из файла, с отступами)'''
+  b = '''новый фрагмент'''
+  assert a in s, a[:60]; s = s.replace(a, b, 1)
+  open(p, 'w', encoding='utf-8').write(s)
+  ```
+  `assert` обязателен: не найден фрагмент — значит код не тот, что вы думаете; сначала `sed -n N,Mp файл`, потом патч.
+  Перед правкой читать: `grep -n "def имя" -A 40 файл`, `sed -n 700,760p файл`.
+- Патч-скрипт запускать как `python - <<'EOF' … EOF`, но **внутри него не должно быть строки `EOF`** и тройных кавычек
+  внутри тройных кавычек (bash оборвёт heredoc, а остаток текста выполнится как команды). Большой текст (например, новый
+  раздел документа) — писать инструментом записи файла во временный файл и вставлять из него Python-скриптом.
+- Новые функции — в тот модуль, где живут соседи (карта кода — раздел Г). Чистая логика без Qt — в `ad.py` / `db.py` /
+  `netutils.py` / `nettools.py`, чтобы её можно было тестировать без окон.
+- Docstring по-русски «что делает и почему так» («3.5.2: раньше … → теперь …»). Никаких упоминаний источников стиля.
+- После каждой пачки правок: `python -m pyflakes adk tests` → пусто.
+- Интерфейс не должен врать: если проверить нельзя — писать «не проверено», а не выдумывать.
+- Сеть, `subprocess`, LDAP — только через функции с таймаутом и обработкой исключений; в тестах подменяются.
+
+### О.4. Как тестируется (обязательно на каждую правку)
+
+Порядок: **воспроизвести баг тестом → он падает → правка → тест зелёный.** Если баг нельзя воспроизвести тестом —
+хотя бы offscreen-смоук (О.5) с картинкой.
+
+Шаблон GUI-теста (так написаны все тесты 3.5.x; фикстуры — `tests/conftest.py`, помощники — `tests/test_gui.py`):
+```python
+def test_что_проверяем(qapp, fake_conn, monkeypatch):
+    """3.5.2: раньше <симптом> → теперь <ожидание>. Дано: …"""
+    from adk import dialogs
+    monkeypatch.setattr(dialogs.MessageBox, "information", lambda *a, **k: None)      # окна не блокируют
+    monkeypatch.setattr(dialogs, "run_in_background", lambda owner, work, done, *a, **k: done(work()))  # фон → синхронно
+    monkeypatch.setattr(ad, "reset_password", lambda conn, dn, pwd, **kw: None)      # в AD не пишем
+    w = _main(qapp, fake_conn, monkeypatch)                 # главное окно с FakeConn, без сканера
+    w.search_input.setText("ivanov"); w.start_search()
+    assert _wait(lambda: w.table.rowCount() > 0, qapp, 3000)
+    row = next(r for r in range(w.table.rowCount()) if w.table.item(r, 0).text() == "ivanov")
+    w.select_row(row)
+    d = UserCardDialog(w.results[row]["entry"], w, w)
+    d.reset_password()                                      # действие
+    assert d.account_vals["Пароль"].text().startswith("сменён сегодня")   # карточка
+    assert "сегодня" in w.vals["account"].text()            # инспектор
+    assert w.table.item(row, 2).text() == "Активна"         # таблица
+    d.close(); w.close()
+```
+Правила:
+- Данные — `ENTRIES` / `FakeEntry` / `FakeAttr` из `tests/test_gui.py`; изменённые `ENTRIES[i]._a[...]` возвращать в
+  `finally` (тесты делят одни объекты).
+- Всё внешнее — `monkeypatch`: `netutils.get_computer_network_info`, `netutils.is_printer_alive`, `netutils.probe_printer`
+  (глобально подменён в conftest), `subprocess.Popen`, `MessageBox.question/information`, `ResetPasswordDialog.exec`.
+- Роли — `access.set_rights(pc=…, ad=…)` и `access.reset()` в `finally`.
+- Диалоги без `exec()`: создать объект, вызвать методы напрямую (`d.reset_password()`, `plg._toggle()`), закрыть `close()`.
+- Один тест = один сценарий пользователя целиком, с проверкой **всех** мест, где результат виден (карточка + инспектор +
+  таблица), а не одного лейбла.
+- Текст сравнивать через `icons.strip()` / `btn._adk_icon` (эмодзи превращаются в иконки); чистые функции — отдельным
+  тестом без Qt (пример: `test_set_local_attr_works_for_ldap3_like_and_fake_entries`).
+- Куда класть — раздел Ж. Число тестов после партии записать в CHANGELOG и в шапку HANDOVER.
+
+Полный прогон перед сдачей (все строки зелёные):
+```bash
+export QT_QPA_PLATFORM=offscreen; cd /home/user
+python -m pyflakes adk tests extras/demo/make_demoNN.py && echo PYFLAKES-OK
+python -m pytest -q 2>&1 | tail -1                                   # N passed
+for f in e2e_scenario e2e_round2 e2e_round3; do python tests/$f.py 2>&1 | grep -v propagate | tail -1; done   # 46/46 82/82 45/45
+grep -rn "AnyDesk\|ADManager\|AD Manager" adk docs README.md CHANGELOG.md extras/HANDOVER.md   # пусто
+```
+e2e-скрипты — не pytest: внешнее в них подменяется присваиванием в шапке (`netutils.probe_printer = lambda ip, **kw: {...}`).
+
+### О.5. Визуальный смоук (после любой правки интерфейса — обязателен)
+
+Скрипт-заготовка (`QT_QPA_PLATFORM=offscreen python - <<'EOF' … EOF`); картинки смотреть глазами (открыть файл);
+несколько окон собирать на один лист через PIL:
+```python
+import sys; sys.path.insert(0, "/home/user"); sys.path.insert(0, "/home/user/tests")
+from PyQt6.QtWidgets import QApplication
+from adk import config, db, netutils, ad
+config.settings.db_path = "/tmp/audit/smoke.db"; config.settings.hide_role_welcome = True; db.init_db()
+app = QApplication([])
+from adk.widgets import apply_theme; from adk.theme import PRESET_THEMES, theme_design
+apply_theme({**config.settings.design, **theme_design(PRESET_THEMES["dark"])})   # без apply_theme окна «голые»
+from adk import icons; icons.install()
+import test_gui as tg
+from adk.main_window import ADApp
+netutils.get_computer_network_info = lambda n, **kw: ("10.0.0.9", n == "WS-101")
+ad.make_connection = lambda *a, **k: tg.FakeConn(tg.ENTRIES); ADApp.start_scan = lambda self: None
+w = ADApp("CORP\\admin", "x"); w.resize(1400, 820); w.show()
+w.search_input.setText("иванов"); w.start_search(); tg._wait(lambda: w.table.rowCount() >= 1, app, 4000); w.select_row(0)
+app.processEvents(); w.grab().save("/tmp/audit/s_main.png")
+from adk.dialogs import UserCardDialog
+d = UserCardDialog(tg.ENTRIES[0], w, w); d.resize(1000, 620); d.show(); d.tabs.setCurrentIndex(2); app.processEvents()
+d.grab().save("/tmp/audit/s_card.png"); d.close(); w.close()
+```
+Что искать: обрезанный текст, наезды, светлый текст на светлой заливке, двойные иконки, невыровненные иконки, пустоты.
+Темы: «Графит» и одна светлая («Светлая»); при правке тем — лист всех 10 (цикл по `PRESET_THEMES`, мини-окно на тему:
+кнопки btnWarning/btnSuccess/btnDanger/btnPrimary, поле ввода, вкладки, таблица с выделенной строкой, чекбокс).
+
+### О.6. Видео — единый стандарт сборки (делать только так)
+
+**Инструменты.** PyQt6 offscreen (`QT_QPA_PLATFORM=offscreen`) → `widget.grab()` → PIL (курсор, субтитр) → сырые кадры
+в `ffmpeg` через pipe (`libx264`, crf 20, 25 fps, 1400×820) → музыка `extras/demo/make_music.py` (синтез WAV на нужную
+длительность) → финальный мультиплекс ffmpeg (H.264 + AAC). ffmpeg — из `imageio_ffmpeg.get_ffmpeg_exe()`.
+**Не используются:** запись экрана, xvfb, PNG-кадры на диске, склейка из отдельных клипов, кроссфейды, ускорения.
+**Один скрипт = один ролик.**
+
+**Один источник сценария:** `extras/demo/make_demoNN.py` (сейчас 24). Следующий ролик — **копия предыдущего скрипта +
+добавленные сцены**; существующие сцены не удаляются и не сокращаются (так и выполняется «не короче предыдущего»).
+
+**Обязательные свойства ролика:**
+- титры в начале и в конце одинаковые, `VERSION` = `adk.__version__` (проверять кадры на 1.5 с и за 2 с до конца);
+- субтитры: `cap("…")` в начале каждой сцены — одна короткая фраза о том, что показывается; титры без субтитра;
+- тема — «Графит» (`PRESET_THEMES["dark"]`); фон заставок `0xFF1C1C1E`; плашка субтитра `(28, 28, 30)` с обводкой `(10, 132, 255)`;
+- живые сцены (пинг) — `live(S, сек)`, чтобы графики реально двигались; статичные — `hold(S, сек)`; общий темп — `HOLD_SCALE`;
+- показать обе роли (AD и «ПК») со стартовым экраном, пинг офлайн- и онлайн-ПК, плагин: создаётся → работает → выключается;
+- все данные вымышленные (`example.local`, WS-101…, ООО «Пример»); никаких реальных доменов/UNC;
+- длительность ≥ предыдущей (таблица в разделе М); версия в титрах = версия в `pyproject.toml`.
+
+**Пошагово (NN → NN+1; ниже для 24 → 25).**
+
+Шаг 1 — копия скрипта и пути (замена **всех** вхождений, не только первого):
+```bash
+cd /home/user && cp extras/demo/make_demo24.py extras/demo/make_demo25.py
+python - <<'PYEOF'
+p = 'extras/demo/make_demo25.py'; s = open(p, encoding='utf-8').read()
+for a, b in (('frames24', 'frames25'), ('ADK_demo_24', 'ADK_demo_25'), ('VERSION = "3.5.2"', 'VERSION = "X.Y.Z"')):
+    assert a in s, a; s = s.replace(a, b)
+open(p, 'w', encoding='utf-8').write(s)
+PYEOF
+grep -n "OUT_DIR =\|OUT_MP4 =\|VERSION =" extras/demo/make_demo25.py     # все три строки — про 25 и новую версию
+```
+Шаг 2 — новые сцены по образцу существующих: `cap("…")` → `move_to(S, кнопка)` → `press(S, кнопка)` → диалог через
+`show_dialog(S, dlg)` / `hide_dialog(S, dlg)` → `hold(S, сек)`. Каждая новая кнопка или окно в приложении → своя сцена.
+Если в сценарии AD-действие вызывается напрямую (`ad.reset_password(...)`), сразу вызвать и локальное обновление окна
+(`card._forget_password_age(must)`, `card._forget_lockout()`), иначе окно покажет старое состояние.
+
+Шаг 3 — pyflakes: `python -m pyflakes extras/demo/make_demo25.py`.
+
+Шаг 4 — сухой прогон (≈3 мин; те же сцены, 1 кадр на паузу; ловит все ошибки атрибутов и логики ДО долгого рендера).
+Пути сухого прогона — **только в `/tmp/audit`**, иначе он перезапишет настоящий ролик:
+```bash
+python - <<'PYEOF'
+s = open('/home/user/extras/demo/make_demo25.py', encoding='utf-8').read()
+s = s.replace('OUT_DIR = "/home/user/extras/demo/frames25"', 'OUT_DIR = "/tmp/audit/frames25dry"')
+s = s.replace('OUT_MP4 = "/home/user/extras/videos/ADK_demo_25.mp4"', 'OUT_MP4 = "/tmp/audit/dry25.mp4"')
+s = s.replace('def sec(s):\n    return max(1, int(s * FPS))', 'def sec(s):\n    return 1')
+s = s.replace('def wait(ms):\n    tg._wait(lambda: False, app, ms)', 'def wait(ms):\n    tg._wait(lambda: False, app, min(ms, 60))')
+s = s.replace('def live(widgets, seconds, step=0.3):', 'def live(widgets, seconds, step=0.3):\n    seconds = min(seconds, 1.0)')
+s = s.replace('os.path.join(os.path.dirname(os.path.abspath(__file__)), "make_music.py")', '"/home/user/extras/demo/make_music.py"')
+assert '/tmp/audit/dry25.mp4' in s and 'frames25dry' in s and 'return 1' in s
+import os; os.makedirs('/tmp/audit', exist_ok=True); open('/tmp/audit/dry25.py', 'w').write(s)
+PYEOF
+grep -n "OUT_MP4 =" /tmp/audit/dry25.py                       # ОБЯЗАТЕЛЬНО /tmp/audit/dry25.mp4
+QT_QPA_PLATFORM=offscreen timeout 900 python /tmp/audit/dry25.py 2>&1 | grep -v propagate | tail -2   # exit 0, «frames=… → /tmp/audit/dry25.mp4»
+```
+Шаг 5 — контактный лист сухого прогона (смотреть глазами **каждый** лист — это главная проверка сценария):
+```bash
+FF=$(python -c "import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())")
+rm -rf /tmp/audit/cs && mkdir -p /tmp/audit/cs && $FF -loglevel error -i /tmp/audit/dry25.mp4 -vf "fps=1/3,scale=466:-1" /tmp/audit/cs/f%03d.png
+python - <<'PYEOF'
+from PIL import Image; import glob
+fs = sorted(glob.glob('/tmp/audit/cs/f*.png')); cols = 3; w, h = Image.open(fs[0]).size
+for part in range(0, len(fs), 12):
+    chunk = fs[part:part + 12]; rows = (len(chunk) + cols - 1) // cols; sheet = Image.new('RGB', (cols * w, rows * h), 'black')
+    for i, f in enumerate(chunk): sheet.paste(Image.open(f), ((i % cols) * w, (i // cols) * h))
+    sheet.save(f'/tmp/audit/cs/sheet{part // 12:02d}.png')
+PYEOF
+```
+Проверять: каждая сцена реально открылась (не пустое окно), субтитр соответствует сцене, нет «голых» окон без темы,
+диалоги в кадре, курсор рядом с тем, что нажимается, нет повторов сцен, нет старых названий/кнопок.
+
+Шаг 6 — реальный рендер **только через `start_process`** (10–15 минут; bash убьёт по таймауту), затем
+`get_process_output … wait_for=exit` до завершения:
+```bash
+cd /home/user && rm -rf extras/demo/frames25 && QT_QPA_PLATFORM=offscreen timeout 1750 python extras/demo/make_demo25.py 2>&1 | grep -v propagate | tail -5
+```
+Шаг 7 — проверка результата (всё):
+```bash
+FF=$(python -c "import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())")
+$FF -i extras/videos/ADK_demo_25.mp4 2>&1 | grep -E "Duration|Stream"     # Video h264 1400x820 25 fps + Audio aac; Duration ≥ предыдущей
+mkdir -p /tmp/audit/t && for t in 1.5 60 200 330 470 <END-2>; do $FF -loglevel error -y -ss $t -i extras/videos/ADK_demo_25.mp4 -frames:v 1 -vf scale=466:-1 /tmp/audit/t/f_$t.png; done
+```
+Собрать лист (как в шаге 5) и посмотреть: **первый и последний кадр — одинаковые титры с одной версией**, остальные —
+живые окна с субтитрами. Если ролик короче предыдущего — поднять `HOLD_SCALE` на 0.1–0.25 или добавить `hold`/`live`,
+перерендерить; сцены не резать.
+
+Шаг 8 — ротация и документы:
+```bash
+rm -rf extras/demo/frames25 extras/demo/make_demo24.py extras/videos/ADK_demo_24.mp4
+# HANDOVER: раздел В (имена файлов), К (номер ролика), М («Длительность роликов»: добавить «25 — M:SS (N с)», «при следующем видео — номер 26»)
+```
+Шаг 9 — zip (раздел И), коммит, **чистка истории (раздел Л) и force-push**; проверка: свежий `git clone` в /tmp,
+`du -sh .git` — десятки МБ, среди блобов > 1 МБ ровно один `.mp4` и один `adk.zip`.
+
+**Ошибки, которые уже случались (не повторять):**
+- `replace(..., 1)` при копировании скрипта заменил только докстринг — `OUT_MP4` остался старым, и прогон **перезаписал
+  предыдущий ролик**. Лечение: `git checkout -- extras/videos/…`; всегда `grep OUT_MP4` перед запуском.
+- Сухой прогон с путями в `extras/` — то же самое. Пути сухого прогона всегда в `/tmp/audit`.
+- Рендер через `bash` — убит таймаутом на середине. Только `start_process`.
+- Скрипт ссылается на удалённый класс — падение на импорте; pyflakes ловит, запускать его первым.
+- Поиск кнопки по тексту с эмодзи (`"📣 Уведомления"`) — после `icons.install()` текста с эмодзи нет; искать по подстроке.
+- Забытые `_forget_password_age` / `_forget_lockout` после прямого `ad.*` в сценарии — окно показывает старое состояние.
+- Heredoc-патч с `EOF` или тройными кавычками внутри — bash оборвал скрипт, остаток текста выполнился как команды.
+
+### О.7. Версия, документы, поставка, коммит — в одном порядке
+
+1. Версия в четырёх файлах (`adk/__init__.py`, `pyproject.toml`, `version_info.txt` — две строки, `make_demoNN.py` `VERSION`).
+2. `CHANGELOG.md`: новый блок сверху, подразделы **✨ Новое / 🐞 Исправлено / 🧪 Тесты**; у каждого исправления причина
+   («раньше … потому что … → теперь …»). Без источников стиля; про темы — «переработаны».
+3. `docs/FEATURES.md` — строки затронутых функций; README короткий, без видео/zip/HANDOVER.
+4. `extras/HANDOVER.md` — разделы В, Г (новые функции/атрибуты), Д (новые требования автора), М (версия, тесты, видео,
+   длительности), Н (новые грабли), шапка (дата, версия, число тестов).
+5. zip (раздел И) → `unzip -l extras/adk.zip | grep -c "extras/\|mp4\|HANDOVER"` = 0.
+6. Полный прогон О.4 ещё раз.
+7. Коммит по-русски «X.Y.Z: …», push, при ротации видео — чистка истории; проверка `git ls-remote origin main` = `git rev-parse HEAD`.
+
+### О.8. Итог автору
+
+Одно сообщение по-русски: нумерация как в его запросе; по каждому пункту — что сделано и **почему было так** (одна
+фраза причины); отдельно видео (файл, длительность, что показано); отдельно репозиторий (HEAD, число тестов, чистка
+истории); последней строкой — что осталось открытым. Без английских вставок, без рассказов о внутренней кухне
+видеопроизводства, без ссылок на источники стиля.
