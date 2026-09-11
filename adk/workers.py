@@ -122,8 +122,10 @@ class SearchWorker(BaseWorker):
             # запрос — просто IP принтера: показываем только сам принтер (кто подключён — в его инспекторе),
             # иначе рядом появлялись «пустые» строки ПК без ФИО
             free = [] if (printer_rows and self.printer_query is None) else self._free_pc_rows()
-            if not self.cancelled:
-                self.results_ready.emit(printer_rows + free, self.raw_query, False)
+            if self.cancelled:
+                return
+            self.results_ready.emit(printer_rows + free, self.raw_query, False)
+            self._emit_net()
             return
         try:
             conn = self.conn_factory()
@@ -151,10 +153,30 @@ class SearchWorker(BaseWorker):
         if self.cancelled:
             return
         self.results_ready.emit(printer_rows + rows, self.raw_query, truncated)
+        self._emit_net()
+
+    def resolve_pending(self, rows: list[dict]) -> list[dict]:
+        """Синхронный вариант второго шага (CLI): проверить сеть у ожидающих ПК и вписать ответ в строки."""
         if self._net_pending:
-            net = self._probe_network(self._net_pending)
-            if net is not None and not self.cancelled:
-                self.net_ready.emit(net, self.raw_query)
+            net = self._probe_network(self._net_pending) or {}
+            for r in rows:
+                comp = db.clean_computer_name(r.get("comp") or "")
+                if comp in net:
+                    ip, online = net[comp]
+                    if ip != "Не найден":
+                        r["ip"] = ip
+                    r["is_online"] = online
+                r["net_pending"] = False
+            self._net_pending = set()
+        return rows
+
+    def _emit_net(self) -> None:
+        """Второй шаг: проверить сеть у ПК из ``_net_pending`` и дослать net_ready (если поиск не отменён)."""
+        if not self._net_pending:
+            return
+        net = self._probe_network(self._net_pending)
+        if net is not None and not self.cancelled:
+            self.net_ready.emit(net, self.raw_query)
 
     def _probe_network(self, comps: set[str]) -> dict[str, tuple[str, bool]] | None:
         """DNS + доступность для набора ПК параллельно; None — поиск отменён."""
@@ -236,9 +258,16 @@ class SearchWorker(BaseWorker):
         src = [r for r in src if not (exclude and r[0] in exclude)]
         printers_by_pc = db.printers_for_computers([r[0] for r in src]) if src else {}
         for name, ip, on, user, specs, _last, last_logon, seen in src:
+            # статус «В сети» из инвентаря — это последний скан, а не «сейчас»: как и для людей, показываем
+            # «Проверка…» и досылаем честный ответ вторым шагом (net_ready), если свежего кэша нет
+            hit = netutils.cached_network_info(name)
+            if hit is not None:
+                ip, on = (hit[0] if hit[0] != "Не найден" else ip), hit[1]
+            else:
+                self._net_pending.add(name)
             rows.append({"entry": None, "login": (user or "").strip() or "—", "fio": "—" if (user or "").strip() else "— (свободный ПК)",
                          "full_fio": user or "", "is_disabled": False, "comp": name, "ip": ip or "Не найден",
-                         "is_online": bool(on), "phone": "", "ip_phone": "", "office": "", "address": "",
+                         "is_online": bool(on), "net_pending": hit is None, "phone": "", "ip_phone": "", "office": "", "address": "",
                          "company": "", "dept": "", "title": "", "mail": "", "specs_custom": specs or "",
                          "last_logon": last_logon or "Нет данных", "last_seen_online": seen,
                          "printers": printers_by_pc.get(name, [])})
@@ -294,7 +323,7 @@ class SearchWorker(BaseWorker):
             if probed is None:
                 return []
             net = probed
-        self._net_pending = pending
+        self._net_pending |= pending
 
         rows: list[dict] = []
         for e in entries:

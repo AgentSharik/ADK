@@ -880,6 +880,15 @@ class ADApp(FramelessMainWindow):
             self.lbl_fio.setText("❌ Ничего не найдено")
             self.lbl_sub.setText("Измените запрос")
             self.details.setVisible(False)
+            self._set_header_actions_visible(False)   # копировать нечего — кнопка рядом с «Ничего не найдено» сбивала с толку
+
+    def _set_header_actions_visible(self, on: bool) -> None:
+        """«Копировать» и кнопки плагинов рядом с ФИО: прячутся при пустом результате, возвращаются при показе записи."""
+        self.btn_copy.setVisible(on)
+        for i in range(self._header_plugins.count()):
+            b = self._header_plugins.itemAt(i).widget()
+            if b is not None:
+                b.setVisible(on)
 
     PRINTER_IRRELEVANT = ("Телефон", "IP-тел")     # у принтера их нет — в режиме принтера столбцы прячутся
 
@@ -924,6 +933,7 @@ class ADApp(FramelessMainWindow):
         self.details.setVisible(True)
         self.details_scroll.setVisible(True)
         self.printer_pane.setVisible(False)
+        self._set_header_actions_visible(True)
         pal = app_palette()
         login = u.get("login", "—")
         comp = db.clean_computer_name(u.get("comp", ""))
@@ -1026,6 +1036,7 @@ class ADApp(FramelessMainWindow):
         pal = app_palette()
         self.details_scroll.setVisible(False)
         self.printer_pane.setVisible(True)
+        self._set_header_actions_visible(True)
         self.lbl_fio.setText(f"🖨️ {g.get('name') or u.get('fio')}")
         kind = {"network": "сетевой", "shared": "общий (через сервер)", "usb": "USB", "local": "локальный"}.get(g.get("kind", ""), "—")
         self.lbl_sub.setText(f"Принтер · {kind}")

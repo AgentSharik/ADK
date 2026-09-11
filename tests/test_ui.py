@@ -468,3 +468,31 @@ def test_role_welcome_shown_once_after_access_resolved(qapp, monkeypatch):
         assert w.role_welcome is None                      # выключено галочкой — не показываем
     finally:
         w.close()
+
+
+def test_login_show_button_fits_its_caption(qapp):
+    """3.5.5: кнопка «Показать» в окне входа была фиксированной ширины 100 px и при шрифте 11–12 pt
+    обрезала подпись. Теперь ширина считается от текста."""
+    from adk.dialogs import LoginDialog
+    d = LoginDialog("", saved_user="", saved_password="")
+    need = d.btn_eye.fontMetrics().horizontalAdvance("Показать") + 16
+    assert d.btn_eye.width() >= need
+    d.close()
+
+
+def test_user_card_long_title_does_not_stretch_window(qapp):
+    """3.5.5: очень длинная должность в подзаголовке карточки переносится, а не растягивает окно."""
+    from types import SimpleNamespace
+    from adk.dialogs import UserCardDialog
+    from tests.test_gui import FakeEntry
+    app = SimpleNamespace(get_conn=lambda: None, admin_name="admin")
+    long_title = "Главный специалист по очень длинному названию должности для проверки переноса строки"
+    e = FakeEntry("CN=Сидоров,OU=x", sAMAccountName="sidorov", displayName="Сидоров С.С.", sn="Сидоров",
+                  givenName="Семён", userAccountControl=512, title=long_title, department="Бухгалтерия",
+                  company="ООО «Пример»")
+    d = UserCardDialog(e, app)
+    d.show()
+    qapp.processEvents()
+    assert d.lbl_sub.wordWrap()
+    assert d.width() <= 1300
+    d.close()

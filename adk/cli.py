@@ -46,16 +46,17 @@ def _search(query: str, archives: bool = False, disabled: bool = False) -> list[
     w.query = SearchWorker.normalize_query(query)
     w.printer_query = w.query[len(SearchWorker.PRINTER_PREFIX):].strip() if w.query.lower().startswith(SearchWorker.PRINTER_PREFIX) else None
     w.include_archives, w.include_disabled, w._printer_comps, w._cancelled = archives, disabled, set(), False
+    w._net_pending = set()
     flt = w._build_filter()
     printers = w._printer_rows()
     if flt is None:
-        return printers + w._free_pc_rows()
+        return printers + w.resolve_pending(w._free_pc_rows())
     c = w.conn_factory()
     try:
         entries = ad.paged_search(c, flt, ad.USER_ATTRS, limit=SEARCH_RESULT_LIMIT)
     finally:
         c.unbind()
-    return printers + w._assemble(entries)
+    return printers + w.resolve_pending(w._assemble(entries))
 
 
 def _print_table(rows: list[list[str]]) -> None:

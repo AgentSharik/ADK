@@ -665,3 +665,43 @@ def test_assemble_without_defer_probes_network_synchronously(fake_conn, monkeypa
     rows = SearchWorker(lambda: fake_conn, "иванов")._assemble(ad.paged_search(fake_conn, "(x)", ad.USER_ATTRS))
     r = next(x for x in rows if x["login"] == "ivanov")
     assert r["ip"] == "10.0.0.5" and r["is_online"] is True and r["net_pending"] is False
+
+
+def test_empty_result_hides_copy_and_header_actions(qapp, fake_conn, monkeypatch):
+    """3.5.5: при «Ничего не найдено» рядом с надписью не должно оставаться зелёной кнопки «Копировать»
+    (и кнопок плагинов из шапки) — копировать там нечего. После удачного поиска кнопка возвращается."""
+    from adk import netutils
+    w = _main(qapp, fake_conn, monkeypatch)
+    netutils.clear_network_cache()
+    w.search_input.setText("10.99.99.99")          # IP, за которым никого нет
+    w.start_search()
+    assert _wait(lambda: "не найдено" in w.lbl_fio.text().lower(), qapp, 4000)
+    assert not w.btn_copy.isVisible()
+    w.search_input.setText("иванов")
+    w.start_search()
+    assert _wait(lambda: w.table.rowCount() >= 1, qapp)
+    w.select_row(0)
+    assert w.btn_copy.isVisible()
+    w.close()
+
+
+def test_free_pc_rows_use_two_step_network_check(qapp, fake_conn, monkeypatch):
+    """3.5.5: строки «свободный ПК» (поиск по IP/имени без пользователя в AD) раньше показывали статус
+    «В сети» из последнего скана как факт. Теперь — «Проверка…», а честный ответ досылается вторым шагом.
+
+    Пример: WS-777 в инвентаре ACTIVE, но сейчас не отвечает → сначала «Проверка…», потом «Не в сети»."""
+    from adk import db, netutils
+    from adk.main_window import BADGE_ROLE, COL_NET
+    w = _main(qapp, fake_conn, monkeypatch)
+    netutils.clear_network_cache()
+    db.batch_update_inventory([{"Hostname": "WS-777", "ActualIp": "10.0.7.77", "Status": "ACTIVE", "User": ""}],
+                              "2026-09-04 10:00:00")
+    monkeypatch.setattr(netutils, "get_computer_network_info", lambda n, **kw: ("10.0.7.77", False))
+    w.search_input.setText("10.0.7.77")          # IP без пользователя в AD → строка «свободный ПК»
+    w.start_search()
+    assert _wait(lambda: w.table.rowCount() == 1, qapp, 4000)
+    cell = w.table.item(0, COL_NET)
+    assert cell.data(BADGE_ROLE) in ("checking", "offline")      # либо ещё проверяем, либо уже честный ответ
+    assert _wait(lambda: w.table.item(0, COL_NET).data(BADGE_ROLE) == "offline", qapp, 4000)
+    assert "свободный" in w.table.item(0, 1).text()
+    w.close()

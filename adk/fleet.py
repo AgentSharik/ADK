@@ -395,7 +395,9 @@ class ComparePCDialog(FramelessDialog):
         top.addWidget(self.only_diff)
         top.addStretch()
         self.lbl = QLabel("⏳ Загрузка…")
-        top.addWidget(self.lbl)
+        self.lbl.setWordWrap(True)          # две ошибки «CSV … не найден» не влезали в строку и уходили за край окна
+        self.lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        top.addWidget(self.lbl, 1)
         self.body.addLayout(top)
         self.tabs = QTabWidget()
         self.t_specs = _table(["Параметр", comp_a, comp_b])
@@ -474,6 +476,8 @@ class ComparePCDialog(FramelessDialog):
                 table.setColumnWidth(c, max(220, table.columnWidth(c)))
             table.setSortingEnabled(True)
         errs = [x.get("error") for x in (sa, sb) if "error" in x]
+        if len(errs) == 2 and all("не найден" in e for e in errs):
+            errs = [f"CSV с характеристиками не найден ни для {self.a}, ни для {self.b}"]
         n = sum(1 for r in compare_specs(sa, sb) if r[3])
         src_a, src_b = self._data.get("soft_src", ("", ""))
         self.lbl_soft.setText("Список программ снят с ПК прямо сейчас; если ПК недоступен — последний сохранённый.   "

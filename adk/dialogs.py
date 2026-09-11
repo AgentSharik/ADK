@@ -21,8 +21,8 @@ from .config import ACCOUNT_DISABLE_FLAG, CREATE_NO_WINDOW, SMARTCARD_REQUIRED_F
 from .credentials import clear_credentials, save_credentials
 from .theme import PRESET_THEMES, is_color_dark
 from .widgets import (
-    FlowLayout, FramelessDialog, InputDialog, MessageBox, app_palette, apply_theme, fit_columns, make_badge, run_in_background,
-    safe_rich,
+    FlowLayout, FramelessDialog, InputDialog, MessageBox, app_palette, apply_theme, dialog_font_pt, fit_columns, make_badge,
+    run_in_background, safe_rich,
 )
 
 log = logging.getLogger(__name__)
@@ -91,7 +91,8 @@ class LoginDialog(FramelessDialog):
         self.pass_in.setMinimumHeight(36)
         self.btn_eye = QPushButton("Показать")
         self.btn_eye.setCheckable(True)
-        self.btn_eye.setFixedWidth(100)
+        # ширина под самую длинную подпись при текущем шрифте (при 12 pt «Показать» обрезалось в 100 px)
+        self.btn_eye.setFixedWidth(self.btn_eye.fontMetrics().horizontalAdvance("Показать") + 36)
         self.btn_eye.setMinimumHeight(36)
         self.btn_eye.setToolTip("Показать/скрыть пароль")
         self.btn_eye.toggled.connect(lambda on: (self.pass_in.setEchoMode(
@@ -320,15 +321,20 @@ class RoleInfoDialog(FramelessDialog):
         cap_l.setSpacing(6)
         cap_l.addWidget(QLabel("<b>Возможности в текущей сессии:</b>"))
 
+        def cap(text: str) -> QLabel:
+            lbl = QLabel(text)
+            lbl.setWordWrap(True)       # длинные строки переносятся, а не растягивают окно на 1300 px
+            return lbl
+
         if access.can_ad():
-            cap_l.addWidget(QLabel("✅ <b>Управление Active Directory:</b> изменение атрибутов, сброс паролей, блокировка/разблокировка, создание пользователей, управление группами"))
+            cap_l.addWidget(cap("✅ <b>Управление Active Directory:</b> изменение атрибутов, сброс паролей, блокировка/разблокировка, создание пользователей, управление группами"))
         else:
-            cap_l.addWidget(QLabel("🔒 <b>Active Directory:</b> только чтение (изменение объектов и сброс паролей отключены)"))
+            cap_l.addWidget(cap("🔒 <b>Active Directory:</b> только чтение (изменение объектов и сброс паролей отключены)"))
 
         if access.can_pc():
-            cap_l.addWidget(QLabel("✅ <b>Управление компьютерами:</b> перезагрузка/выключение, RMS, S.M.A.R.T., опрос ПО, карта диска, заметки"))
+            cap_l.addWidget(cap("✅ <b>Управление компьютерами:</b> перезагрузка/выключение, RMS, S.M.A.R.T., опрос ПО, карта диска, заметки"))
         else:
-            cap_l.addWidget(QLabel("🔒 <b>Компьютеры:</b> только просмотр сетевого статуса и характеристик"))
+            cap_l.addWidget(cap("🔒 <b>Компьютеры:</b> только просмотр сетевого статуса и характеристик"))
 
         self.body.addWidget(cap_card)
         self.body.addStretch()
@@ -338,6 +344,19 @@ class RoleInfoDialog(FramelessDialog):
         btn_ok.setMinimumHeight(38)
         btn_ok.clicked.connect(self.accept)
         self.body.addWidget(btn_ok)
+
+    def showEvent(self, ev):
+        super().showEvent(ev)
+        # как в RoleWelcomeDialog: переносимый текст знает высоту только при известной ширине — после показа
+        # подгоняем высоту окна, иначе при крупном шрифте строки «Доступно…» ложились друг на друга
+        self.layout().activate()
+        for lbl in self.findChildren(QLabel):
+            if lbl.wordWrap():
+                lbl.setMinimumHeight(lbl.heightForWidth(max(lbl.width(), 200)))
+        self.layout().activate()
+        need = max(self.layout().totalMinimumSize().height(), self.layout().totalSizeHint().height())
+        if self.height() < need:
+            self.resize(self.width(), need)
 
 
 # ============================================================================ плагины и расширения
@@ -562,7 +581,8 @@ class UserCardDialog(FramelessDialog):
         self.dn = entry.entry_dn
         self._entry_changed = False      # были ли изменения состояния — главное окно тогда перечитает AD
         fio = ad.get_full_fio(entry, "Пользователь")
-        super().__init__(f"👤 Карточка: {fio}", parent, (1000, 740), large_font=True)
+        # ширина окна следует за шрифтом карточки (12 pt по умолчанию → 1080 px; больше шрифт — шире окно)
+        super().__init__(f"👤 Карточка: {fio}", parent, (1080 + max(0, dialog_font_pt() - 12) * 60, 740), large_font=True)
         self.login = ad.get_ad_value(entry, "sAMAccountName")
         self.original_uac = ad.get_ad_int_value(entry, "userAccountControl")
         self.current_comp = db.get_computer_by_login(self.login)
@@ -595,6 +615,7 @@ class UserCardDialog(FramelessDialog):
         self.lbl_sub = QLabel(sub)
         self.lbl_sub.setObjectName("subtle")
         self.lbl_sub.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.lbl_sub.setWordWrap(True)          # длинная должность переносится, а не растягивает окно на весь экран
         names.addWidget(self.lbl_sub)
         hl.addLayout(names, 1)
         text, kind = ad.account_badge(entry)
@@ -680,6 +701,9 @@ class UserCardDialog(FramelessDialog):
         for attr, label in _RU_LABELS.items():
             le = QLineEdit(ad.get_ad_value(self.entry, attr))
             le.setReadOnly(attr == "sAMAccountName")
+            le.setCursorPosition(0)         # длинное значение показывает начало («ivanov@…»), а не хвост («…ple.local»)
+            le.setToolTip(le.text())
+            le.textChanged.connect(le.setToolTip)
             (left if attr in left_keys else right).addRow(label + ":", le)
             self.inputs[attr] = le
         self.smartcard = QCheckBox("Только смарт-карта для входа")
@@ -689,6 +713,12 @@ class UserCardDialog(FramelessDialog):
         self.skype.setChecked(self.original_skype)
         right.addRow("Способ входа:", self.smartcard)
         right.addRow("", self.skype)
+        # поля обеих колонок растут одинаково и не ужимаются под ширину подписи: при крупном шрифте левая колонка
+        # («Отображаемое имя») раньше сжималась до 200 px и текст обрезался, а правая простаивала
+        for f in (left, right):
+            f.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        for le in self.inputs.values():
+            le.setMinimumWidth(max(180, min(le.fontMetrics().horizontalAdvance(le.text()) + 28, 340)))
         cols.addLayout(left, 1)
         cols.addLayout(right, 1)
         lay.addLayout(cols)
@@ -1113,8 +1143,8 @@ class UserCardDialog(FramelessDialog):
         text, kind = ad.account_badge(self.entry)
         fg, bg, bd = pal.badge(kind)
         self.badge_state.setText(text)
-        self.badge_state.setStyleSheet(f"background-color: {bg}; color: {pal.text}; border: 1px solid {bd}; "
-                                       "font-weight: bold; font-size: 9pt; border-radius: 4px; padding: 4px 10px;")
+        # тот же стиль, что у make_badge — иначе после включения/отключения бейдж «худел» (рамка 1 px вместо 1.5)
+        self.badge_state.setStyleSheet(make_badge(text, kind, pal).styleSheet())
         st = ad.account_status(self.entry, settings.max_password_age_days)
         self.btn_unlock.setVisible(bool(st["locked"]) and self.btn_toggle.isVisible())
         reason = ad.account_inactive_reason(self.entry)
@@ -1601,7 +1631,7 @@ class RegisterUserDialog(FramelessDialog):
         self.password.setPlaceholderText("минимум 8 символов")
         self.password.textChanged.connect(self._refresh)
         self.btn_eye = QPushButton("Скрыть")
-        self.btn_eye.setFixedWidth(96)
+        self.btn_eye.setFixedWidth(self.btn_eye.fontMetrics().horizontalAdvance("Показать") + 36)
         self.btn_eye.setCheckable(True)
         self.btn_eye.setToolTip("Показать/скрыть пароль")
         self.btn_eye.toggled.connect(lambda on: (self.password.setEchoMode(

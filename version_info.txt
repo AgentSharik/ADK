@@ -5,12 +5,12 @@ VSVersionInfo(
     StringFileInfo([StringTable('041904B0', [
       StringStruct('CompanyName', 'IT Helpdesk'),
       StringStruct('FileDescription', 'ADK — инструмент администратора Active Directory'),
-      StringStruct('FileVersion', '3.5.4'),
+      StringStruct('FileVersion', '3.5.5'),
       StringStruct('InternalName', 'ADK'),
       StringStruct('LegalCopyright', 'MIT License'),
       StringStruct('OriginalFilename', 'ADK.exe'),
       StringStruct('ProductName', 'ADK'),
-      StringStruct('ProductVersion', '3.5.4')])]),
+      StringStruct('ProductVersion', '3.5.5')])]),
     VarFileInfo([VarStruct('Translation', [1049, 1200])])
   ]
 )
