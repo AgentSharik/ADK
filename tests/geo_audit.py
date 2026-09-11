@@ -33,7 +33,7 @@ config.settings.hide_role_welcome = True
 
 import test_gui as tg  # noqa: E402
 from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, QCheckBox, QRadioButton, QTabWidget,  # noqa: E402
-                             QLineEdit, QComboBox, QScrollArea, QAbstractScrollArea, QLayout, QToolButton)
+                             QAbstractScrollArea, QLayout, QToolButton)
 from PyQt6.QtCore import QRect  # noqa: E402
 from adk.widgets import apply_theme, MessageBox  # noqa: E402
 app = QApplication([]); apply_theme(design)
