@@ -72,6 +72,7 @@ class SearchWorker(BaseWorker):
         self.include_disabled = include_disabled
         self._printer_comps: set[str] = set()
         self._net_pending: set[str] = set()      # ПК, чей статус сети ещё не проверен (см. _assemble(defer_net=True))
+        self._printer_pending: set[str] = set()  # IP принтеров, чья доступность проверяется вторым шагом (3.5.6)
 
     @staticmethod
     def normalize_query(query: str) -> str:
@@ -152,44 +153,79 @@ class SearchWorker(BaseWorker):
             return
         if self.cancelled:
             return
+        if not rows and not printer_rows and self.printer_query is None and not truncated:
+            # в AD никого, но запрос похож на имя ПК из инвентаря (свободный ПК без пользователя, «WS-1351») —
+            # показываем сам ПК, как и при поиске по IP; раньше здесь было честное, но бесполезное «Найдено: 0»
+            rows = self._free_pc_rows()
         self.results_ready.emit(printer_rows + rows, self.raw_query, truncated)
         self._emit_net()
 
-    def resolve_pending(self, rows: list[dict]) -> list[dict]:
-        """Синхронный вариант второго шага (CLI): проверить сеть у ожидающих ПК и вписать ответ в строки."""
-        if self._net_pending:
-            net = self._probe_network(self._net_pending) or {}
-            for r in rows:
+    @staticmethod
+    def apply_net(rows: list[dict], net: dict) -> None:
+        """Вписать результат второго шага в строки: ПК — ``{имя: (ip, online)}``, принтеры —
+        ``{"printer:<ip>": (alive, probe|None)}``. Что не пришло (отмена/ошибка) — остаются данные инвентаря."""
+        for r in rows:
+            if r.get("kind") == "printer":
+                hit = net.get(f"printer:{r.get('ip')}")
+                if hit is not None:
+                    r["is_online"], r["probe"] = hit[0], hit[1]
+            else:
                 comp = db.clean_computer_name(r.get("comp") or "")
                 if comp in net:
                     ip, online = net[comp]
                     if ip != "Не найден":
                         r["ip"] = ip
                     r["is_online"] = online
-                r["net_pending"] = False
+            r["net_pending"] = False
+
+    def resolve_pending(self, rows: list[dict]) -> list[dict]:
+        """Синхронный вариант второго шага (CLI): проверить сеть у ожидающих ПК/принтеров и вписать ответ в строки."""
+        if self._net_pending or self._printer_pending:
+            self.apply_net(rows, self._probe_network(self._net_pending) or {})
             self._net_pending = set()
+            self._printer_pending = set()
         return rows
 
     def _emit_net(self) -> None:
-        """Второй шаг: проверить сеть у ПК из ``_net_pending`` и дослать net_ready (если поиск не отменён)."""
-        if not self._net_pending:
+        """Второй шаг: проверить сеть у ПК из ``_net_pending`` и принтеров из ``_printer_pending``,
+        дослать net_ready (если поиск не отменён)."""
+        if not self._net_pending and not self._printer_pending:
             return
         net = self._probe_network(self._net_pending)
         if net is not None and not self.cancelled:
             self.net_ready.emit(net, self.raw_query)
 
-    def _probe_network(self, comps: set[str]) -> dict[str, tuple[str, bool]] | None:
-        """DNS + доступность для набора ПК параллельно; None — поиск отменён."""
-        net: dict[str, tuple[str, bool]] = {}
-        with ThreadPoolExecutor(max_workers=min(50, max(1, len(comps)))) as ex:
-            futs = {ex.submit(netutils.get_computer_network_info, pc): pc for pc in comps}
+    def _probe_network(self, comps: set[str]) -> dict | None:
+        """DNS + доступность для набора ПК и доступность/«а принтер ли это» для отложенных принтеров —
+        параллельно, одним пулом; None — поиск отменён."""
+        net: dict = {}
+        ips = sorted(self._printer_pending)
+        want_probe = bool(ips) and netutils.is_ip_query(self.printer_query if self.printer_query is not None else self.query)
+        with ThreadPoolExecutor(max_workers=min(50, max(1, len(comps) + len(ips)))) as ex:
+            futs = {ex.submit(netutils.get_computer_network_info, pc): ("pc", pc) for pc in comps}
+            futs.update({ex.submit(netutils.is_printer_alive, ip): ("pr", ip) for ip in ips})
+            if want_probe:
+                # запрос — конкретный IP: честно проверяем, принтер ли это на самом деле (порты печати / веб-панель)
+                futs.update({ex.submit(netutils.probe_printer, ip): ("probe", ip) for ip in ips})
+            alive: dict[str, bool] = {}
+            probes: dict[str, dict | None] = {}
             for f in as_completed(futs):
                 if self.cancelled:
                     return None
+                kind, key = futs[f]
                 try:
-                    net[futs[f]] = f.result()
+                    res = f.result()
                 except Exception:  # noqa: BLE001
-                    net[futs[f]] = ("Не найден", False)
+                    res = {"pc": ("Не найден", False), "pr": False,
+                           "probe": {"alive": False, "is_printer": None, "evidence": "проверка не удалась"}}[kind]
+                if kind == "pc":
+                    net[key] = res
+                elif kind == "pr":
+                    alive[key] = res
+                else:
+                    probes[key] = res
+        for ip in ips:
+            net[f"printer:{ip}"] = (alive.get(ip, False), probes.get(ip))
         return net
 
     def _printer_rows(self) -> list[dict]:
@@ -207,34 +243,18 @@ class SearchWorker(BaseWorker):
             return []
         if not groups or self.cancelled:
             return []
-        alive: dict[str, bool] = {}
-        probes: dict[str, dict] = {}
-        ips = sorted({g["ip"] for g in groups if g["ip"]})
-        if ips:
-            with ThreadPoolExecutor(max_workers=min(16, len(ips))) as ex:
-                futs = {ex.submit(netutils.is_printer_alive, ip): ip for ip in ips}
-                for f in as_completed(futs):
-                    if self.cancelled:
-                        return []
-                    try:
-                        alive[futs[f]] = f.result()
-                    except Exception:  # noqa: BLE001
-                        alive[futs[f]] = False
-            if netutils.is_ip_query(key):
-                # запрос — конкретный IP: честно проверяем, принтер ли это на самом деле (порты печати / веб-панель)
-                with ThreadPoolExecutor(max_workers=min(16, len(ips))) as ex:
-                    futs = {ex.submit(netutils.probe_printer, ip): ip for ip in ips}
-                    for f in as_completed(futs):
-                        if self.cancelled:
-                            return []
-                        try:
-                            probes[futs[f]] = f.result()
-                        except Exception:  # noqa: BLE001
-                            probes[futs[f]] = {"alive": False, "is_printer": None, "evidence": "проверка не удалась"}
+        # 3.5.6: доступность принтера (TCP 9100/631/80 + ping, до ~1,5 с на молчащий адрес) и проверка «а принтер ли
+        # это» больше не задерживают появление строк — как и у ПК, они проверяются вторым шагом (net_ready),
+        # а строка до ответа показывает «Проверка…». Свежий кэш (≤ NET_CACHE_TTL) используется сразу.
         rows = []
         for g in groups:
-            row = self.printer_row(g, alive.get(g["ip"], False))
-            row["probe"] = probes.get(g["ip"])
+            hit = netutils.cached_printer_alive(g["ip"]) if g["ip"] else None
+            pending = bool(g["ip"]) and hit is None
+            row = self.printer_row(g, bool(hit))
+            row["probe"] = None
+            row["net_pending"] = pending
+            if pending:
+                self._printer_pending.add(g["ip"])
             rows.append(row)
         return rows
 

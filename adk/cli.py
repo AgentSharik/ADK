@@ -46,7 +46,7 @@ def _search(query: str, archives: bool = False, disabled: bool = False) -> list[
     w.query = SearchWorker.normalize_query(query)
     w.printer_query = w.query[len(SearchWorker.PRINTER_PREFIX):].strip() if w.query.lower().startswith(SearchWorker.PRINTER_PREFIX) else None
     w.include_archives, w.include_disabled, w._printer_comps, w._cancelled = archives, disabled, set(), False
-    w._net_pending = set()
+    w._net_pending, w._printer_pending = set(), set()
     flt = w._build_filter()
     printers = w._printer_rows()
     if flt is None:
@@ -56,7 +56,10 @@ def _search(query: str, archives: bool = False, disabled: bool = False) -> list[
         entries = ad.paged_search(c, flt, ad.USER_ATTRS, limit=SEARCH_RESULT_LIMIT)
     finally:
         c.unbind()
-    return printers + w.resolve_pending(w._assemble(entries))
+    rows = w._assemble(entries)
+    if not rows and not printers and w.printer_query is None:
+        rows = w._free_pc_rows()        # как в окне: имя свободного ПК из инвентаря
+    return printers + w.resolve_pending(rows)
 
 
 def _print_table(rows: list[list[str]]) -> None:

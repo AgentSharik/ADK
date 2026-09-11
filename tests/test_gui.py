@@ -429,6 +429,8 @@ def test_printer_badges_and_click_search(qapp, fake_conn, monkeypatch):
     # единственная строка — сам принтер (—, модель, IP, «В сети»); кто подключён — в его инспекторе,
     # «пустых» строк ПК без ФИО рядом быть не должно (v3.2.4)
     assert w.table.rowCount() == 1
+    # 3.5.6: доступность принтера проверяется вторым шагом (как у ПК) — дожидаемся честного статуса
+    assert _wait(lambda: "В сети" in w.table.item(0, 4).text(), qapp, 3000)
     assert w.table.item(0, 0).text() == "—" and w.table.item(0, 1).text() == "HP LaserJet M404"
     assert w.table.item(0, 3).text() == "сетевой" and "В сети" in w.table.item(0, 4).text()   # 3.5.1: вид подключения
     assert "подключено ПК — 2" in w.lbl_status.text()
@@ -704,4 +706,53 @@ def test_free_pc_rows_use_two_step_network_check(qapp, fake_conn, monkeypatch):
     assert cell.data(BADGE_ROLE) in ("checking", "offline")      # либо ещё проверяем, либо уже честный ответ
     assert _wait(lambda: w.table.item(0, COL_NET).data(BADGE_ROLE) == "offline", qapp, 4000)
     assert "свободный" in w.table.item(0, 1).text()
+    w.close()
+
+
+def test_free_pc_name_found_even_when_ad_has_nobody(qapp, fake_conn, monkeypatch):
+    """3.5.5: поиск по имени свободного ПК («WS-1351» без пользователя) шёл в AD (фильтр по ФИО/логину), AD никого
+    не возвращал — и окно говорило «Найдено: 0», хотя ПК есть в инвентаре. Теперь показывается сам ПК."""
+    from adk import db, netutils
+    w = _main(qapp, fake_conn, monkeypatch)
+    netutils.clear_network_cache()
+    db.batch_update_inventory([{"Hostname": "WS-1351", "ActualIp": "10.0.7.51", "Status": "ACTIVE", "User": ""}],
+                              "2026-09-04 10:00:00")
+    real_search = fake_conn.search
+
+    def search_nobody(base, flt, scope, **kw):      # настоящий AD на «WS-1351» по ФИО/логину никого не найдёт
+        real_search(base, flt, scope, **kw)
+        fake_conn.entries = []
+        return True
+
+    monkeypatch.setattr(fake_conn, "search", search_nobody)
+    w.search_input.setText("WS-1351")
+    w.start_search()
+    assert _wait(lambda: w.table.rowCount() == 1, qapp, 4000)
+    assert w.table.item(0, 3).text() == "WS-1351" and "свободный" in w.table.item(0, 1).text()
+    w.close()
+
+
+def test_printer_row_shows_checking_then_real_status(qapp, fake_conn, monkeypatch):
+    """3.5.6: раньше при поиске по IP/модели принтера строки появлялись только после TCP-проверок и ping
+    каждого адреса (до 1,5 с на молчащий принтер, замер на базе из 1500 ПК — 360–600 мс на «Kyocera»).
+    Теперь строка принтера появляется сразу с «Проверка…», а «В сети»/«Не в сети» и результат
+    «а принтер ли это» досылаются вторым шагом — тем же net_ready, что и у ПК."""
+    import threading
+    from adk import db, netutils
+    gate = threading.Event()
+    hp = {"name": "HP LaserJet M404", "port": "IP_10.0.2.50", "kind": "network", "ip": "10.0.2.50", "default": True}
+    db.replace_printers("WS-101", [hp])
+    netutils.clear_network_cache()
+    monkeypatch.setattr(netutils, "is_printer_alive", lambda ip, **kw: gate.wait(5) and True)
+    monkeypatch.setattr(netutils, "probe_printer", lambda ip, **kw: {"alive": True, "is_printer": True, "evidence": "открыт порт 9100"})
+    w = _main(qapp, fake_conn, monkeypatch)
+    w.search_input.setText("10.0.2.50")
+    w.start_search()
+    assert _wait(lambda: w.table.rowCount() == 1, qapp, 3000)
+    assert "Проверка" in w.table.item(0, 4).text()          # строка есть, сеть ещё не отвечала
+    w.select_row(0)
+    assert w.pvals["status"].text() == "● Проверка…" and w.pvals["probe"].text() == "проверяется…"
+    gate.set()                                              # «принтер ответил»
+    assert _wait(lambda: "В сети" in w.table.item(0, 4).text(), qapp, 6000)
+    assert w.pvals["status"].text() == "● В сети" and "действительно принтер" in w.pvals["probe"].text()
     w.close()

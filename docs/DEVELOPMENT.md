@@ -5,11 +5,13 @@
 ```bash
 pip install -r requirements-dev.txt
 pyflakes adk tests
-QT_QPA_PLATFORM=offscreen pytest -q      # 248 тестов: MD4 (RFC 1320), БД, разбор ping, статус УЗ, принтеры, инструменты 3.0/3.1, CLI, GUI с заглушкой LDAP
+QT_QPA_PLATFORM=offscreen pytest -q      # 250 тестов: MD4 (RFC 1320), БД, разбор ping, статус УЗ, принтеры, инструменты 3.0/3.1, CLI, GUI с заглушкой LDAP
 QT_QPA_PLATFORM=offscreen python tests/e2e_scenario.py   # сквозной сценарий, 46 проверок
 QT_QPA_PLATFORM=offscreen python tests/e2e_round2.py     # раунд 2: карточка, создание УЗ, сканер, DPAPI, CSV — 82 проверки
 QT_QPA_PLATFORM=offscreen python tests/e2e_round3.py     # раунд 3: принтеры, режимы поиска, точность, производительность — 45 проверок
 QT_QPA_PLATFORM=offscreen python tests/e2e_round4.py     # раунд 4: окно «Пинг» под нагрузкой (живой поток, занятая БД, IPv6, обрыв/восстановление) — 41 проверка
+python tests/bench/make_bench_db.py                        # стенд: pc_mapping.db на 1500 ПК + bench_users.json → extras/data/bench/
+QT_QPA_PLATFORM=offscreen python tests/bench/search_bench.py  # замер скорости поиска через настоящее окно → extras/data/bench/RESULTS.md
 QT_QPA_PLATFORM=offscreen python docs/make_screenshots.py # скриншоты и GIF для README
 python docs/make_report.py                                # PDF-отчёт о тестировании → docs/TEST_REPORT.pdf
 ```

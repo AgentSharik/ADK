@@ -175,6 +175,15 @@ def clear_network_cache() -> None:
         _net_cache.clear()
 
 
+def cached_printer_alive(ip: str) -> bool | None:
+    """Свежий ответ ``is_printer_alive`` из кэша без обращения к сети; None — надо проверять (3.5.6)."""
+    with _net_cache_lock:
+        hit = _net_cache.get(f"printer:{ip}")
+    if hit and time.monotonic() - hit[0] < NET_CACHE_TTL:
+        return hit[1][1]
+    return None
+
+
 def cached_network_info(computer_name: str) -> tuple[str, bool] | None:
     """Свежий (моложе NET_CACHE_TTL) ответ из кэша без обращения к сети; None — надо проверять.
     3.5.4: поиск сначала показывает строки, а сеть проверяет вторым шагом — кэш позволяет не показывать

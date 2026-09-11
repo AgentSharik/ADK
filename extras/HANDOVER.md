@@ -1,6 +1,6 @@
 # ADK — Active Directory Kit · руководство для продолжения работы в новом чате
 
-Актуально на 2026-09-11. Версия проекта **3.5.5**, тестов **248**, e2e 46 + 82 + 45 + 41. Раздел О — обязательный регламент работы.
+Актуально на 2026-09-11. Версия проекта **3.5.6**, тестов **250**, e2e 46 + 82 + 45 + 41, стенд `tests/bench/` (1500 ПК). Раздел О — обязательный регламент работы.
 Внутренний документ: лежит в `extras/`, не входит в zip и не упоминается в README/CHANGELOG.
 Прочитать целиком до первой правки — здесь всё от А до Я, включая производство видео и чистку истории git.
 
@@ -73,7 +73,8 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
 ```
 /home/user/
 ├── adk/                 пакет (см. раздел Г)
-├── tests/               248 тестов (conftest.py, test_*.py) + e2e_scenario.py, e2e_round2.py, e2e_round3.py, e2e_round4.py
+├── tests/               250 тестов (conftest.py, test_*.py) + e2e_scenario.py, e2e_round2.py, e2e_round3.py, e2e_round4.py
+│   └── bench/           make_bench_db.py (база на 1500 ПК), search_bench.py (замер поиска через настоящее окно)
 ├── docs/                FEATURES.md, INSTALL.md, DEVELOPMENT.md, SCREENSHOTS.md, TEST_REPORT.pdf,
 │                        make_screenshots.py, make_report.py, *.png, demo_*.gif, test-logs/
 ├── assets/              иконка приложения и логотип (главную иконку не трогать)
@@ -84,9 +85,10 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
     ├── HANDOVER.md      этот файл
     ├── QA_ARCHITECTURE.md   приватная шпаргалка по архитектуре тестирования
     ├── adk.zip          поставка (только проект, см. раздел И)
-    ├── videos/          РОВНО ОДИН ролик: ADK_demo_26.mp4
-    ├── demo/            РОВНО ОДИН сценарий make_demo26.py + make_music.py
+    ├── videos/          РОВНО ОДИН ролик: ADK_demo_27.mp4
+    ├── demo/            РОВНО ОДИН сценарий make_demo27.py + make_music.py
     └── data/ADK/        рабочие config.ini, pc_mapping.db, adk.log автора
+        data/bench/      стендовая база pc_mapping.db (1500 ПК, 11 МБ), bench_users.json (заглушка AD), RESULTS.md (последний замер)
 ```
 
 `/home/user/uploads/` — скриншоты автора, в git не добавлять (untracked, не коммитить).
@@ -143,6 +145,10 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
   диалоги с переносимым текстом подгоняют высоту в `showEvent` (образец `RoleWelcomeDialog`/`RoleInfoDialog`); кнопки с
   фиксированной шириной — только через `fontMetrics().horizontalAdvance(text) + запас`; любой новый источник строк поиска
   обязан участвовать в двухшаговой проверке сети (`_net_pending`), а не выдавать статус инвентаря за текущий.
+- **3.5.6 (партия 25):** любые слова о скорости поиска — только по стенду `tests/bench/` (настоящая база на 1500 ПК, настоящее
+  окно, секундомер), а не по тестовой базе из 3 ПК. Принтеры в результатах тоже двухшаговые (`_printer_pending`,
+  `SearchWorker.apply_net`): строка сразу с «Проверка…», доступность и «а принтер ли это» — вторым шагом. Любая сетевая
+  проверка в `SearchWorker.run` до `results_ready.emit` — ошибка (она задерживает появление строк).
 
 ---
 
@@ -229,7 +235,7 @@ curl -s https://api.github.com/repos/AgentSharik/ADK/commits/main | grep -m1 '"s
 **Новый ролик никогда не короче предыдущего** (см. длительности в разделе М; сцены только добавляются, не удаляются).
 Тема на видео — тёмная «Графит» (`PRESET_THEMES["dark"]`), не зелёная.
 
-**Обязательные сцены** (все есть в `make_demo26.py`, в этом порядке): вход (показать/скрыть пароль, «запомнить»);
+**Обязательные сцены** (все есть в `make_demo27.py`, в этом порядке): сцена 3а «стенд 1500 ПК + секундомер» (см. 3.5.6 в разделе М); вход (показать/скрыть пароль, «запомнить»);
 дашборд → окно «Роль и права доступа» (роль AD) → бейдж роли; менеджер плагинов (создать шаблон → в папку кладётся
 «настоящий» плагин `message.py` «Сообщение» с `place = "header"` → «Перечитать» → кнопка «Сообщение» рядом с ФИО →
 нажатие: `InputDialog` в стиле ADK, текст, `MessageBox` «отправлено» → в менеджере «Выключить» → кнопка исчезла
@@ -257,16 +263,16 @@ curl -s https://api.github.com/repos/AgentSharik/ADK/commits/main | grep -m1 '"s
 - Финал: `w.quit_app()`, закрыть pipe, `make_music.py <сек> music.wav`, ffmpeg мультиплексирует, `framesNN` удаляется.
 
 **Как сделать следующий ролик (NN+1):**
-1. `cp extras/demo/make_demo26.py extras/demo/make_demo27.py`; заменить в нём `frames26`→`frames27`, `ADK_demo_26`→`ADK_demo_27`,
+1. `cp extras/demo/make_demo27.py extras/demo/make_demo28.py`; заменить в нём `frames27`→`frames28`, `ADK_demo_27`→`ADK_demo_28`,
    `VERSION`. Добавить новые сцены (по образцу существующих), старые не удалять.
-2. `python -m pyflakes extras/demo/make_demo27.py`.
+2. `python -m pyflakes extras/demo/make_demo28.py`.
 3. Быстрый прогон на ошибки (1–3 минуты): временная копия с `def sec(s): return 1`, `wait(min(ms,60))`, `live` ≤ 1 с и
    путями в `/tmp` — сценарий должен дойти до конца (падение на `make_music.py` из-за пути в копии — нормально).
 4. Реальный рендер (10–15 минут, через `start_process`, а не bash):
-   `cd /home/user && rm -rf extras/demo/frames27 && QT_QPA_PLATFORM=offscreen timeout 1750 python extras/demo/make_demo27.py`
-5. Проверка: `FF=$(python -c "import imageio_ffmpeg,os;print(imageio_ffmpeg.get_ffmpeg_exe())"); $FF -i extras/videos/ADK_demo_27.mp4 2>&1 | grep -E "Duration|Stream"`
+   `cd /home/user && rm -rf extras/demo/frames28 && QT_QPA_PLATFORM=offscreen timeout 1750 python extras/demo/make_demo28.py`
+5. Проверка: `FF=$(python -c "import imageio_ffmpeg,os;print(imageio_ffmpeg.get_ffmpeg_exe())"); $FF -i extras/videos/ADK_demo_28.mp4 2>&1 | grep -E "Duration|Stream"`
    — есть Video и Audio, длительность ≥ предыдущей. Контактный лист кадров (ffmpeg `-vf fps=1/20` → PIL) — посмотреть глазами.
-6. Удалить **предыдущие** `extras/demo/make_demo26.py` и `extras/videos/ADK_demo_26.mp4` (актуальные остаются),
+6. Удалить **предыдущие** `extras/demo/make_demo27.py` и `extras/videos/ADK_demo_27.mp4` (актуальные остаются),
    обновить этот файл (разделы В, К, М: длительность, номер следующего ролика).
 7. Коммит + push, затем чистка истории (раздел Л). **Полный пошаговый стандарт с готовыми скриптами — раздел О; он главный.**
 
@@ -370,10 +376,10 @@ SQLite: `journal_mode=WAL` + `synchronous=NORMAL` (`db.init_db`/`get_db_connecti
 цвета индикаторов (точка и график пинга, шкалы Здоровья) вместо `[2]` из бейджа. `DrivePicker` — меню `QMenu#diskMenu` как в
 инспекторе (заголовок «Том для карты:», иконка `internaldrive`, подсказка `C$`, `setLayoutDirection(LeftToRight)` — иначе иконки
 не рисуются у RTL-кнопки; без checkable). `adk.spec`: убраны hiddenimports `qrcode`/`PIL`. Тестов 241 (2 новых в
-`tests/test_gui.py`: двухшаговый поиск и `_assemble` без отложенной сети). Видео — `extras/videos/ADK_demo_26.mp4`
-(сценарий `extras/demo/make_demo26.py`; новая сцена после набора «сидоров»: шлюз `_gate` задерживает сеть → «Проверка…» → результат).
+`tests/test_gui.py`: двухшаговый поиск и `_assemble` без отложенной сети). Видео тогда — ролик 26
+(сцена после набора «сидоров»: шлюз `_gate` задерживает сеть → «Проверка…» → результат).
 
-**3.5.5** (текущая, партия 23 — «ещё проверь те же самые баги») — без новых функций, только сплошная проверка. Методика:
+**3.5.5** (партия 23 — «ещё проверь те же самые баги») — без новых функций, только сплошная проверка. Методика:
 геометрический обход `/tmp/audit/geo_audit.py` (в песочнице не сохраняется — пересоздать по описанию в О.5: открыть каждое
 окно/вкладку, для каждого видимого виджета проверить `geometry()` внутри родителя, `sizeHint()` ≤ фактической ширине для
 QLabel/QPushButton без переноса, пересечения соседей в одном лэйауте; env `ADK_THEME`, `ADK_FONT` (int!), `ADK_W/ADK_H`;
@@ -397,11 +403,37 @@ QLabel/QPushButton без переноса, пересечения соседе�
 `BEGIN IMMEDIATE`, шпион на `LatencyGraph.paintEvent`). Тестов 248 (+7). Видео не переснималось (26 актуально — вид окон не
 менялся; `FakePingWorker` в сценарии эмитит уже разобранные строки, парсер на него влияет только в сторону «зелёнее»).
 
-Длительность роликов (для правила «не короче предыдущего»): 21 — 8:51 (531 с); 23 — 9:22 (562 с); 24 — 9:36 (576 с); 25 — 9:39 (579 с); **26 — 9:42 (582 с)** (файл ~20 МБ).
-Темп статичных пауз задаётся константой `HOLD_SCALE` в `make_demo26.py` (сейчас 1.25) — если новый ролик выходит короче,
+Длительность роликов (для правила «не короче предыдущего»): 21 — 8:51 (531 с); 23 — 9:22 (562 с); 24 — 9:36 (576 с); 25 — 9:39 (579 с); 26 — 9:42 (582 с); **27 — 10:42 (642 с)** (файл ~25 МБ).
+Темп статичных пауз задаётся константой `HOLD_SCALE` в `make_demo27.py` (сейчас 1.25) — если новый ролик выходит короче,
 проще всего поднять её, а не резать сцены; живые сегменты пинга — `live(S, 14.0)` / `live(S, 12.0)`.
 
-Открытые задачи: **полная переработка окна «Пинг»** (автор ещё не описал желаемое; в 3.5.4 сделан только крупный шрифт); при следующем видео — номер 27.
+**3.5.6** (партия 25 — «исследуй реальную скорость поиска, создай базу на 1500 ПК в pc_mapping.db, не в коде, и базу принтеров»).
+Стенд `tests/bench/`: `make_bench_db.py` — генератор отдельного файла `extras/data/bench/pc_mapping.db` (схема создаётся
+самим `adk.db.init_db()` через `settings.db_path`; 1500 ПК в 8 подсетях 10.0.1–8.x, 1350 пользователей → `bench_users.json`,
+принтеры общие сетевые 10.0.9.x/USB/серверные/виртуальные, 90 тыс. строк ПО, архив, история, подсказки; `--seed`, `--pcs`);
+`search_bench.py` — открывает настоящий `ADApp` offscreen на этой базе, AD-заглушка `BenchConn` разбирает LDAP-фильтр
+`SearchWorker` (по `sAMAccountName`/`sn`/`displayName`/`department`… с `*`), спит `--ldap-ms` (40) на запрос; сеть —
+`--net-ms` (120) на ПК; меряет: строки на экране, статус сети, чистое время БД (обёртки над функциями `adk.db`), время
+`fill_table`, самую длинную паузу `processEvents`. Итог в `extras/data/bench/RESULTS.md` и в CHANGELOG 3.5.6 (таблица).
+Вывод замера: SQLite ≤ 35 мс на поиск (не узкое место), строки на экране за 65–140 мс при 40 мс AD. Стенд нашёл два дефекта,
+оба исправлены: (1) имя свободного ПК → «Найдено: 0» (в AD никого, а инвентарь не спрашивали) — теперь `_free_pc_rows()` после
+пустого ответа AD (и в CLI); (2) принтеры проверяли сеть (TCP + ping) до `results_ready` — 360–600 мс на «Kyocera» на стенде,
+до нескольких секунд на молчащих адресах в жизни — теперь `_printer_pending` + второй шаг, статус ключом `printer:<ip>` в том
+же `net_ready`. Тестов 250 (+2). Грабли генератора: 6 подсетей × 241 адрес < 1500 → бесконечный цикл подбора уникального IP
+(теперь 8 подсетей); `random.sample` при `--pcs` < 100.
+**Видео 27** («сними видео с этой базой, хочу увидеть реальное время отклика»): `make_demo27.py` работает на **копии стендовой
+базы** (`shutil.copy(extras/data/bench/pc_mapping.db)`) + 1350 стендовых пользователей в AD-заглушке (`DemoConn` разбирает
+LDAP-фильтр `SearchWorker`, спит `_LDAP_MS=40`; сеть `_demo_net` спит `_NET_MS=120` на ПК; `is_printer_alive` тоже с задержкой).
+Герои сценария (ivanov/petrova/sidorov/kuznetsova/smirnov) переехали в подсеть 10.0.12.x (EXTRA — 10.0.13/14), их
+стендовые однофамильцы отфильтрованы (`_HERO_SN`), стендовые привязки героев вычищены (UPDATE/DELETE перед вставкой);
+инвентарь героев пишется прямым INSERT (не `batch_update_inventory` — она удаляет несканированные ПК). Новая сцена 3а
+«Скорость поиска на стенде»: HUD-секундомер (`draw_hud`, обёртка `render`) показывает по `time.perf_counter` «строки на
+экране» / «статус сети» / «SQLite мс» / «запросов к AD»; `realtime()` пишет кадры по настоящим часам (видео-время =
+реальное), `timed_search()` — набрать, нажать «Найти», замерить. Запросы: Шевченко, WS-0731, 10.0.8.176, 10.0.3, Бухгалтерия,
+Kyocera, 10.0.9.93, Шевченко+архивы, набор по буквам. `select_login(login)` вместо `select_row(0)` — в стенде первая строка
+не обязательно герой. `ADApp.start_scan` заглушен. Длительность 642 с (16058 кадров), сцены 26-го сохранены.
+
+Открытые задачи: **полная переработка окна «Пинг»** (автор ещё не описал желаемое; в 3.5.4 сделан только крупный шрифт); при следующем видео — номер 28.
 
 ---
 
@@ -579,14 +611,14 @@ d.grab().save("/tmp/audit/s_card.png"); d.close(); w.close()
 
 Шаг 1 — копия скрипта и пути (замена **всех** вхождений, не только первого):
 ```bash
-cd /home/user && cp extras/demo/make_demo26.py extras/demo/make_demo27.py
+cd /home/user && cp extras/demo/make_demo27.py extras/demo/make_demo28.py
 python - <<'PYEOF'
-p = 'extras/demo/make_demo27.py'; s = open(p, encoding='utf-8').read()
-for a, b in (('frames26', 'frames27'), ('ADK_demo_26', 'ADK_demo_27'), ('VERSION = "3.5.4"', 'VERSION = "X.Y.Z"')):
+p = 'extras/demo/make_demo28.py'; s = open(p, encoding='utf-8').read()
+for a, b in (('frames27', 'frames28'), ('ADK_demo_27', 'ADK_demo_28'), ('VERSION = "3.5.6"', 'VERSION = "X.Y.Z"')):
     assert a in s, a; s = s.replace(a, b)
 open(p, 'w', encoding='utf-8').write(s)
 PYEOF
-grep -n "OUT_DIR =\|OUT_MP4 =\|VERSION =" extras/demo/make_demo27.py     # все три строки — про 27 и новую версию
+grep -n "OUT_DIR =\|OUT_MP4 =\|VERSION =" extras/demo/make_demo28.py     # все три строки — про 28 и новую версию
 ```
 Шаг 2 — новые сцены по образцу существующих: `cap("…")` → `move_to(S, кнопка)` → `press(S, кнопка)` → диалог через
 `show_dialog(S, dlg)` / `hide_dialog(S, dlg)` → `hold(S, сек)`. Каждая новая кнопка или окно в приложении → своя сцена.
@@ -646,8 +678,8 @@ mkdir -p /tmp/audit/t && for t in 1.5 60 200 330 470 <END-2>; do $FF -loglevel e
 
 Шаг 8 — ротация и документы:
 ```bash
-rm -rf extras/demo/frames27 extras/demo/make_demo26.py extras/videos/ADK_demo_26.mp4
-# HANDOVER: раздел В (имена файлов), К (номер ролика), М («Длительность роликов»: добавить «27 — M:SS (N с)», «при следующем видео — номер 28»)
+rm -rf extras/demo/frames28 extras/demo/make_demo27.py extras/videos/ADK_demo_27.mp4
+# HANDOVER: раздел В (имена файлов), К (номер ролика), М («Длительность роликов»: добавить «28 — M:SS (N с)», «при следующем видео — номер 29»)
 ```
 Шаг 9 — zip (раздел И), коммит, **чистка истории (раздел Л) и force-push**; проверка: свежий `git clone` в /tmp,
 `du -sh .git` — десятки МБ, среди блобов > 1 МБ ровно один `.mp4` и один `adk.zip`.

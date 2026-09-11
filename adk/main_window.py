@@ -792,6 +792,8 @@ class ADApp(FramelessMainWindow):
         """Ячейка «Сеть»: до проверки — «Проверка…» (нейтральная), потом честный статус."""
         if u.get("net_pending"):
             return StatusItem("● Проверка…", "checking")
+        if u.get("kind") == "printer" and not ((u.get("printer") or {}).get("ip")):
+            return StatusItem("—", "checking")      # USB/локальный принтер: сетевого статуса у него нет (3.5.6)
         return StatusItem("● В сети" if u["is_online"] else "● Не в сети", "online" if u["is_online"] else "offline")
 
     def on_net_ready(self, net: dict, query: str) -> None:
@@ -801,21 +803,14 @@ class ADApp(FramelessMainWindow):
             return
         sel = self.selected()
         sel_was_pending = bool(sel and sel.get("net_pending"))
-        for u in self.results:
-            comp = db.clean_computer_name(u.get("comp") or "")
-            if comp in net:
-                ip, online = net[comp]
-                if ip != "Не найден":
-                    u["ip"] = ip
-                u["is_online"] = online
-            u["net_pending"] = False         # что не пришло (отмена/ошибка) — остаются данные инвентаря
+        SearchWorker.apply_net(self.results, net)   # ПК и принтеры (3.5.6: принтеры тоже проверяются вторым шагом)
         for r in range(self.table.rowCount()):
             it = self.table.item(r, COL_LOGIN)
             idx = it.data(Qt.ItemDataRole.UserRole) if it else None
             if isinstance(idx, int) and 0 <= idx < len(self.results):
                 u = self.results[idx]
                 cell = self.table.item(r, COL_NET)
-                if u.get("kind") != "printer" and (cell is None or cell.data(BADGE_ROLE) == "checking"):
+                if cell is None or cell.data(BADGE_ROLE) == "checking":
                     self.table.setItem(r, COL_NET, self.net_badge(u))
         if sel is not None and sel_was_pending:
             self._shown = None
@@ -851,8 +846,7 @@ class ADApp(FramelessMainWindow):
                 conn = QTableWidgetItem(PRINTER_CONN.get(pkind, ("", "локальный"))[1])
                 if pkind in PRINTER_CONN:
                     conn.setIcon(icons.icon(PRINTER_CONN[pkind][0], role="text"))
-                cells = [login, fio, StatusItem("Принтер", "info"), conn,
-                         StatusItem("● В сети" if u["is_online"] else "● Не в сети", "online" if u["is_online"] else "offline")]
+                cells = [login, fio, StatusItem("Принтер", "info"), conn, self.net_badge(u)]
                 cells += [QTableWidgetItem("") for _ in range(7)] + [QTableWidgetItem(u.get("last_logon") or "")]
                 for c, item in enumerate(cells):
                     self.table.setItem(r, c, item)
@@ -1043,8 +1037,12 @@ class ADApp(FramelessMainWindow):
         ip = g.get("ip") or ""
         self.pvals["ip"].setText(ip or "— (не сетевой)")
         on = bool(u.get("is_online"))
-        self.pvals["status"].setText(("● В сети" if on else "● Не в сети") if ip else "—")
-        self.pvals["status"].setStyleSheet(f"color: {pal.success[0] if on else pal.danger[0]}; font-weight: bold;" if ip else "")
+        if ip and u.get("net_pending"):
+            self.pvals["status"].setText("● Проверка…")
+            self.pvals["status"].setStyleSheet(f"color: {pal.subtext}; font-weight: bold;")
+        else:
+            self.pvals["status"].setText(("● В сети" if on else "● Не в сети") if ip else "—")
+            self.pvals["status"].setStyleSheet(f"color: {pal.success[0] if on else pal.danger[0]}; font-weight: bold;" if ip else "")
         self.btn_printer_ping.setVisible(bool(ip))
         self.btn_printer_web.setVisible(bool(ip))
         self.pvals["kind"].setText(kind)
@@ -1053,6 +1051,9 @@ class ADApp(FramelessMainWindow):
         if not ip:
             self.pvals["probe"].setText("не сетевой — проверка по IP не применима")
             self.pvals["probe"].setStyleSheet("")
+        elif u.get("net_pending"):
+            self.pvals["probe"].setText("проверяется…")
+            self.pvals["probe"].setStyleSheet(f"color: {pal.subtext};")
         elif not pr:
             self.pvals["probe"].setText("по данным инвентаря (запрос не по IP — устройство по адресу не проверялось)")
             self.pvals["probe"].setStyleSheet("")
