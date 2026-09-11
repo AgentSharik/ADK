@@ -576,8 +576,10 @@ class PingWorker(BaseWorker):
         if not netutils.is_valid_hostname(self.target):
             self.error.emit(f"Недопустимое имя узла: {self.target}")
             return
-        args = (["ping", self.target, "-t", "-w", "1000"] if os.name == "nt"
-                else ["ping", "-i", "1", self.target])
+        # -w 4000 — как у обычного ping в cmd (раньше стояло 1000: ответ за 1,2 с по Wi-Fi считался потерей,
+        # и у живого ПК появлялся красный столбец; теперь цифры окна совпадают с тем, что админ видит в консоли)
+        args = (["ping", self.target, "-t", "-w", "4000"] if os.name == "nt"
+                else ["ping", "-i", "1", "-W", "4", self.target])
         try:
             self._proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                           text=True, encoding="cp866" if os.name == "nt" else "utf-8",

@@ -19,10 +19,16 @@ log = logging.getLogger(__name__)
 
 _HOSTNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9\-]{0,62}$")
 _IPV4_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+# Ответ Windows-ping. IPv4: «Ответ от 10.0.2.11: число байт=32 время=1мс TTL=128».
+# IPv6: «Ответ от fe80::1%12: время<1мс» — БЕЗ «байт» и БЕЗ TTL, поэтому оба поля необязательны
+# (иначе живой узел по IPv6 считался «не отвечает» — красные столбцы при 100 % связи).
 _PING_OK_RE = re.compile(
-    r"(?i)(?:ответ от|reply from)\s+([a-f0-9.:]+).*?(?:байт|bytes)=(\d+).*?"
-    r"(?:время|time)[=<]\s*([0-9.]+\s*(?:мс|ms)).*?ttl=(\d+)"
+    r"(?i)(?:ответ от|reply from)\s+(\S+?):\s+(?:.*?(?:байт|bytes)=(\d+))?.*?"
+    r"(?:время|time)([=<])\s*([0-9.]+\s*(?:мс|ms))(?:.*?ttl=(\d+))?"
 )
+# Строки итоговой статистики (печатаются при остановке) и прочий служебный текст — не замеры.
+_PING_INFO_KEYS = ("статистика ping", "пакетов:", "приблизительное время", "минимальное", "packets:",
+                   "approximate round trip", "minimum =", "control-c", "^c")
 
 
 def is_valid_hostname(name: str) -> bool:
@@ -213,20 +219,22 @@ def parse_ping_line(line: str, target: str) -> dict | None:
     low = line.lower()
     m = _PING_OK_RE.search(line)
     if m:
-        return {"ip": m.group(1).rstrip(":"), "bytes": m.group(2), "time": m.group(3),
-                "ttl": m.group(4), "status": "Успешно", "success": True, "is_info": False}
-    m = re.search(r"(?i)^(\d+) bytes from ([a-f0-9.:]+)[:\s].*?ttl=(\d+).*?time=([0-9.]+\s*ms)", line)
-    if m:  # формат iputils/BSD — для запуска вне Windows
+        # «время<1мс» — это «меньше миллисекунды», а не ровно 1 мс: знак сохраняем, окно пинга рисует 0,5
+        return {"ip": m.group(1).rstrip(":"), "bytes": m.group(2) or "—",
+                "time": ("<" if m.group(3) == "<" else "") + m.group(4).replace(" ", ""),
+                "ttl": m.group(5) or "—", "status": "Успешно", "success": True, "is_info": False}
+    m = re.search(r"(?i)^(\d+) bytes from (\S+?):?\s.*?ttl=(\d+).*?time=([0-9.]+\s*ms)", line)
+    if m:  # формат iputils/BSD (в т.ч. IPv6 с зоной «%eth0») — для запуска вне Windows
         return {"ip": m.group(2), "bytes": m.group(1), "time": m.group(4).replace(" ", ""),
                 "ttl": m.group(3), "status": "Успешно", "success": True, "is_info": False}
-    m = re.search(r"(?i)(?:ответ от|reply from)\s+([a-f0-9.:]+):\s*(.+)", line)
-    if m:
+    m = re.search(r"(?i)(?:ответ от|reply from)\s+(\S+?):\s*(.+)", line)
+    if m:   # «Ответ от 10.0.0.1: Заданный узел недоступен.» — ответ шлюза, а не узла
         return {"ip": m.group(1).rstrip(":"), "bytes": "—", "time": "—", "ttl": "—",
                 "status": line, "success": False, "is_info": False}
-    if any(k in low for k in ("превышен", "timed out", "сбой", "general failure", "unreachable")):
+    if any(k in low for k in ("превышен", "timed out", "сбой", "general failure", "unreachable", "недоступен")):
         return {"ip": target, "bytes": "—", "time": "—", "ttl": "—", "status": line,
                 "success": False, "is_info": False}
-    if "обмен пакетами" in low or "pinging" in low or low.startswith("ping "):
+    if "обмен пакетами" in low or "pinging" in low or low.startswith("ping ") or any(k in low for k in _PING_INFO_KEYS):
         return {"ip": "—", "bytes": "—", "time": "—", "ttl": "—", "status": line,
                 "success": None, "is_info": True}
     return {"ip": "—", "bytes": "—", "time": "—", "ttl": "—", "status": line,

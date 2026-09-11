@@ -35,6 +35,8 @@ def test_ping_dialog_new_design(qapp, monkeypatch):
     assert dlg.stat["loss"].text() == "20%" and dlg.stat["min"].text() == "3" and dlg.stat["max"].text() == "6"
     assert dlg.graph.samples == [3.0, 5.0, 4.0, None, 6.0]
     assert dlg.lbl_now.text() == "6" and "отвечает" in dlg.lbl_state.text()
+    from tests.test_gui import _wait
+    _wait(lambda: len(writes) >= 3, qapp, 3000)                             # 3.5.5: запись в БД фоновая
     assert writes == [("WS-1", True), ("WS-1", False), ("WS-1", True)]      # только смены состояния
     assert dlg.events.count() >= 3
     rep = dlg.report_text()
@@ -231,4 +233,51 @@ def test_ping_graph_shows_waiting_marker_when_no_answer_for_a_while(qapp, monkey
     d._last_event = datetime.now() - timedelta(seconds=2)
     d._check_waiting()
     assert d.graph.waiting is False                     # на паузе не мигаем
+    d.close()
+
+
+def test_ping_parser_ipv6_and_gateway_replies():
+    """3.5.5: у живого узла появлялись красные столбцы. Причины: ответ по IPv6 («Ответ от fe80::1%12: время<1мс»)
+    без TTL и «байт» не подходил под шаблон успеха → считался потерей; «время<1мс» считалось ровно 1 мс.
+    Ответ шлюза «Заданный узел недоступен» при этом по-прежнему НЕ успех."""
+    from adk.pingui import PingDialog
+    r = netutils.parse_ping_line("Ответ от fe80::a1b2:c3d4:e5f6:1%12: время<1мс", "fe80::1")
+    assert r["success"] is True and r["ttl"] == "—" and r["time"] == "<1мс"
+    assert PingDialog._ms(r["time"]) == 0.5 and PingDialog._ms("12мс") == 12.0 and PingDialog._ms("0.030ms") == 0.03
+    r = netutils.parse_ping_line("Reply from 2001:db8::11: time=3ms", "x")
+    assert r["success"] is True and r["time"] == "3ms"
+    r = netutils.parse_ping_line("Ответ от 10.0.0.1: Заданный узел недоступен.", "10.0.2.11")
+    assert r["success"] is False and r["ip"] == "10.0.0.1"
+    for line in ("Статистика Ping для 10.0.2.11:", "    Пакетов: отправлено = 4, получено = 4, потеряно = 0",
+                 "Приблизительное время приёма-передачи в мс:", "Approximate round trip times in milli-seconds:"):
+        r = netutils.parse_ping_line(line, "x")
+        assert r["is_info"] is True and r["success"] is None, line
+
+
+def test_ping_state_change_writes_db_in_background(qapp, monkeypatch):
+    """3.5.5: запись «в сети/не в сети» при смене состояния уходила в БД прямо из потока интерфейса; при занятой
+    базе (сканер парка) db_execute_with_retry ждёт до 5 с — окно и график застывали. Теперь запись фоновая."""
+    import threading
+    from adk import pingui
+    d = _ping_dialog_shown(monkeypatch)
+    seen = []
+    monkeypatch.setattr(pingui.db, "set_pc_online", lambda comp, ok: seen.append((comp, ok, threading.current_thread() is threading.main_thread())))
+    d.on_event(netutils.parse_ping_line("Ответ от 10.0.2.33: число байт=32 время=2мс TTL=128", "10.0.2.33"))
+    from tests.test_gui import _wait
+    assert _wait(lambda: seen, qapp, 3000)
+    assert seen[0][1] is True and seen[0][2] is False       # записано, и не в главном потоке
+    d.close()
+
+
+def test_ping_waiting_marker_threshold_is_above_one_second(qapp, monkeypatch):
+    """3.5.5: ответы живого узла идут раз в ~1,0–1,1 с; порог маркера «ждём ответ» был ровно 1,0 с и он мигал
+    на каждом замере, будто связь пропадает. Порог поднят выше секунды."""
+    from datetime import datetime, timedelta
+    from adk.pingui import PingDialog
+    assert PingDialog.WAIT_AFTER_S > 1.1
+    d = _ping_dialog_shown(monkeypatch)
+    d.on_event(netutils.parse_ping_line("Ответ от 10.0.2.33: число байт=32 время=2мс TTL=128", "10.0.2.33"))
+    d._last_event = datetime.now() - timedelta(seconds=1.1)
+    d._check_waiting()
+    assert d.graph.waiting is False
     d.close()

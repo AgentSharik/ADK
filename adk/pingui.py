@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from . import db
-from .widgets import FramelessDialog, app_palette, make_badge
+from .widgets import FramelessDialog, app_palette, make_badge, run_in_background
 from .workers import PingWorker
 
 log = logging.getLogger(__name__)
@@ -291,20 +291,25 @@ class PingDialog(FramelessDialog):
         self._wait_timer.timeout.connect(self._check_waiting)
         self._wait_timer.start()
 
+    WAIT_AFTER_S = 1.6      # у живого узла ответы идут раз в ~1,0–1,1 с — порог 1,0 с давал мигание «⏳ ждём ответ»
+
     def _check_waiting(self):
         idle = (datetime.now() - self._last_event).total_seconds()
-        self.graph.set_waiting(not self._paused and self.sent > 0 and idle > 1.0)
+        self.graph.set_waiting(not self._paused and self.sent > 0 and idle > self.WAIT_AFTER_S)
 
     # ------------------------------------------------------------------ данные
     @staticmethod
     def _ms(text: str) -> float | None:
-        digits = "".join(ch for ch in str(text) if ch.isdigit() or ch == ".")
+        """«1мс» → 1.0; «0.030ms» → 0.03; «<1мс» (Windows: меньше миллисекунды) → 0.5."""
+        text = str(text)
+        digits = "".join(ch for ch in text if ch.isdigit() or ch == ".")
         if not digits:
             return None
         try:
-            return float(digits)
+            value = float(digits)
         except ValueError:
             return None
+        return 0.5 if text.lstrip().startswith("<") else value
 
     def _add_row(self, kind: str, result: str, rtt: str = "", ttl: str = "", num: str = ""):
         """Строка журнала. kind: ok · fail · info · event."""
@@ -389,12 +394,12 @@ class PingDialog(FramelessDialog):
             self.recv += 1
             if ms is not None:
                 if ms == 0:
-                    ms = 0.5  # «<1мс» у Windows
+                    ms = 0.5  # на всякий случай: нулевого отклика не бывает
                 self.times.append(ms)
                 if len(self.times) > 1000:
                     self.times = self.times[-1000:]
         self.graph.push(ms if ok else None)
-        self.lbl_now.setText(f"{ms:.0f}" if ok and ms is not None else "—")
+        self.lbl_now.setText(("<1" if ms < 1 else f"{ms:.0f}") if ok and ms is not None else "—")
         self._refresh_stats()
         if not ok:
             self.events.insertItem(0, f"{datetime.now():%H:%M:%S}  ⛔ {d.get('status') or 'нет ответа'}")
@@ -403,10 +408,10 @@ class PingDialog(FramelessDialog):
             if self._last_state is not None or not ok:
                 self._log("🟢 узел снова отвечает" if ok else "🔴 узел перестал отвечать", "success" if ok else "danger")
             self._last_state = ok
-            try:
-                db.set_pc_online(self.computer_name, ok)
-            except Exception as exc:  # noqa: BLE001
-                log.debug("set_pc_online: %s", exc)
+            # запись в БД — в фоне: раньше шла прямо в потоке интерфейса, а при занятой базе (идёт сканер парка)
+            # db_execute_with_retry ждёт до 5 × 1 с — окно и график на это время застывали
+            run_in_background(self, lambda comp=self.computer_name, state=ok: db.set_pc_online(comp, state),
+                              lambda _r: None, lambda m: log.debug("set_pc_online: %s", m))
             if self.app and hasattr(self.app, "update_pc_status_in_ui"):
                 self.app.update_pc_status_in_ui(self.computer_name, ok)
 
@@ -438,7 +443,7 @@ class PingDialog(FramelessDialog):
         self.stat["loss"].setText(f"{loss:.0f}%")
         self.stat["loss"].setStyleSheet(f"font-size: 12pt; font-weight: bold; color: {pal.danger[0] if loss >= 10 else pal.warning[0] if loss > 0 else pal.text};")
         if self.times:
-            self.stat["min"].setText(f"{min(self.times):.0f}")
+            self.stat["min"].setText("<1" if min(self.times) < 1 else f"{min(self.times):.0f}")   # 0,5 = «меньше мс», а не 0
             self.stat["avg"].setText(f"{statistics.fmean(self.times):.1f}")
             self.stat["max"].setText(f"{max(self.times):.0f}")
             self.stat["jit"].setText(f"{statistics.pstdev(self.times):.1f}" if len(self.times) > 1 else "0")

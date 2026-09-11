@@ -1,6 +1,6 @@
 # ADK — Active Directory Kit · руководство для продолжения работы в новом чате
 
-Актуально на 2026-09-11. Версия проекта **3.5.5**, тестов **245**, e2e 46 + 82 + 45. Раздел О — обязательный регламент работы.
+Актуально на 2026-09-11. Версия проекта **3.5.5**, тестов **248**, e2e 46 + 82 + 45 + 41. Раздел О — обязательный регламент работы.
 Внутренний документ: лежит в `extras/`, не входит в zip и не упоминается в README/CHANGELOG.
 Прочитать целиком до первой правки — здесь всё от А до Я, включая производство видео и чистку истории git.
 
@@ -73,7 +73,7 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
 ```
 /home/user/
 ├── adk/                 пакет (см. раздел Г)
-├── tests/               234 теста (conftest.py, test_*.py) + e2e_scenario.py, e2e_round2.py, e2e_round3.py
+├── tests/               248 тестов (conftest.py, test_*.py) + e2e_scenario.py, e2e_round2.py, e2e_round3.py, e2e_round4.py
 ├── docs/                FEATURES.md, INSTALL.md, DEVELOPMENT.md, SCREENSHOTS.md, TEST_REPORT.pdf,
 │                        make_screenshots.py, make_report.py, *.png, demo_*.gif, test-logs/
 ├── assets/              иконка приложения и логотип (главную иконку не трогать)
@@ -172,8 +172,8 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
 экран 800×600; после `show()` — `processEvents()`; при смене поведения обновлять тест, не удалять. Иконки: текст
 сравнивать через `icons.strip()` или `btn._adk_icon`; ячейки с иконкой — `item.icon().isNull()`.
 
-e2e: `for f in e2e_scenario e2e_round2 e2e_round3; do PYTHONPATH=/home/user QT_QPA_PLATFORM=offscreen python tests/$f.py 2>&1 | grep -v propagate | tail -n 1; done`
-→ `46/46`, `82/82`, `45/45`. В `e2e_scenario` проверка «история поиска пишется» ждёт через `tg._wait` — с 3.5.4 история
+e2e: `for f in e2e_scenario e2e_round2 e2e_round3 e2e_round4; do PYTHONPATH=/home/user QT_QPA_PLATFORM=offscreen python tests/$f.py 2>&1 | grep -v propagate | tail -n 1; done`
+→ `46/46`, `82/82`, `45/45`, `41/41` (e2e_round4 — пинг под нагрузкой). В `e2e_scenario` проверка «история поиска пишется» ждёт через `tg._wait` — с 3.5.4 история
 пишется после отрисовки таблицы (`QTimer.singleShot(0, …)`), сразу после `start_search` её ещё нет.
 
 ---
@@ -184,7 +184,7 @@ e2e: `for f in e2e_scenario e2e_round2 e2e_round3; do PYTHONPATH=/home/user QT_Q
 cd /home/user
 python -m pyflakes adk tests docs                                          # пусто
 QT_QPA_PLATFORM=offscreen python -m pytest -v tests > docs/test-logs/pytest.txt; tail -1 docs/test-logs/pytest.txt
-for f in e2e_scenario e2e_round2 e2e_round3; do PYTHONPATH=/home/user QT_QPA_PLATFORM=offscreen python tests/$f.py 2>&1 | grep -v propagate | tail -n 1; done
+for f in e2e_scenario e2e_round2 e2e_round3 e2e_round4; do PYTHONPATH=/home/user QT_QPA_PLATFORM=offscreen python tests/$f.py 2>&1 | grep -v propagate | tail -n 1; done
 QT_QPA_PLATFORM=offscreen python docs/make_screenshots.py                  # PNG + GIF в docs/ (тема dark)
 python docs/make_report.py                                                 # docs/TEST_REPORT.pdf
 grep -rn "AnyDesk\|ADManager\|AD Manager" adk docs README.md CHANGELOG.md tests extras/HANDOVER.md   # пусто
@@ -385,8 +385,17 @@ QLabel/QPushButton без переноса, пересечения соседе�
 бейджа из `make_badge`; `btn_eye` («Показать») в LoginDialog/ResetPasswordDialog — ширина по `fontMetrics`; карточка:
 `lbl_sub.setWordWrap(True)`, формы «Профиля» `ExpandingFieldsGrow` + `setMinimumWidth` по тексту поля + `setCursorPosition(0)`
 + tooltip, размер окна `1080 + max(0, dialog_font_pt()-12)*60`; `RoleInfoDialog.showEvent` подгоняет высоту (как
-`RoleWelcomeDialog`); `ComparePCDialog.lbl` с переносом и одна фраза, если CSV нет у обоих. Тестов 245 (+4: два в
-`tests/test_gui.py`, два в `tests/test_ui.py`). Видео не переснималось (26 остаётся актуальным — интерфейс не менялся).
+`RoleWelcomeDialog`); `ComparePCDialog.lbl` с переносом и одна фраза, если CSV нет у обоих.
+Вторая часть партии — жалобы автора по видео («график пинга застывал на зелёных сегментах», «красный столбец у ПК с
+интернетом»). Причины и правки: `PingDialog.on_event` писал `db.set_pc_online` синхронно в главном потоке (при занятой БД
+`db_execute_with_retry` ждёт 5×1 с → окно застывало) — теперь `run_in_background`; `PingWorker` запускал `ping -t -w 1000`
+(ответ дольше 1 с = потеря) — теперь `-w 4000` (Linux `-W 4`); `_PING_OK_RE` требовал «байт=» и «TTL=» — ответ IPv6 без них
+считался потерей, теперь оба необязательны, `(\S+?)` вместо `[a-f0-9.:]+` (зона `%12`); «время<1мс» → `time="<1мс"`,
+`PingDialog._ms` даёт 0.5, в статистике/«сейчас» «<1»; служебные строки статистики (`_PING_INFO_KEYS`) → `is_info`;
+`PingDialog.WAIT_AFTER_S = 1.6` (было 1.0 — маркер мигал при ответах раз в ~1,05 с). Новый e2e-раунд
+`tests/e2e_round4.py` (41 проверка; `ScriptedPing` — поток строк ping по расписанию в реальном времени, блокировка БД через
+`BEGIN IMMEDIATE`, шпион на `LatencyGraph.paintEvent`). Тестов 248 (+7). Видео не переснималось (26 актуально — вид окон не
+менялся; `FakePingWorker` в сценарии эмитит уже разобранные строки, парсер на него влияет только в сторону «зелёнее»).
 
 Длительность роликов (для правила «не короче предыдущего»): 21 — 8:51 (531 с); 23 — 9:22 (562 с); 24 — 9:36 (576 с); 25 — 9:39 (579 с); **26 — 9:42 (582 с)** (файл ~20 МБ).
 Темп статичных пауз задаётся константой `HOLD_SCALE` в `make_demo26.py` (сейчас 1.25) — если новый ролик выходит короче,
@@ -513,7 +522,7 @@ def test_что_проверяем(qapp, fake_conn, monkeypatch):
 export QT_QPA_PLATFORM=offscreen; cd /home/user
 python -m pyflakes adk tests extras/demo/make_demoNN.py && echo PYFLAKES-OK
 python -m pytest -q 2>&1 | tail -1                                   # N passed
-for f in e2e_scenario e2e_round2 e2e_round3; do python tests/$f.py 2>&1 | grep -v propagate | tail -1; done   # 46/46 82/82 45/45
+for f in e2e_scenario e2e_round2 e2e_round3 e2e_round4; do python tests/$f.py 2>&1 | grep -v propagate | tail -1; done   # 46/46 82/82 45/45 41/41
 grep -rn "AnyDesk\|ADManager\|AD Manager" adk docs README.md CHANGELOG.md extras/HANDOVER.md   # пусто
 ```
 e2e-скрипты — не pytest: внешнее в них подменяется присваиванием в шапке (`netutils.probe_printer = lambda ip, **kw: {...}`).
