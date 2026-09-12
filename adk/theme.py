@@ -389,11 +389,12 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QListWidget, QTreeWidget {{ background-color: {p.card}; border: 1px solid {p.border}; border-radius: 8px; outline: none; qproperty-iconSize: 22px 22px; }}
     QTableWidget, QTableView {{ qproperty-iconSize: 22px 22px; }}
     QMenu {{ icon-size: 22px; }}
-    QPushButton#drivePicker {{ background: {relief(p.button, 110, 95)}; color: {p.text}; border: 1.5px solid {p.title_accent};
-        border-radius: 14px; padding: 4px 14px 4px 18px; font-weight: 700; font-size: 10.5pt; text-align: center; }}
-    QPushButton#drivePicker:hover {{ background: {p.selection}; }}
-    QPushButton#drivePicker:pressed {{ background-color: {accent}; color: {p.on_accent}; }}
-    QPushButton#drivePicker::menu-indicator {{ image: none; width: 0; }}
+    QPushButton#drivePicker {{ background: {relief(p.button, 112, 94)}; color: {p.text}; border: 1px solid {btn_edge};
+        border-top-color: {btn_light}; border-radius: 17px; padding: 5px 28px 5px 12px; font-weight: 700; text-align: left; }}
+    QPushButton#drivePicker:hover {{ background: {relief(p.hover, 110, 95)}; border-color: {accent}; }}
+    QPushButton#drivePicker:pressed, QPushButton#drivePicker:open {{ background-color: {p.selection}; border-color: {accent}; }}
+    QPushButton#drivePicker::menu-indicator {{ image: url({chev_down}); width: 14px; height: 14px;
+        subcontrol-origin: padding; subcontrol-position: center right; right: 10px; }}
     QMenu {{ background-color: {p.card}; border: 1px solid {p.border}; border-radius: 10px; padding: 6px; }}
     QMenu::item {{ padding: 7px 22px; border-radius: 6px; }}
     QMenu::item:selected {{ background: {relief(accent, 110, 94)}; color: {p.on_accent}; }}

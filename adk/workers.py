@@ -873,7 +873,7 @@ class InventoryWorker(BaseWorker):
                 conn,
                 f"(&(objectClass=user)(company={ad.escape_filter_chars(self.company)})"
                 "(!(userAccountControl:1.2.840.113556.1.4.803:=2)))",
-                ["displayName", "sAMAccountName", "title", "department", "physicalDeliveryOfficeName"],
+                ["displayName", "sAMAccountName", "title", "department", "physicalDeliveryOfficeName", "company"],
             )
         finally:
             conn.unbind()
@@ -884,6 +884,10 @@ class InventoryWorker(BaseWorker):
             if rows is None:
                 self.progress.emit("Получение сотрудников из AD…")
                 entries = self._fetch()
+                # 3.5.7: страховка от «вся AD в одной организации» — в файл попадают только записи, у которых
+                # company совпадает с выбранной (LDAP-фильтр уже это делает, но ответ контроллера перепроверяем)
+                want = self.company.casefold().strip()
+                entries = [e for e in entries if ad.get_ad_value(e, "company").casefold().strip() == want]
                 if not entries:
                     self.finished_export.emit(False, f"В организации «{self.company}» нет сотрудников")
                     return

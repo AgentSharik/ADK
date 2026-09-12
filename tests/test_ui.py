@@ -496,3 +496,61 @@ def test_user_card_long_title_does_not_stretch_window(qapp):
     assert d.lbl_sub.wordWrap()
     assert d.width() <= 1300
     d.close()
+
+
+def test_dialog_never_shrinks_below_its_minimum(qapp):
+    """3.5.7: на маленьком экране окно ужимается под доступную область, но не ниже собственного минимума
+    (minimumSizeHint) — иначе карточка и «Здоровье» становились «сплюснутыми»: поля обрезаны, таблицы наезжают.
+    Проверка на голом FramelessDialog с широким содержимым и подменённой «доступной областью» экрана."""
+    from PyQt6.QtCore import QRect
+    from PyQt6.QtWidgets import QLabel, QWidget
+    from adk.widgets import FramelessDialog
+    parent = QWidget()
+    parent.resize(700, 700)
+    parent.show()
+    d = FramelessDialog("проверка", parent, (1240, 720))
+    wide = QLabel("содержимое")
+    wide.setMinimumSize(900, 600)                  # минимум содержимого — больше «экрана» 800 px, меньше окна 1240
+    d.body.addWidget(wide)
+    min_w, min_h = d.minimumSizeHint().width(), d.minimumSizeHint().height()
+
+    class _Screen:
+        def availableGeometry(self):
+            return QRect(0, 0, 800, 800)
+
+    d.screen = lambda: _Screen()                   # экран «800×800», как у виртуального
+    d.show()
+    qapp.processEvents()
+    assert d.width() >= min_w - 2 and d.height() >= min_h - 2, (d.width(), d.height(), min_w, min_h)
+    assert d.width() < 1240                         # но под маленький экран всё же ужалось
+    d.close()
+    # экран меньше главного окна (виртуальный дисплей): граница — окно-родитель, диалог не трогаем
+    big = QWidget()
+    big.resize(1400, 820)
+    big.show()
+    d2 = FramelessDialog("проверка", big, (960, 720))
+    d2.screen = lambda: _Screen()
+    d2.show()
+    qapp.processEvents()
+    assert (d2.width(), d2.height()) == (960, 720)
+    d2.close()
+    big.close()
+    parent.close()
+
+
+def test_drive_picker_is_a_pill_with_icon_and_arrow(qapp):
+    """3.5.7: выбор тома в «Здоровье ПК» — таблетка «💽 C: ⌄»: иконка тома слева, стрелка справа,
+    ширина под текст с полями, высота вровень с соседней кнопкой."""
+    from adk.widgets import DrivePicker
+    p = DrivePicker()
+    p.addItem("C:")
+    p.addItem("D:")
+    p.show()
+    qapp.processEvents()
+    assert p.text() == "C:" and not p.icon().isNull()
+    assert p.layoutDirection().name == "LeftToRight"
+    assert p.width() >= p.fontMetrics().horizontalAdvance("C:") + 60
+    assert p.height() >= 32
+    p.setCurrentText("D:")
+    assert p.text() == "D:" and p.width() >= p.fontMetrics().horizontalAdvance("D:") + 60
+    p.close()

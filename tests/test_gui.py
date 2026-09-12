@@ -756,3 +756,57 @@ def test_printer_row_shows_checking_then_real_status(qapp, fake_conn, monkeypatc
     assert _wait(lambda: "В сети" in w.table.item(0, 4).text(), qapp, 6000)
     assert w.pvals["status"].text() == "● В сети" and "действительно принтер" in w.pvals["probe"].text()
     w.close()
+
+
+def test_power_menu_opens_upward_when_no_room_below(qapp, fake_conn, monkeypatch):
+    """3.5.7: меню «Питание ПК» (заголовок + 6 пунктов) открывалось строго вниз от кнопки и последние пункты
+    уходили за нижний край окна/экрана. Если ниже кнопки места меньше высоты меню — меню открывается вверх."""
+    from PyQt6.QtCore import QRect
+    import adk.main_window as mw
+    from adk import db
+    monkeypatch.setattr(mw.netutils.subprocess, "run", lambda *a, **k: None)
+    w = _main(qapp, fake_conn, monkeypatch)
+    db.save_computer_for_login("ivanov", "WS-101")
+    w.search_input.setText("иванов")
+    w.start_search()
+    assert _wait(lambda: w.table.rowCount() > 0, qapp, 3000)
+    w.select_row(0)
+    btn = w.action_buttons["power"]
+    btn_top = btn.mapToGlobal(btn.rect().topLeft()).y()
+    btn_bottom = btn.mapToGlobal(btn.rect().bottomLeft()).y()
+
+    class _Screen:
+        def __init__(self, bottom):
+            self._b = bottom
+
+        def availableGeometry(self):
+            return QRect(0, 0, 1920, self._b)
+
+    # места снизу мало — меню над кнопкой
+    monkeypatch.setattr(type(btn), "screen", lambda self: _Screen(btn_bottom + 40))
+    w.remote_action("power")
+    m = w._power_menu
+    assert m.pos().y() + m.sizeHint().height() <= btn_top + 2, (m.pos().y(), m.sizeHint().height(), btn_top)
+    m.close()
+    # места достаточно — меню под кнопкой (Qt может лишь сдвинуть его вверх у края настоящего экрана,
+    # но выше верхнего края кнопки без нашего переворота оно не уходит)
+    monkeypatch.setattr(type(btn), "screen", lambda self: _Screen(btn_bottom + 2000))
+    w.remote_action("power")
+    assert w._power_menu.pos().y() > btn_top - 40
+    w._power_menu.close()
+    w.close()
+
+
+def test_inventory_export_keeps_only_selected_company(qapp, monkeypatch):
+    """3.5.7: в Excel-описи по организации должны быть только её сотрудники. Даже если контроллер вернул лишнее
+    (или заглушка игнорирует LDAP-фильтр), записи с другим company в файл не попадают."""
+    from adk.workers import InventoryWorker
+    entries = [FakeEntry(f"CN=u{i},OU=x", sAMAccountName=f"u{i}", displayName=f"Фамилия{i} Имя", sn=f"Фамилия{i}",
+                         givenName="Имя", userAccountControl=512, department="Отдел",
+                         company="АО «Логистика Плюс»" if i % 3 else "ООО «Пример»") for i in range(12)]
+    got: list[list] = []
+    wk = InventoryWorker(lambda: FakeConn(entries), "ООО «Пример»", "", preview=True)   # FakeConn.search отдаёт всё
+    wk.rows_ready.connect(got.append)
+    wk.run()
+    assert len(got) == 1 and len(got[0]) == 4
+    assert all(r["login"] in {"u0", "u3", "u6", "u9"} for r in got[0])

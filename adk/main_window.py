@@ -1344,10 +1344,8 @@ class ADApp(FramelessMainWindow):
             act.setToolTip(hint)
             act.triggered.connect(lambda _c=False, k=key: self.remote_action(k))
         menu.setToolTipsVisible(True)
-        btn = self.action_buttons.get("power")
-        pos = btn.mapToGlobal(btn.rect().bottomLeft()) if btn is not None and btn.isVisible() else QCursor.pos()
         self._power_menu = menu
-        menu.popup(pos)
+        self._popup_below(menu, self.action_buttons.get("power"))
 
     def power_action(self, action: str, comp: str, target: str) -> None:
         """Выполнить пункт меню «Питание ПК» (кроме WoL): подтверждение для необратимых, шаги по очереди, запись в журнал."""
@@ -1373,9 +1371,23 @@ class ADApp(FramelessMainWindow):
             hint = " · ".join(x for x in (v.get("label"), v.get("size")) if x)
             act = menu.addAction(f"💽  {v['letter']}:$" + (f"    {hint}" if hint else ""))
             act.triggered.connect(lambda _c=False, l=v["letter"].lower(): self.remote_action(f"disk_{l}"))
-        btn = self.action_buttons.get("disk")
-        pos = btn.mapToGlobal(btn.rect().bottomLeft()) if btn is not None and btn.isVisible() else QCursor.pos()
         self._disk_menu = menu
+        self._popup_below(menu, self.action_buttons.get("disk"))
+
+    def _popup_below(self, menu: QMenu, btn) -> None:
+        """Открыть меню под кнопкой; если до нижнего края экрана места меньше, чем высота меню, — над кнопкой.
+        3.5.7: «Питание ПК» из шести пунктов открывалось вниз и последние пункты уходили за край окна/экрана."""
+        if btn is None or not btn.isVisible():
+            menu.popup(QCursor.pos())
+            return
+        pos = btn.mapToGlobal(btn.rect().bottomLeft())
+        screen = btn.screen() or QApplication.primaryScreen()
+        bottom = screen.availableGeometry().bottom() if screen is not None else 10 ** 6
+        bottom = min(bottom, self.frameGeometry().bottom())      # и за нижний край главного окна не вылезать
+        need = menu.sizeHint().height()
+        top = btn.mapToGlobal(btn.rect().topLeft()).y() - need
+        if pos.y() + need > bottom and top >= self.frameGeometry().top():
+            pos.setY(top)
         menu.popup(pos)
 
     def open_card(self):

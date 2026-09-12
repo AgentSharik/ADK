@@ -223,15 +223,24 @@ class FramelessDialog(QDialog):
         pg = parent.frameGeometry()
         screen = self.screen() or parent.screen()
         avail = screen.availableGeometry() if screen is not None else pg
-        # 3.5.4: на мониторе 1366×768 окно 740 px высотой уходило под панель задач — ужимаем под доступную область
-        if self.width() > avail.width() - 16 or self.height() > avail.height() - 16:
-            self.resize(min(self.width(), avail.width() - 16), min(self.height(), avail.height() - 16))
+        # 3.5.4: на мониторе 1366×768 окно 740 px высотой уходило под панель задач — ужимаем под доступную область.
+        # 3.5.7: только если окно действительно не помещается, и не ниже его собственного минимума (minimumSizeHint):
+        # иначе на маленьком/виртуальном экране карточка и «Здоровье» ужимались до состояния, когда поля обрезаны,
+        # а таблицы наезжали на карту — «сплюснутые» окна.
+        # Граница — экран, объединённый с окном-родителем: если главное окно больше «экрана» (виртуальный дисплей,
+        # растянутое на два монитора окно), ужимать диалог под меньший из них бессмысленно.
+        bounds = avail.united(pg)
+        max_w, max_h = bounds.width() - 16, bounds.height() - 16
+        if self.width() > max_w or self.height() > max_h:
+            mh = self.minimumSizeHint()
+            self.resize(max(min(self.width(), max_w), min(mh.width(), self.width())),
+                        max(min(self.height(), max_h), min(mh.height(), self.height())))
         x = pg.x() + (pg.width() - self.width()) // 2
         y = pg.y() + (pg.height() - self.height()) // 2
         if self.height() <= pg.height() - self.HEADER_H:
             y = max(y, pg.y() + self.HEADER_H)
-        x = max(avail.x(), min(x, avail.right() - self.width()))
-        y = max(avail.y(), min(y, avail.bottom() - self.height()))
+        x = max(bounds.x(), min(x, bounds.right() - self.width()))
+        y = max(bounds.y(), min(y, bounds.bottom() - self.height()))
         self.move(x, y)
 
     def done(self, r: int) -> None:  # noqa: N802
@@ -721,13 +730,15 @@ class DrivePicker(QPushButton):
     def _sync(self) -> None:
         from . import icons
         from PyQt6.QtCore import QSize
+        # 3.5.7: раньше кнопка выглядела как «C: ˅» в тесной рамке — буква у левого края, стрелка у правого, между
+        # ними пустота. Теперь это таблетка «💽 C:  ⌄»: иконка тома слева, буква рядом, стрелка справа, ровные поля.
         self.setText(self._current or "—")
-        self.setIcon(icons.icon("chevron.down", role="accent"))
-        self.setIconSize(QSize(14, 14))
-        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)     # иконка справа от текста
+        self.setIcon(icons.icon("internaldrive", role="accent"))
+        self.setIconSize(QSize(18, 18))
+        self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         fm = self.fontMetrics()
-        # 3.5.4: буква тома упиралась в левый край кнопки — запас под текст и стрелку стал шире
-        self.setFixedWidth(fm.horizontalAdvance(self.text()) + 64)
+        self.setFixedWidth(fm.horizontalAdvance(self.text()) + 18 + 14 + 40)   # иконка + стрелка + поля
+        self.setFixedHeight(max(34, fm.height() + 16))                         # вровень с соседней кнопкой
         self.menu.clear()
         head = self.menu.addAction("Том для карты:")
         head.setEnabled(False)
