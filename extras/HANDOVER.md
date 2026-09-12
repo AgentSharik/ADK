@@ -320,6 +320,24 @@ git push -q --force "https://x-access-token:${T}@github.com/AgentSharik/ADK.git"
 du -sh .git      # для контроля; свежий клон должен весить ~ размер актуального ролика + zip + docs
 ```
 На стороне GitHub старые объекты уходят из клона сразу; из внутреннего хранилища — после их сборки мусора (это нормально).
+Поэтому цифра размера в интерфейсе GitHub после force-push какое-то время **больше** свежего клона (пример: показывало 118 МБ,
+клон и API — 62 МБ). Правда — это `du -sh /tmp/chk/.git` свежего клона и `curl -s https://api.github.com/repos/AgentSharik/ADK | grep '"size"'`.
+
+### Скриншоты и GIF документации — тоже «с корнями»
+`docs/*.png` и `docs/*.gif` (35 файлов, ~3,4 МБ) перегенерируются `make_screenshots.py` почти в каждой партии, и каждая
+перегенерация оставляет в истории старую версию. К 3.5.6 накопилось 352 старых блоба на 31,5 МБ — половина репозитория.
+**Правило:** после любой перегенерации скриншотов/GIF (или раз в несколько партий) вырезать их старые версии из истории:
+```bash
+mkdir -p /tmp/keep_docs && cp docs/*.png docs/*.gif /tmp/keep_docs/
+git filter-repo --force --invert-paths --path-glob 'docs/*.png' --path-glob 'docs/*.gif'
+cp /tmp/gitconfig.bak .git/config   # или пересоздать .git/config, см. выше
+cp /tmp/keep_docs/* docs/ && git add docs/*.png docs/*.gif && git commit -q -m "docs: актуальные скриншоты и GIF после чистки истории"
+git reflog expire --expire=now --all && git gc --prune=now --aggressive -q && git push -q --force "https://x-access-token:${T}@github.com/AgentSharik/ADK.git" main
+```
+Пути файлов не меняются, README/docs и тесты трогать не нужно. Контроль: в истории у каждого `docs/*.png|gif` ровно одна версия —
+`git rev-list --objects --all | git cat-file --batch-check='%(objecttype) %(rest)' | awk '$1=="blob" && $2 ~ /^docs\/.*\.(png|gif)$/ {c[$2]++} END{for(k in c) if(c[k]>1) print c[k], k}'` — вывод пустой.
+Так сделано в 3.5.6: клон 62 МБ → ~31 МБ (ролик 27 = 22 МБ, zip 4 МБ, стенд 2,6 МБ, docs 3,4 МБ, код ~1 МБ).
+`assets/` чистить не нужно — там по одной версии каждого файла.
 
 ---
 
