@@ -302,6 +302,7 @@ class LogonsDialog(FramelessDialog):
         self.summary.setWordWrap(True)
         self.body.addWidget(self.summary)
         self.table = _table(["Время", "Пользователь", "Тип", "Откуда (IP)", "Результат"])
+        fit_columns(self.table, max_width=360)
         self.body.addWidget(self.table, 1)
         close = QPushButton("Закрыть")
         close.clicked.connect(self.accept)
