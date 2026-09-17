@@ -14,7 +14,7 @@ from PyQt6.QtCore import QDateTime, QPointF, QRectF, Qt
 from PyQt6.QtGui import QBrush, QColor, QFont, QLinearGradient, QPainter, QPen
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDateTimeEdit, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
-    QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem, QTabWidget,
+    QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem, QTabWidget,
     QVBoxLayout, QWidget,
 )
 
@@ -498,6 +498,12 @@ class HealthDialog(FramelessDialog):
         self.cb_drive = DrivePicker(tooltip="Том для карты: любой диск ПК (C:, D:, …); список появляется после опроса")
         self.cb_drive.addItem("C:")
         top.addWidget(self.cb_drive)
+        top.addWidget(QLabel("<b>Файлов в топе:</b>"))
+        self.sp_top = QSpinBox()
+        self.sp_top.setRange(10, 200)
+        self.sp_top.setValue(40)
+        self.sp_top.setToolTip("Сколько самых крупных файлов показывать в таблице «Файлы»")
+        top.addWidget(self.sp_top)
         self.btn_usage = QPushButton("🗺️ Построить карту")
         self.btn_usage.setObjectName("btnInfo")
         self.btn_usage.clicked.connect(self.load_usage)
@@ -544,7 +550,7 @@ class HealthDialog(FramelessDialog):
         for i, tip in enumerate(("Папки верхнего уровня по размеру", "Самые крупные файлы тома",
                                  "Что можно почистить на этом томе — из того же обхода, что и карта; ничего не удаляется")):
             self.usage_tabs.setTabToolTip(i, tip)
-        self.usage_tabs.setUsesScrollButtons(False)
+        self.usage_tabs.setUsesScrollButtons(True)
         self.usage_split.addWidget(self.usage_tabs)
         self.usage_split.setStretchFactor(0, 6)
         self.usage_split.setStretchFactor(1, 5)
@@ -880,9 +886,10 @@ class HealthDialog(FramelessDialog):
     # ------------------------------------------------------------------ карта диска
     def load_usage(self):
         drive = self.cb_drive.currentText() or "C:"
+        top_count = self.sp_top.value() if hasattr(self, "sp_top") else TOP_FILES
         self.btn_usage.setEnabled(False)
         self.lbl_usage.setText(f"⏳ Обхожу \\\\{self.comp}\\{drive.rstrip(':')}$ — это может занять несколько минут…")
-        run_in_background(self, lambda: health.get_disk_usage(self.comp, drive, TOP_FILES), self.show_usage,
+        run_in_background(self, lambda: health.get_disk_usage(self.comp, drive, top_count), self.show_usage,
                           lambda m: self.show_usage({"error": m}))
 
     def show_usage(self, u: dict):
