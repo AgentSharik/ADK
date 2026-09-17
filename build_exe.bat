@@ -1,4 +1,6 @@
 @echo off
+rem Кодировка UTF-8 для корректного вывода кириллицы в консоли Windows
+chcp 65001 >nul
 rem Сборка ADK.exe (Windows). Требуется Python 3.10+ в PATH.
 rem Результат: dist\ADK\ADK.exe  (+ папка с Qt-библиотеками — копировать целиком)
 setlocal
@@ -17,7 +19,7 @@ echo [4/4] PyInstaller...
 pyinstaller --noconfirm --clean adk.spec || goto :err
 echo.
 echo Готово: "dist\ADK\ADK.exe"
-echo Первый запуск создаст %%USERPROFILE%%\Documents\ADK\config.ini — заполните LDAP-параметры.
+echo Первый запуск создаст %%USERPROFILE%%\Documents\ADK\config.ini — настройки домена определятся автоматически.
 exit /b 0
 :err
 echo.

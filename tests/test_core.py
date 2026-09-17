@@ -508,3 +508,25 @@ def test_known_volumes_from_hardware_csv(tmp_path, monkeypatch):
     assert [v["letter"] for v in vols] == ["C", "D"]
     assert vols[0]["label"] == "System" and vols[1]["size"] == "932 ГБ"
     assert netutils.known_volumes("NO-SUCH") == []
+
+
+def test_autodetect_ad_params(monkeypatch, tmp_path):
+    """3.5.8: автоопределение параметров домена AD по переменным окружения и создание config.ini."""
+    from adk import config
+    monkeypatch.setenv("USERDNSDOMAIN", "corp.company.local")
+    monkeypatch.setenv("USERDOMAIN", "CORP")
+    monkeypatch.setenv("LOGONSERVER", "\\DC01")
+    params = config.detect_ad_domain_params()
+    assert params["domain_netbios"] == "CORP"
+    assert params["upn_suffix"] == "corp.company.local"
+    assert params["search_base"] == "DC=corp,DC=company,DC=local"
+    assert params["users_ou"] == "OU=Users,DC=corp,DC=company,DC=local"
+    assert params["dc_host"] == "dc01.corp.company.local"
+
+    cfg_file = str(tmp_path / "autocfg.ini")
+    config.write_default_config(cfg_file)
+    cp = config.configparser.ConfigParser()
+    cp.read(cfg_file, encoding="utf-8")
+    assert cp["AD"]["domain_netbios"] == "CORP"
+    assert cp["AD"]["search_base"] == "DC=corp,DC=company,DC=local"
+    assert cp["AD"]["users_ou"] == "OU=Users,DC=corp,DC=company,DC=local"

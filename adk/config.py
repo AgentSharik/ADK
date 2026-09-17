@@ -153,27 +153,100 @@ def _ensure_dirs() -> None:
         pass
 
 
+
+def detect_ad_domain_params() -> dict[str, str]:
+    """Автоопределение параметров Active Directory при запуске на доменной машине Windows."""
+    params: dict[str, str] = {}
+    dns_domain = os.environ.get("USERDNSDOMAIN", "").strip().lower()
+    netbios = os.environ.get("USERDOMAIN", "").strip().upper()
+    logon_srv = os.environ.get("LOGONSERVER", "").strip().lstrip("\\").lower()
+
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class DOMAIN_CONTROLLER_INFO(ctypes.Structure):
+                _fields_ = [
+                    ("DomainControllerName", wintypes.LPWSTR),
+                    ("DomainControllerAddress", wintypes.LPWSTR),
+                    ("DomainControllerAddressType", wintypes.ULONG),
+                    ("DomainGuid", ctypes.c_byte * 16),
+                    ("DomainName", wintypes.LPWSTR),
+                    ("DnsForestName", wintypes.LPWSTR),
+                    ("Flags", wintypes.ULONG),
+                    ("DcSiteName", wintypes.LPWSTR),
+                    ("ClientSiteName", wintypes.LPWSTR),
+                ]
+
+            pinfo = ctypes.POINTER(DOMAIN_CONTROLLER_INFO)()
+            res = ctypes.windll.netapi32.DsGetDcNameW(None, None, None, None, 0x00000010, ctypes.byref(pinfo))
+            if res == 0 and pinfo:
+                info = pinfo.contents
+                if info.DomainName:
+                    dns_domain = str(info.DomainName).strip().lower()
+                if info.DomainControllerName:
+                    dc_name = str(info.DomainControllerName).strip().lstrip("\\").lower()
+                    if dc_name:
+                        params["dc_host"] = dc_name
+                ctypes.windll.netapi32.NetApiBufferFree(pinfo)
+        except Exception:
+            pass
+
+    if dns_domain and "." in dns_domain:
+        params["upn_suffix"] = dns_domain
+        base_dn = ",".join(f"DC={part}" for part in dns_domain.split(".") if part)
+        params["search_base"] = base_dn
+        params["users_ou"] = f"OU=Users,{base_dn}"
+        if "dc_host" not in params:
+            if logon_srv:
+                params["dc_host"] = f"{logon_srv}.{dns_domain}" if "." not in logon_srv else logon_srv
+            else:
+                params["dc_host"] = f"dc01.{dns_domain}"
+    if netbios:
+        params["domain_netbios"] = netbios
+
+    return params
+
 def _load() -> configparser.ConfigParser:
     cp = configparser.ConfigParser(interpolation=None)
-    cp.read_dict(_DEFAULTS)
+    defaults = {k: dict(v) for k, v in _DEFAULTS.items()}
+    detected_ad = detect_ad_domain_params()
+    if detected_ad:
+        defaults["AD"].update(detected_ad)
+    cp.read_dict(defaults)
     if os.path.exists(INI_FILE):
         try:
             cp.read(INI_FILE, encoding="utf-8")
         except (configparser.Error, OSError) as exc:
             logging.getLogger(__name__).warning("config.ini не прочитан: %s", exc)
+    else:
+        # Автоматически создаём config.ini при первом запуске
+        try:
+            write_default_config(INI_FILE)
+        except Exception:
+            pass
     return cp
 
 
 def write_default_config(path: str = INI_FILE) -> None:
-    """Создаёт config.ini со значениями по умолчанию (если его ещё нет)."""
+    """Создаёт config.ini со значениями по умолчанию и автоопределением домена (если его ещё нет)."""
     if os.path.exists(path):
         return
     _ensure_dirs()
+    detected_ad = detect_ad_domain_params()
+    ad_sec = dict(_DEFAULTS["AD"])
+    ad_sec.update(detected_ad)
     cp = configparser.ConfigParser(interpolation=None)
-    cp.read_dict(_DEFAULTS)
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write("; ADK — настройки организации. Правится вручную.\n")
-        cp.write(fh)
+    defaults = {k: dict(v) for k, v in _DEFAULTS.items()}
+    defaults["AD"] = ad_sec
+    cp.read_dict(defaults)
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("; ADK — настройки организации. Создан автоматически при первом запуске.\n")
+            cp.write(fh)
+    except OSError as exc:
+        logging.getLogger(__name__).warning("Не удалось записать начальный config.ini: %s", exc)
 
 
 class Settings:

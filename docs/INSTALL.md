@@ -21,7 +21,7 @@ python run.py                                        # или: python -m adk
 ### Вариант 2 — `ADK.exe` (PyInstaller)
 
 ```bat
-build_exe.bat          :: или build_exe.ps1 — создаст .venv, поставит зависимости, соберёт dist\ADK\
+build_exe.bat          — создаст .venv, поставит зависимости, соберёт dist\ADK\
 ```
 
 Результат — папка `dist\ADK\` с `ADK.exe` и `_internal\` (Qt-библиотеки). **Копировать папку целиком**

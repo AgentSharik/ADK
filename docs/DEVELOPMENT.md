@@ -5,7 +5,7 @@
 ```bash
 pip install -r requirements-dev.txt
 pyflakes adk tests
-QT_QPA_PLATFORM=offscreen pytest -q      # 250 тестов: MD4 (RFC 1320), БД, разбор ping, статус УЗ, принтеры, инструменты 3.0/3.1, CLI, GUI с заглушкой LDAP
+QT_QPA_PLATFORM=offscreen pytest -q      # 255 тестов: MD4 (RFC 1320), БД, разбор ping, статус УЗ, принтеры, инструменты 3.0/3.1, CLI, GUI с заглушкой LDAP
 QT_QPA_PLATFORM=offscreen python tests/e2e_scenario.py   # сквозной сценарий, 46 проверок
 QT_QPA_PLATFORM=offscreen python tests/e2e_round2.py     # раунд 2: карточка, создание УЗ, сканер, DPAPI, CSV — 82 проверки
 QT_QPA_PLATFORM=offscreen python tests/e2e_round3.py     # раунд 3: принтеры, режимы поиска, точность, производительность — 45 проверок
@@ -69,7 +69,7 @@ adk/
   i18n.py         словарь ru→en и tr()
   main_window.py  дашборд, единый поиск, таблица, инспектор
 run.py            точка входа без установки (PyCharm / PyInstaller)
-adk.spec   сборка exe; build_exe.bat / build_exe.ps1 — «одной кнопкой»
+adk.spec   сборка exe; build_exe.bat — «одной кнопкой»
 assets/           иконка приложения
 .run/             конфигурации запуска PyCharm
 tests/            pytest (offscreen Qt, FakeConn вместо ldap3) — файлы по областям, не по версиям:

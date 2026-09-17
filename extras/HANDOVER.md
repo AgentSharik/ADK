@@ -1,6 +1,6 @@
 # ADK — Active Directory Kit · руководство для продолжения работы в новом чате
 
-Актуально на 2026-09-12. Версия проекта **3.5.7**, тестов **254**, e2e 46 + 82 + 45 + 41, стенд `tests/bench/` (1500 ПК). Раздел О — обязательный регламент работы.
+Актуально на 2026-09-17. Версия проекта **3.5.8**, тестов **255**, e2e 46 + 82 + 45 + 41, стенд `tests/bench/` (1500 ПК). Раздел О — обязательный регламент работы.
 Внутренний документ: лежит в `extras/`, не входит в zip и не упоминается в README/CHANGELOG.
 Прочитать целиком до первой правки — здесь всё от А до Я, включая производство видео и чистку истории git.
 
@@ -85,8 +85,8 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
     ├── HANDOVER.md      этот файл
     ├── QA_ARCHITECTURE.md   приватная шпаргалка по архитектуре тестирования
     ├── adk.zip          поставка (только проект, см. раздел И)
-    ├── videos/          РОВНО ОДИН ролик: ADK_demo_28.mp4
-    ├── demo/            РОВНО ОДИН сценарий make_demo28.py + make_music.py
+    ├── videos/          РОВНО ОДИН ролик: ADK_demo_29.mp4
+    ├── demo/            РОВНО ОДИН сценарий make_demo29.py + make_music.py
     └── data/ADK/        рабочие config.ini, pc_mapping.db, adk.log автора
         data/bench/      стендовая база pc_mapping.db (1500 ПК, 11 МБ), bench_users.json (заглушка AD), RESULTS.md (последний замер)
 ```
@@ -217,7 +217,7 @@ grep -rn "AnyDesk\|ADManager\|AD Manager" adk docs README.md CHANGELOG.md tests 
 ## И. Поставка (zip), коммит, push
 
 ```bash
-cd /home/user && rm -f extras/adk.zip && zip -qr extras/adk.zip adk assets docs tests .github .run CHANGELOG.md README.md adk.spec build_exe.bat build_exe.ps1 config.example.ini pyproject.toml requirements.txt requirements-dev.txt run.py version_info.txt -x "*/__pycache__/*" "*.pyc" "*/.pytest_cache/*"
+cd /home/user && rm -f extras/adk.zip && zip -qr extras/adk.zip adk assets docs tests .github .run CHANGELOG.md README.md adk.spec build_exe.bat config.example.ini pyproject.toml requirements.txt requirements-dev.txt run.py version_info.txt -x "*/__pycache__/*" "*.pyc" "*/.pytest_cache/*"
 unzip -l extras/adk.zip | grep -c "extras/\|\.mp4\|make_demo\|HANDOVER\|QA_ARCH"     # 0
 ```
 
@@ -242,7 +242,7 @@ curl -s https://api.github.com/repos/AgentSharik/ADK/commits/main | grep -m1 '"s
 **Новый ролик никогда не короче предыдущего** (см. длительности в разделе М; сцены только добавляются, не удаляются).
 Тема на видео — тёмная «Графит» (`PRESET_THEMES["dark"]`), не зелёная.
 
-**Обязательные сцены** (все есть в `make_demo28.py`, в этом порядке): сцена 3а «стенд 1500 ПК + секундомер» (см. 3.5.6 в разделе М); вход (показать/скрыть пароль, «запомнить»);
+**Обязательные сцены** (все есть в `make_demo29.py`, в этом порядке): сцена 3а «стенд 1500 ПК + секундомер» (см. 3.5.6 в разделе М); вход (показать/скрыть пароль, «запомнить»);
 дашборд → окно «Роль и права доступа» (роль AD) → бейдж роли; менеджер плагинов (создать шаблон → в папку кладётся
 «настоящий» плагин `message.py` «Сообщение» с `place = "header"` → «Перечитать» → кнопка «Сообщение» рядом с ФИО →
 нажатие: `InputDialog` в стиле ADK, текст, `MessageBox` «отправлено» → в менеджере «Выключить» → кнопка исчезла
@@ -270,16 +270,16 @@ curl -s https://api.github.com/repos/AgentSharik/ADK/commits/main | grep -m1 '"s
 - Финал: `w.quit_app()`, закрыть pipe, `make_music.py <сек> music.wav`, ffmpeg мультиплексирует, `framesNN` удаляется.
 
 **Как сделать следующий ролик (NN+1):**
-1. `cp extras/demo/make_demo28.py extras/demo/make_demo29.py`; заменить в нём `frames28`→`frames29`, `ADK_demo_28`→`ADK_demo_29`,
+1. `cp extras/demo/make_demo29.py extras/demo/make_demo29.py`; заменить в нём `frames28`→`frames29`, `ADK_demo_28`→`ADK_demo_29`,
    `VERSION`. Добавить новые сцены (по образцу существующих), старые не удалять.
-2. `python -m pyflakes extras/demo/make_demo28.py`.
+2. `python -m pyflakes extras/demo/make_demo29.py`.
 3. Быстрый прогон на ошибки (1–3 минуты): временная копия с `def sec(s): return 1`, `wait(min(ms,60))`, `live` ≤ 1 с и
    путями в `/tmp` — сценарий должен дойти до конца (падение на `make_music.py` из-за пути в копии — нормально).
 4. Реальный рендер (10–15 минут, через `start_process`, а не bash):
-   `cd /home/user && rm -rf extras/demo/frames28 && QT_QPA_PLATFORM=offscreen timeout 1750 python extras/demo/make_demo28.py`
-5. Проверка: `FF=$(python -c "import imageio_ffmpeg,os;print(imageio_ffmpeg.get_ffmpeg_exe())"); $FF -i extras/videos/ADK_demo_28.mp4 2>&1 | grep -E "Duration|Stream"`
+   `cd /home/user && rm -rf extras/demo/frames28 && QT_QPA_PLATFORM=offscreen timeout 1750 python extras/demo/make_demo29.py`
+5. Проверка: `FF=$(python -c "import imageio_ffmpeg,os;print(imageio_ffmpeg.get_ffmpeg_exe())"); $FF -i extras/videos/ADK_demo_29.mp4 2>&1 | grep -E "Duration|Stream"`
    — есть Video и Audio, длительность ≥ предыдущей. Контактный лист кадров (ffmpeg `-vf fps=1/20` → PIL) — посмотреть глазами.
-6. Удалить **предыдущие** `extras/demo/make_demo28.py` и `extras/videos/ADK_demo_28.mp4` (актуальные остаются),
+6. Удалить **предыдущие** `extras/demo/make_demo29.py` и `extras/videos/ADK_demo_29.mp4` (актуальные остаются),
    обновить этот файл (разделы В, К, М: длительность, номер следующего ролика).
 7. Коммит + push, затем чистка истории (раздел Л). **Полный пошаговый стандарт с готовыми скриптами — раздел О; он главный.**
 
@@ -428,8 +428,8 @@ QLabel/QPushButton без переноса, пересечения соседе�
 `BEGIN IMMEDIATE`, шпион на `LatencyGraph.paintEvent`). Тестов 248 (+7). Видео не переснималось (26 актуально — вид окон не
 менялся; `FakePingWorker` в сценарии эмитит уже разобранные строки, парсер на него влияет только в сторону «зелёнее»).
 
-Длительность роликов (для правила «не короче предыдущего»): 21 — 8:51 (531 с); 23 — 9:22 (562 с); 24 — 9:36 (576 с); 25 — 9:39 (579 с); 26 — 9:42 (582 с); 27 — 10:42 (642 с); **28 — 10:48 (648 с)** (файл ~25 МБ).
-Темп статичных пауз задаётся константой `HOLD_SCALE` в `make_demo28.py` (сейчас 1.25) — если новый ролик выходит короче,
+Длительность роликов (для правила «не короче предыдущего»): 21 — 8:51 (531 с); 23 — 9:22 (562 с); 24 — 9:36 (576 с); 25 — 9:39 (579 с); 26 — 9:42 (582 с); 27 — 10:42 (642 с); 28 — 10:48 (648 с); **29 — 10:48 (648 с)** (файл ~25 МБ).
+Темп статичных пауз задаётся константой `HOLD_SCALE` в `make_demo29.py` (сейчас 1.25) — если новый ролик выходит короче,
 проще всего поднять её, а не резать сцены; живые сегменты пинга — `live(S, 14.0)` / `live(S, 12.0)`.
 
 **3.5.6** (партия 25 — «исследуй реальную скорость поиска, создай базу на 1500 ПК в pc_mapping.db, не в коде, и базу принтеров»).
@@ -470,7 +470,9 @@ Kyocera, 10.0.9.93, Шевченко+архивы, набор по буквам.
 перегенерированы. **Видео 28** = сценарий 27 с тремя правками: карточка без `resize(960, 720)`, `_demo_pos` меню из
 настоящего `menu.pos()`, `_INV_ROWS` по записям выбранной организации; версия 3.5.7 в титрах. Длительность 10:48 (648 с).
 
-Открытые задачи: **полная переработка окна «Пинг»** (автор ещё не описал желаемое; в 3.5.4 сделан только крупный шрифт); при следующем видео — номер 28.
+**3.5.8** (партия 27) — автоопределение параметров Active Directory (`domain_netbios`, `dc_host`, `search_base`, `users_ou`, `upn_suffix`) при первом старте через Windows API (`DsGetDcNameW`) и переменные сессии (`detect_ad_domain_params`), автоматическое формирование `config.ini` при первом запуске; переключение кодировки `chcp 65001 >nul` в `build_exe.bat` (устранение кракозябр в консоли Windows); удалён дублирующий скрипт `build_exe.ps1`. Тестов 255 (+1). Видео 29 (648 с).
+
+Открытые задачи: **полная переработка окна «Пинг»** (автор ещё не описал желаемое; в 3.5.4 сделан только крупный шрифт); при следующем видео — номер 30.
 
 ---
 
@@ -648,29 +650,29 @@ d.grab().save("/tmp/audit/s_card.png"); d.close(); w.close()
 
 Шаг 1 — копия скрипта и пути (замена **всех** вхождений, не только первого):
 ```bash
-cd /home/user && cp extras/demo/make_demo28.py extras/demo/make_demo29.py
+cd /home/user && cp extras/demo/make_demo29.py extras/demo/make_demo29.py
 python - <<'PYEOF'
-p = 'extras/demo/make_demo28.py'; s = open(p, encoding='utf-8').read()
+p = 'extras/demo/make_demo29.py'; s = open(p, encoding='utf-8').read()
 for a, b in (('frames28', 'frames29'), ('ADK_demo_28', 'ADK_demo_29'), ('VERSION = "3.5.7"', 'VERSION = "X.Y.Z"')):
     assert a in s, a; s = s.replace(a, b)
 open(p, 'w', encoding='utf-8').write(s)
 PYEOF
-grep -n "OUT_DIR =\|OUT_MP4 =\|VERSION =" extras/demo/make_demo28.py     # все три строки — про 28 и новую версию
+grep -n "OUT_DIR =\|OUT_MP4 =\|VERSION =" extras/demo/make_demo29.py     # все три строки — про 28 и новую версию
 ```
 Шаг 2 — новые сцены по образцу существующих: `cap("…")` → `move_to(S, кнопка)` → `press(S, кнопка)` → диалог через
 `show_dialog(S, dlg)` / `hide_dialog(S, dlg)` → `hold(S, сек)`. Каждая новая кнопка или окно в приложении → своя сцена.
 Если в сценарии AD-действие вызывается напрямую (`ad.reset_password(...)`), сразу вызвать и локальное обновление окна
 (`card._forget_password_age(must)`, `card._forget_lockout()`), иначе окно покажет старое состояние.
 
-Шаг 3 — pyflakes: `python -m pyflakes extras/demo/make_demo28.py`.
+Шаг 3 — pyflakes: `python -m pyflakes extras/demo/make_demo29.py`.
 
 Шаг 4 — сухой прогон (≈3 мин; те же сцены, 1 кадр на паузу; ловит все ошибки атрибутов и логики ДО долгого рендера).
 Пути сухого прогона — **только в `/tmp/audit`**, иначе он перезапишет настоящий ролик:
 ```bash
 python - <<'PYEOF'
-s = open('/home/user/extras/demo/make_demo28.py', encoding='utf-8').read()
+s = open('/home/user/extras/demo/make_demo29.py', encoding='utf-8').read()
 s = s.replace('OUT_DIR = "/home/user/extras/demo/frames28"', 'OUT_DIR = "/tmp/audit/frames28dry"')
-s = s.replace('OUT_MP4 = "/home/user/extras/videos/ADK_demo_28.mp4"', 'OUT_MP4 = "/tmp/audit/dry28.mp4"')
+s = s.replace('OUT_MP4 = "/home/user/extras/videos/ADK_demo_29.mp4"', 'OUT_MP4 = "/tmp/audit/dry28.mp4"')
 s = s.replace('def sec(s):\n    return max(1, int(s * FPS))', 'def sec(s):\n    return 1')
 s = s.replace('def wait(ms):\n    tg._wait(lambda: False, app, ms)', 'def wait(ms):\n    tg._wait(lambda: False, app, min(ms, 60))')
 s = s.replace('def live(widgets, seconds, step=0.3):', 'def live(widgets, seconds, step=0.3):\n    seconds = min(seconds, 1.0)')
@@ -701,13 +703,13 @@ PYEOF
 Шаг 6 — реальный рендер **только через `start_process`** (10–15 минут; bash убьёт по таймауту), затем
 `get_process_output … wait_for=exit` до завершения:
 ```bash
-cd /home/user && rm -rf extras/demo/frames28 && QT_QPA_PLATFORM=offscreen timeout 1750 python extras/demo/make_demo28.py 2>&1 | grep -v propagate | tail -5
+cd /home/user && rm -rf extras/demo/frames28 && QT_QPA_PLATFORM=offscreen timeout 1750 python extras/demo/make_demo29.py 2>&1 | grep -v propagate | tail -5
 ```
 Шаг 7 — проверка результата (всё):
 ```bash
 FF=$(python -c "import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())")
-$FF -i extras/videos/ADK_demo_28.mp4 2>&1 | grep -E "Duration|Stream"     # Video h264 1400x820 25 fps + Audio aac; Duration ≥ предыдущей
-mkdir -p /tmp/audit/t && for t in 1.5 60 200 330 470 <END-2>; do $FF -loglevel error -y -ss $t -i extras/videos/ADK_demo_28.mp4 -frames:v 1 -vf scale=466:-1 /tmp/audit/t/f_$t.png; done
+$FF -i extras/videos/ADK_demo_29.mp4 2>&1 | grep -E "Duration|Stream"     # Video h264 1400x820 25 fps + Audio aac; Duration ≥ предыдущей
+mkdir -p /tmp/audit/t && for t in 1.5 60 200 330 470 <END-2>; do $FF -loglevel error -y -ss $t -i extras/videos/ADK_demo_29.mp4 -frames:v 1 -vf scale=466:-1 /tmp/audit/t/f_$t.png; done
 ```
 Собрать лист (как в шаге 5) и посмотреть: **первый и последний кадр — одинаковые титры с одной версией**, остальные —
 живые окна с субтитрами. Если ролик короче предыдущего — поднять `HOLD_SCALE` на 0.1–0.25 или добавить `hold`/`live`,
@@ -715,8 +717,8 @@ mkdir -p /tmp/audit/t && for t in 1.5 60 200 330 470 <END-2>; do $FF -loglevel e
 
 Шаг 8 — ротация и документы:
 ```bash
-rm -rf extras/demo/frames29 extras/demo/make_demo28.py extras/videos/ADK_demo_28.mp4
-# HANDOVER: раздел В (имена файлов), К (номер ролика), М («Длительность роликов»: добавить «28 — M:SS (N с)», «при следующем видео — номер 29»)
+rm -rf extras/demo/frames29 extras/demo/make_demo29.py extras/videos/ADK_demo_29.mp4
+# HANDOVER: раздел В (имена файлов), К (номер ролика), М («Длительность роликов»: добавить «28 — M:SS (N с)», «при следующем видео — номер 30»)
 ```
 Шаг 9 — zip (раздел И), коммит, **чистка истории (раздел Л) и force-push**; проверка: свежий `git clone` в /tmp,
 `du -sh .git` — десятки МБ, среди блобов > 1 МБ ровно один `.mp4` и один `adk.zip`.
