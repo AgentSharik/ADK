@@ -351,6 +351,10 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
         border-top-color: {btn_light}; background: {relief(p.button, 110, 95)}; color: {p.text}; font-weight: 600; }}
     QPushButton#chipBtn:checked {{ background: {relief(accent, 112, 94)}; color: {p.on_accent}; border: 1px solid {acc_edge}; }}
     QPushButton#chipBtn:hover {{ border-color: {accent}; }}
+    QListView, QAbstractItemView {{ background-color: {p.card}; color: {p.text}; border: 1px solid {p.border}; border-radius: 8px;
+        selection-background-color: {p.selection}; selection-color: {p.text}; outline: none; padding: 4px; }}
+    QListView::item {{ padding: 6px 10px; border-radius: 4px; }}
+    QListView::item:hover, QListView::item:selected {{ background-color: {p.selection}; color: {p.text}; }}
     QTableWidget, QTableView {{ background-color: {p.card}; alternate-background-color: {p.header}; border: 1px solid {p.border}; border-radius: 8px;
         gridline-color: {p.border}; selection-background-color: {p.selection}; selection-color: {p.text}; outline: none; }}
     QTableWidget::item, QTableView::item {{ padding: 4px; border-bottom: 1px solid {p.border}; border-right: 1px solid {p.border}; }}

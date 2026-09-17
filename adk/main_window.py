@@ -792,9 +792,15 @@ class ADApp(FramelessMainWindow):
         """Ячейка «Сеть»: до проверки — «Проверка…» (нейтральная), потом честный статус."""
         if u.get("net_pending"):
             return StatusItem("● Проверка…", "checking")
-        if u.get("kind") == "printer" and not ((u.get("printer") or {}).get("ip")):
-            return StatusItem("—", "checking")      # USB/локальный принтер: сетевого статуса у него нет (3.5.6)
-        return StatusItem("● В сети" if u["is_online"] else "● Не в сети", "online" if u["is_online"] else "offline")
+        if u.get("kind") == "printer":
+            if not ((u.get("printer") or {}).get("ip")):
+                return StatusItem("—", "checking")  # USB/локальный принтер: сетевого статуса у него нет (3.5.6)
+            return StatusItem("● В сети" if u.get("is_online") else "● Не в сети", "online" if u.get("is_online") else "offline")
+        comp = (u.get("computer_name") or "").strip()
+        ip = (u.get("ip_address") or u.get("ip") or "").strip()
+        if (not comp or comp == "—") and not ip:
+            return StatusItem("—", "checking")      # У сотрудника нет ПК и IP — сети нет, нейтральный прочерк
+        return StatusItem("● В сети" if u.get("is_online") else "● Не в сети", "online" if u.get("is_online") else "offline")
 
     def on_net_ready(self, net: dict, query: str) -> None:
         """Второй шаг поиска (3.5.4): пришли DNS/доступность — обновляем IP, бейджи «Сеть» и инспектор,

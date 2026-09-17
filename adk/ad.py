@@ -136,6 +136,8 @@ def describe_ldap_error(exc: Exception) -> str:
             return msg
     if "CERTIFICATE_VERIFY_FAILED" in text:
         return "Сертификат контроллера домена не доверен (см. tls_validate в config.ini)."
+    if "authmethodnotsupported" in text.lower() or "00002027" in text:
+        return "Вход по SSO (Kerberos/GSSAPI) не поддерживается контроллером по незащищённому LDAP (порт 389). Войдите с логином и паролем или настройте LDAPS (use_ssl=true)."
     if "socket" in text.lower() or "timeout" in text.lower():
         return f"Контроллер домена недоступен: {settings.dc_host}"
     if "insufficientAccessRights" in text:

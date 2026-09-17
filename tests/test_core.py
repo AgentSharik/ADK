@@ -534,3 +534,10 @@ def test_autodetect_ad_params(monkeypatch, tmp_path):
     assert cp["AD"]["domain_netbios"] == "CORP"
     assert cp["AD"]["search_base"] == "DC=corp,DC=company,DC=local"
     assert cp["AD"]["users_ou"] == "OU=Users,DC=corp,DC=company,DC=local"
+
+def test_sso_auth_not_supported_description():
+    """3.5.9: понятное описание ошибки 00002027 / authMethodNotSupported при SSO без LDAPS."""
+    from adk import ad
+    raw_err = "LDAPAuthMethodNotSupportedResult - 7 - authMethodNotSupported - None - 00002027: LdapErr: DSID-0C0905ED, comment: Invalid Authentication method"
+    msg = ad.describe_ldap_error(Exception(raw_err))
+    assert "SSO" in msg and "LDAPS" in msg

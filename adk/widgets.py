@@ -743,7 +743,7 @@ class DrivePicker(QPushButton):
         head = self.menu.addAction("Том для карты:")
         head.setEnabled(False)
         for drive, hint in self._items:
-            act = self.menu.addAction(icons.icon("internaldrive", role="accent" if drive == self._current else "text"),
+            act = self.menu.addAction(icons.icon("internaldrive", role="text"),
                                       f"{drive}$" + (f"    {hint}" if hint else ""))
             act.triggered.connect(lambda _c=False, d=drive: self.setCurrentText(d))
         if not self._items:
