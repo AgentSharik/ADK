@@ -207,9 +207,27 @@ def get_computer_network_info(computer_name: str, use_cache: bool = True) -> tup
             hit = _net_cache.get(name)
         if hit and now - hit[0] < NET_CACHE_TTL:
             return hit[1]
+    ip = None
     try:
         ip = socket.gethostbyname(name)
     except OSError:
+        pass
+    if not ip or ip.startswith("127."):
+        domain = getattr(settings, "domain_name", "") or getattr(settings, "upn_suffix", "") or getattr(settings, "dc_host", "")
+        if domain and "." in domain:
+            try:
+                ip = socket.gethostbyname(f"{name}.{domain}")
+            except OSError:
+                pass
+    if not ip:
+        try:
+            from . import db as _db
+            known = _db.known_ip(name)
+            if known and known not in ("Не найден", "Не указан"):
+                ip = known
+        except Exception:
+            pass
+    if not ip:
         result = ("Не найден", False)
     else:
         result = (ip, is_host_alive(ip))
