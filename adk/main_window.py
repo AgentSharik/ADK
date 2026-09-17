@@ -1408,7 +1408,8 @@ class ADApp(FramelessMainWindow):
         if u.get("entry") is None:
             MessageBox.information(self, "Карточка", "Данные из AD ещё загружаются или пользователь не найден.")
             return
-        dlg = UserCardDialog(u["entry"], self, self)
+        comp = u.get("comp") or u.get("computer") or ""
+        dlg = UserCardDialog(u["entry"], self, self, initial_comp=comp)
         if dlg.exec() or getattr(dlg, "_entry_changed", False):
             self.start_search()
         dlg.deleteLater()

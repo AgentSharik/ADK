@@ -576,7 +576,7 @@ class UserCardDialog(FramelessDialog):
     состояние учётки с действиями (пароль, блокировка, отключение), характеристики ПК только для чтения и привязка ПК.
     """
 
-    def __init__(self, entry, app, parent=None):
+    def __init__(self, entry, app, parent=None, initial_comp: str | None = None):
         self.entry, self.app = entry, app
         self.dn = entry.entry_dn
         self._entry_changed = False      # были ли изменения состояния — главное окно тогда перечитает AD
@@ -585,7 +585,14 @@ class UserCardDialog(FramelessDialog):
         super().__init__(f"👤 Карточка: {fio}", parent, (1080 + max(0, dialog_font_pt() - 12) * 60, 740), large_font=True)
         self.login = ad.get_ad_value(entry, "sAMAccountName")
         self.original_uac = ad.get_ad_int_value(entry, "userAccountControl")
-        self.current_comp = db.get_computer_by_login(self.login)
+        comp = db.clean_computer_name(initial_comp or "")
+        if not comp:
+            comp = db.get_computer_by_login(self.login)
+        if not comp:
+            ad_ws = ad.get_ad_value(entry, "userWorkstations")
+            if ad_ws:
+                comp = db.clean_computer_name(ad_ws.split(",")[0])
+        self.current_comp = comp
         self.current_ip = "Не найден"
         self._ad_widgets: list = []          # скрываются без права «AD»
         pal = app_palette()

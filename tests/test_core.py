@@ -541,3 +541,14 @@ def test_sso_auth_not_supported_description():
     raw_err = "LDAPAuthMethodNotSupportedResult - 7 - authMethodNotSupported - None - 00002027: LdapErr: DSID-0C0905ED, comment: Invalid Authentication method"
     msg = ad.describe_ldap_error(Exception(raw_err))
     assert "SSO" in msg and "LDAPS" in msg
+
+
+def test_get_computer_by_login_checks_inventory_and_history():
+    """3.5.9: поиск ПК пользователя находит ПК в pc_inventory и pc_history, даже если нет постоянной привязки."""
+    # Очищаем временные привязки для чистоты теста
+    db.db_execute_with_retry("DELETE FROM permanent_mapping WHERE login = 'user_inv'")
+    db.db_execute_with_retry("DELETE FROM pc_mapping WHERE LOWER(login) = 'user_inv'")
+    # Записываем в pc_inventory
+    db.batch_update_inventory([{"Hostname": "WS-INV-99", "ActualIp": "10.0.99.1", "Status": "ACTIVE", "User": "CORP\\user_inv"}], "2026-09-17 12:00:00")
+    assert db.get_computer_by_login("user_inv") == "WS-INV-99"
+    assert db.get_computer_by_login("CORP\\user_inv") == "WS-INV-99"

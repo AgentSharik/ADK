@@ -29,48 +29,174 @@ from .netutils import is_valid_hostname
 log = logging.getLogger(__name__)
 
 _PS = r"""
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'SilentlyContinue'
 $c = '__HOST__'
-$os = Get-CimInstance Win32_OperatingSystem -ComputerName $c
-$disks = Get-CimInstance Win32_LogicalDisk -ComputerName $c -Filter "DriveType=3" |
-    Select-Object DeviceID, Size, FreeSpace, VolumeName, FileSystem
+
+# 1. Операционная система, логические диски, процессор
+$os = $null
+try { $os = Get-CimInstance Win32_OperatingSystem -ComputerName $c -ErrorAction Stop } catch {
+    try { $os = Get-WmiObject Win32_OperatingSystem -ComputerName $c -ErrorAction Stop } catch {}
+}
+if (-not $os) {
+    throw "ПК $c не отвечает по CIM/WMI (WinRM и DCOM недоступны)"
+}
+
+$disks = @()
+try {
+    $disks = Get-CimInstance Win32_LogicalDisk -ComputerName $c -Filter "DriveType=3" -ErrorAction Stop |
+        Select-Object DeviceID, Size, FreeSpace, VolumeName, FileSystem
+} catch {
+    try {
+        $disks = Get-WmiObject Win32_LogicalDisk -ComputerName $c -Filter "DriveType=3" -ErrorAction Stop |
+            Select-Object DeviceID, Size, FreeSpace, VolumeName, FileSystem
+    } catch {}
+}
+
 $cpu = $null
-try { $cpu = (Get-CimInstance Win32_Processor -ComputerName $c | Measure-Object -Property LoadPercentage -Average).Average } catch {}
+try {
+    $cpu = (Get-CimInstance Win32_Processor -ComputerName $c -ErrorAction Stop | Measure-Object -Property LoadPercentage -Average).Average
+} catch {
+    try {
+        $cpu = (Get-WmiObject Win32_Processor -ComputerName $c -ErrorAction Stop | Measure-Object -Property LoadPercentage -Average).Average
+    } catch {}
+}
+
+# 2. Физические диски и S.M.A.R.T. (MSFT_PhysicalDisk + Win32_DiskDrive + root/wmi)
 $phys = @()
+$rc = @{}
+$pred = @{}
+$raw = @{}
+$thresh = @{}
+$drives = @{}
+
+# Опрос WMI root/wmi для S.M.A.R.T. (PredictFailure, VendorSpecific Raw Data, Thresholds)
+try {
+    Get-CimInstance -Namespace 'root/wmi' -ClassName MSStorageDriver_FailurePredictStatus -ComputerName $c -ErrorAction Stop |
+        ForEach-Object { $pred[$_.InstanceName] = [bool]$_.PredictFailure }
+} catch {
+    try {
+        Get-WmiObject -Namespace 'root/wmi' -Class MSStorageDriver_FailurePredictStatus -ComputerName $c -ErrorAction Stop |
+            ForEach-Object { $pred[$_.InstanceName] = [bool]$_.PredictFailure }
+    } catch {}
+}
+
+try {
+    Get-CimInstance -Namespace 'root/wmi' -ClassName MSStorageDriver_FailurePredictData -ComputerName $c -ErrorAction Stop |
+        ForEach-Object { $raw[$_.InstanceName] = [Convert]::ToBase64String([byte[]]$_.VendorSpecific) }
+} catch {
+    try {
+        Get-WmiObject -Namespace 'root/wmi' -Class MSStorageDriver_FailurePredictData -ComputerName $c -ErrorAction Stop |
+            ForEach-Object { $raw[$_.InstanceName] = [Convert]::ToBase64String([byte[]]$_.VendorSpecific) }
+    } catch {}
+}
+
+try {
+    Get-CimInstance -Namespace 'root/wmi' -ClassName MSStorageDriver_FailurePredictThresholds -ComputerName $c -ErrorAction Stop |
+        ForEach-Object { $thresh[$_.InstanceName] = [Convert]::ToBase64String([byte[]]$_.VendorSpecific) }
+} catch {
+    try {
+        Get-WmiObject -Namespace 'root/wmi' -Class MSStorageDriver_FailurePredictThresholds -ComputerName $c -ErrorAction Stop |
+            ForEach-Object { $thresh[$_.InstanceName] = [Convert]::ToBase64String([byte[]]$_.VendorSpecific) }
+    } catch {}
+}
+
+# Опрос Win32_DiskDrive
+try {
+    Get-CimInstance Win32_DiskDrive -ComputerName $c -ErrorAction Stop | ForEach-Object { $drives[[string]$_.Index] = $_ }
+} catch {
+    try {
+        Get-WmiObject Win32_DiskDrive -ComputerName $c -ErrorAction Stop | ForEach-Object { $drives[[string]$_.Index] = $_ }
+    } catch {}
+}
+
+# Попытка через root/Microsoft/Windows/Storage
 try {
     $ns = 'root/Microsoft/Windows/Storage'
-    $pd = Get-CimInstance -Namespace $ns -ClassName MSFT_PhysicalDisk -ComputerName $c
-    $rc = @{}
-    try { Get-CimInstance -Namespace $ns -ClassName MSFT_StorageReliabilityCounter -ComputerName $c | ForEach-Object { $rc[$_.DeviceId] = $_ } } catch {}
-    $pred = @{}
-    try { Get-CimInstance -Namespace 'root/wmi' -ClassName MSStorageDriver_FailurePredictStatus -ComputerName $c |
-        ForEach-Object { $pred[$_.InstanceName] = [bool]$_.PredictFailure } } catch {}
-    $raw = @{}
-    try { Get-CimInstance -Namespace 'root/wmi' -ClassName MSStorageDriver_FailurePredictData -ComputerName $c |
-        ForEach-Object { $raw[$_.InstanceName] = [Convert]::ToBase64String([byte[]]$_.VendorSpecific) } } catch {}
-    $drives = @{}
-    try { Get-CimInstance Win32_DiskDrive -ComputerName $c | ForEach-Object { $drives[[string]$_.Index] = $_ } } catch {}
-    $phys = @($pd | ForEach-Object {
-        $r = $rc[$_.DeviceId]
-        $d = $drives[[string]$_.DeviceId]
-        $pn = if ($d) { $d.PNPDeviceID } else { '' }
+    $pd = Get-CimInstance -Namespace $ns -ClassName MSFT_PhysicalDisk -ComputerName $c -ErrorAction Stop
+    try {
+        Get-CimInstance -Namespace $ns -ClassName MSFT_StorageReliabilityCounter -ComputerName $c -ErrorAction Stop |
+            ForEach-Object { $rc[$_.DeviceId] = $_ }
+    } catch {}
+
+    if ($pd) {
+        $phys = @($pd | ForEach-Object {
+            $r = $rc[$_.DeviceId]
+            $d = $drives[[string]$_.DeviceId]
+            $pn = if ($d) { $d.PNPDeviceID } else { '' }
+            $pk = $null
+            if ($pn) { $pk = ($pred.Keys | Where-Object { $_ -like "$pn*" } | Select-Object -First 1) }
+            if (-not $pk -and $raw.Count -gt 0) {
+                $idx = $_.DeviceId
+                $pk = ($raw.Keys | Where-Object { $_ -like "*$idx*" } | Select-Object -First 1)
+            }
+            @{
+                id = [string]$_.DeviceId; model = [string]$_.FriendlyName; serial = [string]$_.SerialNumber
+                fw = [string]$_.FirmwareVersion; media = [int]$_.MediaType; bus = [int]$_.BusType
+                size = [int64]$_.Size; health = [int]$_.HealthStatus; usage = [int]$_.Usage
+                temp = if ($r) { $r.Temperature } else { $null }
+                temp_max = if ($r) { $r.TemperatureMax } else { $null }
+                wear = if ($r) { $r.Wear } else { $null }
+                hours = if ($r) { $r.PowerOnHours } else { $null }
+                read_err = if ($r) { $r.ReadErrorsUncorrected } else { $null }
+                write_err = if ($r) { $r.WriteErrorsUncorrected } else { $null }
+                predict = if ($pk) { $pred[$pk] } else { $null }
+                smart = if ($pk -and $raw.ContainsKey($pk)) { $raw[$pk] } else { $null }
+                thresholds = if ($pk -and $thresh.ContainsKey($pk)) { $thresh[$pk] } else { $null }
+            }
+        })
+    }
+} catch {}
+
+# Если MSFT_PhysicalDisk не отдал диски — используем Win32_DiskDrive
+if ($phys.Count -eq 0 -and $drives.Count -gt 0) {
+    $phys = @($drives.Values | ForEach-Object {
+        $pn = $_.PNPDeviceID
         $pk = $null
         if ($pn) { $pk = ($pred.Keys | Where-Object { $_ -like "$pn*" } | Select-Object -First 1) }
+        if (-not $pk -and $raw.Count -gt 0) {
+            $idx = $_.Index
+            $pk = ($raw.Keys | Where-Object { $_ -like "*$idx*" } | Select-Object -First 1)
+        }
+        if (-not $pk -and $raw.Count -eq 1) {
+            $pk = ($raw.Keys | Select-Object -First 1)
+        }
+        $bus = 0
+        $iface = [string]$_.InterfaceType
+        if ($iface -match 'IDE|ATA') { $bus = 3 }
+        elseif ($iface -match 'SCSI') { $bus = 1 }
+        elseif ($iface -match 'USB') { $bus = 7 }
+        elseif ($iface -match 'NVMe') { $bus = 17 }
+
+        $media = 0
+        $modelStr = [string]$_.Model
+        if ($modelStr -match 'SSD|NVMe|Solid State') { $media = 4 }
+
+        $statusStr = [string]$_.Status
+        $healthVal = if ($statusStr -eq 'OK') { 0 } elseif ($statusStr -match 'Degraded|Pred Fail') { 1 } else { 2 }
+
         @{
-            id = [string]$_.DeviceId; model = [string]$_.FriendlyName; serial = [string]$_.SerialNumber
-            fw = [string]$_.FirmwareVersion; media = [int]$_.MediaType; bus = [int]$_.BusType
-            size = [int64]$_.Size; health = [int]$_.HealthStatus; usage = [int]$_.Usage
-            temp = if ($r) { $r.Temperature } else { $null }
-            temp_max = if ($r) { $r.TemperatureMax } else { $null }
-            wear = if ($r) { $r.Wear } else { $null }
-            hours = if ($r) { $r.PowerOnHours } else { $null }
-            read_err = if ($r) { $r.ReadErrorsUncorrected } else { $null }
-            write_err = if ($r) { $r.WriteErrorsUncorrected } else { $null }
+            id = [string]$_.Index
+            model = if ($modelStr) { $modelStr } else { [string]$_.Caption }
+            serial = [string]$_.SerialNumber
+            fw = [string]$_.FirmwareRevision
+            media = $media
+            bus = $bus
+            size = [int64]$_.Size
+            health = $healthVal
+            usage = 1
+            temp = $null
+            temp_max = $null
+            wear = $null
+            hours = $null
+            read_err = $null
+            write_err = $null
             predict = if ($pk) { $pred[$pk] } else { $null }
             smart = if ($pk -and $raw.ContainsKey($pk)) { $raw[$pk] } else { $null }
+            thresholds = if ($pk -and $thresh.ContainsKey($pk)) { $thresh[$pk] } else { $null }
         }
     })
-} catch {}
+}
+
 [pscustomobject]@{
     boot = $os.LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss')
     now = $os.LocalDateTime.ToString('yyyy-MM-dd HH:mm:ss')
@@ -83,64 +209,138 @@ try {
 } | ConvertTo-Json -Compress -Depth 5
 """
 
-# Карта диска: размеры папок верхнего уровня, самые большие файлы и «известные пожиратели места».
-# Обход — ручной стек с try/catch на каждую папку: одна недоступная папка не срывает весь подсчёт.
+# Карта диска (WinDirStat-style): размеры папок верхнего уровня, самые большие файлы и «известные пожиратели места».
+# Оптимизированный однопроходный обход с защитой от циклических ссылок и зависаний на reparse points.
 _PS_USAGE = r"""
 $ErrorActionPreference = 'SilentlyContinue'
 $root = '__ROOT__'
 $top = __TOP__
 $dirs = @(); $files = New-Object System.Collections.Generic.List[object]; $errors = 0; $totalFiles = 0
-function Get-Size([string]$path) {
-    $sum = [int64]0; $n = 0
-    $stack = New-Object System.Collections.Generic.Stack[string]; $stack.Push($path)
+$hogsMap = @{}
+$userMap = @{}
+
+$hogKeys = @{
+    '$Recycle.Bin' = 'Корзина';
+    'Windows\SoftwareDistribution\Download' = 'Обновления Windows';
+    'Windows\Temp' = 'Временные файлы Windows';
+    'Windows.old' = 'Старая Windows';
+    '$WinREAgent' = 'Остатки обновления ($WinREAgent)';
+    'Windows\Installer' = 'Кэш установщика';
+    'ProgramData\Package Cache' = 'Кэш пакетов (ProgramData)';
+    'Windows\Logs\CBS' = 'Журналы CBS';
+    'Windows\Minidump' = 'Дампы памяти';
+    'Windows\LiveKernelReports' = 'Отчёты ядра';
+    'Windows\Prefetch' = 'Предзагрузка (Prefetch)';
+    'Temp' = 'Временные файлы';
+    'Tmp' = 'Временные файлы'
+}
+
+function Scan-Tree([string]$basePath) {
+    $sum = [int64]0; $count = 0
+    $stack = New-Object System.Collections.Generic.Stack[string]; $stack.Push($basePath)
     while ($stack.Count -gt 0) {
-        $d = $stack.Pop()
+        $cur = $stack.Pop()
         try {
-            foreach ($f in [IO.Directory]::EnumerateFiles($d)) {
-                try { $len = ([IO.FileInfo]$f).Length; $sum += $len; $n++
-                      if ($len -ge 100MB) { $script:files.Add(@{ path = $f; size = $len }) } } catch { $script:errors++ }
+            foreach ($f in [IO.Directory]::EnumerateFiles($cur)) {
+                try {
+                    $len = ([IO.FileInfo]$f).Length
+                    $sum += $len
+                    $count++
+                    if ($len -ge 50MB) {
+                        $script:files.Add(@{ path = $f; size = $len })
+                    }
+                } catch { $script:errors++ }
             }
-            foreach ($s in [IO.Directory]::EnumerateDirectories($d)) {
-                try { $attr = [IO.File]::GetAttributes($s); if (-not ($attr -band [IO.FileAttributes]::ReparsePoint)) { $stack.Push($s) } } catch {}
+            foreach ($s in [IO.Directory]::EnumerateDirectories($cur)) {
+                try {
+                    $attr = [IO.File]::GetAttributes($s)
+                    if (-not ($attr -band [IO.FileAttributes]::ReparsePoint)) {
+                        if ($s -like '*\AppData\Local\Temp') {
+                            $uName = Split-Path (Split-Path (Split-Path $s -Parent) -Parent) -Leaf
+                            $tSum = [int64]0; $tCnt = 0
+                            try {
+                                foreach ($tf in [IO.Directory]::EnumerateFiles($s, '*.*', [IO.SearchOption]::AllDirectories)) {
+                                    try { $tlen = ([IO.FileInfo]$tf).Length; $tSum += $tlen; $tCnt++ } catch {}
+                                }
+                            } catch {}
+                            if ($tSum -gt 0) {
+                                $script:hogsMap["Temp профиля $uName"] = @{ label = "Temp профиля $uName"; path = $s; size = $tSum; files = $tCnt }
+                            }
+                        }
+                        $stack.Push($s)
+                    }
+                } catch {}
             }
         } catch { $script:errors++ }
     }
-    return @($sum, $n)
+    return @($sum, $count)
 }
-foreach ($d in [IO.Directory]::EnumerateDirectories($root)) {
-    $r = Get-Size $d; $totalFiles += $r[1]
-    $dirs += @{ path = $d; size = $r[0]; files = $r[1] }
-}
+
+# Корневые файлы (hiberfil.sys, pagefile.sys, swapfile.sys и т.д.)
 $rootFiles = [int64]0
-foreach ($f in [IO.Directory]::EnumerateFiles($root)) { try { $rootFiles += ([IO.FileInfo]$f).Length } catch {} }
-$hogs = @()
-$cands = @(@('Корзина', '$Recycle.Bin'), @('Обновления Windows', 'Windows\SoftwareDistribution\Download'),
-           @('Временные файлы Windows', 'Windows\Temp'), @('Старая Windows', 'Windows.old'), @('Остатки обновления ($WinREAgent)', '$WinREAgent'),
-           @('Файл гибернации', 'hiberfil.sys'), @('Файл подкачки', 'pagefile.sys'), @('Файл подкачки (swap)', 'swapfile.sys'),
-           @('Кэш установщика', 'Windows\Installer'), @('Кэш пакетов (ProgramData)', 'ProgramData\Package Cache'),
-           @('Журналы CBS', 'Windows\Logs\CBS'), @('Дампы памяти', 'Windows\Minidump'), @('Отчёты ядра', 'Windows\LiveKernelReports'),
-           @('Предзагрузка (Prefetch)', 'Windows\Prefetch'), @('Временные файлы', 'Temp'), @('Временные файлы', 'Tmp'))
-foreach ($h in $cands) {
-    $p = Join-Path $root $h[1]
-    if (Test-Path -LiteralPath $p) {
-        $it = Get-Item -LiteralPath $p -Force
-        if ($it.PSIsContainer) { $r = Get-Size $p; if ($r[0] -gt 0) { $hogs += @{ label = $h[0]; path = $p; size = $r[0]; files = $r[1] } } }
-        else { $hogs += @{ label = $h[0]; path = $p; size = $it.Length; files = 1 } }
+try {
+    foreach ($f in [IO.Directory]::EnumerateFiles($root)) {
+        try {
+            $fi = [IO.FileInfo]$f
+            $len = $fi.Length
+            $rootFiles += $len
+            $leaf = $fi.Name
+            if ($leaf -eq 'hiberfil.sys') { $hogsMap['Файл гибернации'] = @{ label = 'Файл гибернации'; path = $f; size = $len; files = 1 } }
+            elseif ($leaf -eq 'pagefile.sys') { $hogsMap['Файл подкачки'] = @{ label = 'Файл подкачки'; path = $f; size = $len; files = 1 } }
+            elseif ($leaf -eq 'swapfile.sys') { $hogsMap['Файл подкачки (swap)'] = @{ label = 'Файл подкачки (swap)'; path = $f; size = $len; files = 1 } }
+            if ($len -ge 50MB) { $files.Add(@{ path = $f; size = $len }) }
+        } catch {}
+    }
+} catch {}
+
+# Папки верхнего уровня (включая Users с разбивкой по профилям)
+try {
+    foreach ($d in [IO.Directory]::EnumerateDirectories($root)) {
+        $leaf = Split-Path $d -Leaf
+        if ($leaf -eq 'Users') {
+            $uTotal = [int64]0; $uCount = 0
+            foreach ($u in [IO.Directory]::EnumerateDirectories($d)) {
+                $r = Scan-Tree $u
+                $userMap[$u] = @{ path = $u; size = $r[0]; files = $r[1] }
+                $uTotal += $r[0]; $uCount += $r[1]
+            }
+            $dirs += @{ path = $d; size = $uTotal; files = $uCount }
+            $totalFiles += $uCount
+        } else {
+            $r = Scan-Tree $d
+            $dirs += @{ path = $d; size = $r[0]; files = $r[1] }
+            $totalFiles += $r[1]
+        }
+    }
+} catch {}
+
+# Проверяем остальные известные папки для очистки
+foreach ($hk in $hogKeys.Keys) {
+    $hp = Join-Path $root $hk
+    if (-not $hogsMap.ContainsKey($hogKeys[$hk]) -and (Test-Path -LiteralPath $hp)) {
+        try {
+            $it = Get-Item -LiteralPath $hp -Force
+            if ($it.PSIsContainer) {
+                $hSum = [int64]0; $hCnt = 0
+                foreach ($hf in [IO.Directory]::EnumerateFiles($hp, '*.*', [IO.SearchOption]::AllDirectories)) {
+                    try { $hlen = ([IO.FileInfo]$hf).Length; $hSum += $hlen; $hCnt++ } catch {}
+                }
+                if ($hSum -gt 0) { $hogsMap[$hogKeys[$hk]] = @{ label = $hogKeys[$hk]; path = $hp; size = $hSum; files = $hCnt } }
+            } else {
+                if ($it.Length -gt 0) { $hogsMap[$hogKeys[$hk]] = @{ label = $hogKeys[$hk]; path = $hp; size = $it.Length; files = 1 } }
+            }
+        } catch {}
     }
 }
-$upt = Join-Path $root 'Users'
-if (Test-Path -LiteralPath $upt) {
-    foreach ($u in [IO.Directory]::EnumerateDirectories($upt)) {
-        $t = Join-Path $u 'AppData\Local\Temp'
-        if (Test-Path -LiteralPath $t) { $r = Get-Size $t; if ($r[0] -gt 0) { $hogs += @{ label = ('Temp профиля ' + (Split-Path $u -Leaf)); path = $t; size = $r[0]; files = $r[1] } } }
-    }
-}
-$users = @()
-$up = Join-Path $root 'Users'
-if (Test-Path -LiteralPath $up) { foreach ($u in [IO.Directory]::EnumerateDirectories($up)) { $r = Get-Size $u; $users += @{ path = $u; size = $r[0]; files = $r[1] } } }
+
+$hogs = @($hogsMap.Values)
+$users = @($userMap.Values)
 $big = @($files | Sort-Object { $_.size } -Descending | Select-Object -First $top)
-[pscustomobject]@{ root = $root; dirs = $dirs; root_files = $rootFiles; files = $big; hogs = $hogs; users = $users
-                   total_files = $totalFiles; errors = $errors } | ConvertTo-Json -Compress -Depth 5
+
+[pscustomobject]@{
+    root = $root; dirs = $dirs; root_files = $rootFiles; files = $big; hogs = $hogs; users = $users
+    total_files = $totalFiles; errors = $errors
+} | ConvertTo-Json -Compress -Depth 5
 """
 
 LOW_DISK_GB = 10.0
@@ -176,11 +376,12 @@ _CRITICAL_RAW = {0x05, 0xC4, 0xC5, 0xC6, 0xBB, 0xB7, 0xB8, 0x0A}
 
 
 # --------------------------------------------------------------------------- разбор
-def parse_smart_vendor(data: bytes | str | None) -> list[dict]:
-    """512 байт VendorSpecific (или их base64) → [{id, name, current, worst, threshold?, raw, critical}].
+def parse_smart_vendor(data: bytes | str | None, thresh_data: bytes | str | None = None) -> list[dict]:
+    """512 байт VendorSpecific (или их base64) → [{id, name, current, worst, threshold, raw, critical}].
 
     Формат ATA: первые 2 байта — версия структуры, затем до 30 записей по 12 байт:
     ``id, flags(2), current, worst, raw(6), reserved``. Записи с id == 0 — пустые.
+    Пороги (thresholds): структура по 12 байт: ``id, threshold, reserved(10)``.
     """
     if not data:
         return []
@@ -189,6 +390,21 @@ def parse_smart_vendor(data: bytes | str | None) -> list[dict]:
             data = base64.b64decode(data)
         except (ValueError, TypeError):
             return []
+
+    thresh_by_id: dict[int, int] = {}
+    if thresh_data:
+        if isinstance(thresh_data, str):
+            try:
+                thresh_data = base64.b64decode(thresh_data)
+            except (ValueError, TypeError):
+                thresh_data = None
+        if thresh_data and len(thresh_data) >= 2:
+            for toff in range(2, min(len(thresh_data), 2 + 30 * 12), 12):
+                trec = thresh_data[toff:toff + 12]
+                if len(trec) < 2 or trec[0] == 0:
+                    continue
+                thresh_by_id[trec[0]] = trec[1]
+
     out: list[dict] = []
     for off in range(2, min(len(data), 2 + 30 * 12), 12):
         rec = data[off:off + 12]
@@ -199,7 +415,9 @@ def parse_smart_vendor(data: bytes | str | None) -> list[dict]:
         if aid in (0xC2, 0xBE):  # температура: младший байт — текущая, остальное — min/max
             raw = rec[5]
         name, critical = SMART_ATTRS.get(aid, (f"Атрибут {aid:02X}", False))
-        out.append({"id": aid, "name": name, "current": rec[3], "worst": rec[4], "raw": raw, "critical": critical})
+        threshold = thresh_by_id.get(aid)
+        out.append({"id": aid, "name": name, "current": rec[3], "worst": rec[4],
+                    "threshold": threshold, "raw": raw, "critical": critical})
     return out
 
 
@@ -220,7 +438,7 @@ def disk_verdict(p: dict) -> tuple[str, list[str]]:
         if a["id"] in _CRITICAL_RAW and a["raw"] > 0:
             reasons.append(f"{a['name']}: {a['raw']}")
             level = max(level, 2 if a["id"] in (0xC6, 0xBB) and a["raw"] > 10 else 1)
-        if a.get("threshold") and a["current"] <= a["threshold"]:
+        if a.get("threshold") is not None and a["threshold"] > 0 and a["current"] <= a["threshold"]:
             reasons.append(f"{a['name']}: значение ниже порога")
             level = 2
     for key in ("read_err", "write_err"):
@@ -238,7 +456,7 @@ def disk_verdict(p: dict) -> tuple[str, list[str]]:
     if t is not None and t >= HOT_DISK_C:
         reasons.append(f"температура {t} °C")
         level = max(level, 1)
-    known = any(p.get(k) is not None for k in ("predict", "health", "wear", "temp", "attrs")) or p.get("attrs")
+    known = any(p.get(k) is not None for k in ("predict", "health", "wear", "temp")) or bool(p.get("attrs"))
     if not known and not reasons:
         return "unknown", []
     return ("good", "caution", "bad")[level], reasons
@@ -254,7 +472,7 @@ def _phys_disk(x: dict) -> dict:
          "bus": BUS.get(int(x.get("bus") or 0), "?"), "size_gb": round(size / 1000 ** 3), "health": x.get("health"),
          "temp": x.get("temp"), "temp_max": x.get("temp_max"), "wear": x.get("wear"), "hours": x.get("hours"),
          "read_err": x.get("read_err"), "write_err": x.get("write_err"), "predict": x.get("predict"),
-         "attrs": parse_smart_vendor(x.get("smart"))}
+         "attrs": parse_smart_vendor(x.get("smart"), x.get("thresholds"))}
     if p["bus"] == "NVMe" and p["media"] == "Неизвестно":
         p["media"] = "SSD"
     # если контроллер не отдал счётчики — попробуем вытащить из сырых атрибутов
@@ -265,6 +483,8 @@ def _phys_disk(x: dict) -> dict:
         p["hours"] = by_id[0x09]["raw"]
     if p["wear"] is None and 0xE7 in by_id:
         p["wear"] = max(0, 100 - by_id[0xE7]["current"])
+    if p["wear"] is None and 0xE9 in by_id:
+        p["wear"] = max(0, 100 - by_id[0xE9]["current"])
     for k in ("temp", "temp_max", "wear", "hours", "read_err", "write_err"):
         if p[k] is not None:
             try:

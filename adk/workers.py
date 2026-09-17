@@ -301,7 +301,7 @@ class SearchWorker(BaseWorker):
 
         inv_by_user: dict[str, list[str]] = {}
         for comp, data in inv.items():
-            if data["user"] and (self.include_archives or data["is_online"]):
+            if data["user"]:
                 inv_by_user.setdefault(data["user"], []).append(comp)
 
         by_user: dict[str, list[str]] = {}
@@ -316,6 +316,15 @@ class SearchWorker(BaseWorker):
                 comps.add(pcm[login])
             for k in keys:
                 comps.update(inv_by_user.get(k, ()))
+            if not comps:
+                db_comp = db.get_computer_by_login(login)
+                if db_comp:
+                    comps.add(db_comp)
+                ad_ws = ad.get_ad_value(e, "userWorkstations")
+                if ad_ws:
+                    c_clean = db.clean_computer_name(ad_ws.split(",")[0])
+                    if c_clean:
+                        comps.add(c_clean)
             if self._printer_comps:  # режим printer: — показываем только ПК с этим принтером
                 comps &= self._printer_comps
                 if not comps:

@@ -102,6 +102,23 @@ def test_parse_smart_vendor_and_verdict():
     assert health.disk_verdict({})[0] == "unknown"
 
 
+def test_smart_thresholds_and_verdict_threshold_exceeded():
+    """3.5.9: пороги S.M.A.R.T. из MSStorageDriver_FailurePredictThresholds и вердикт «ниже порога» (CrystalDiskInfo)."""
+    import base64
+    raw_blob = _smart_blob({0x05: (10, 10, 0), 0x01: (80, 80, 0)})
+    thresh_buf = bytearray(512)
+    thresh_buf[0:2] = b"\x10\x00"
+    thresh_buf[2] = 0x05; thresh_buf[3] = 36   # ID 0x05, порог 36 (текущее 10 <= 36 -> сбой)
+    thresh_buf[14] = 0x01; thresh_buf[15] = 50 # ID 0x01, порог 50 (текущее 80 > 50 -> ок)
+    thresh_blob = base64.b64encode(bytes(thresh_buf)).decode()
+
+    attrs = health.parse_smart_vendor(raw_blob, thresh_blob)
+    by_id = {a["id"]: a for a in attrs}
+    assert by_id[0x05]["threshold"] == 36 and by_id[0x01]["threshold"] == 50
+    v, reasons = health.disk_verdict({"health": 0, "attrs": attrs})
+    assert v == "bad" and any("ниже порога" in r for r in reasons)
+
+
 def test_parse_health_json_with_physical_disks():
     blob = _smart_blob({0xC5: (100, 100, 3), 0x09: (90, 90, 50000)})
     text = json.dumps({"boot": "2026-09-04 08:00:00", "now": "2026-09-04 09:00:00", "total_mb": 8192, "free_mb": 4096, "cpu": 3,

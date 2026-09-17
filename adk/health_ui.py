@@ -473,13 +473,13 @@ class HealthDialog(FramelessDialog):
         self.lbl_disk_reasons = QLabel("")
         self.lbl_disk_reasons.setWordWrap(True)
         right.addWidget(self.lbl_disk_reasons)
-        self.attr_table = QTableWidget(0, 5)
-        self.attr_table.setHorizontalHeaderLabels(["ID", "Атрибут", "Знач.", "Худш.", "RAW"])
+        self.attr_table = QTableWidget(0, 6)
+        self.attr_table.setHorizontalHeaderLabels(["ID", "Атрибут", "Текущее", "Худшее", "Порог", "RAW"])
         self.attr_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.attr_table.verticalHeader().setVisible(False)
         self.attr_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.attr_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        for c, wd in ((0, 48), (2, 70), (3, 70), (4, 120)):
+        for c, wd in ((0, 48), (2, 70), (3, 70), (4, 70), (5, 120)):
             self.attr_table.setColumnWidth(c, wd)
         right.addWidget(self.attr_table, 1)
         hint = QLabel("Оценка как в CrystalDiskInfo: «Плохо» — предсказан отказ / неисправимые секторы / ресурс SSD; "
@@ -863,9 +863,11 @@ class HealthDialog(FramelessDialog):
         rows = p["attrs"]  # порядок — по ID, как в CrystalDiskInfo
         self.attr_table.setRowCount(len(rows))
         for r, a in enumerate(rows):
-            bad = a["critical"] and a["raw"] > 0
+            bad = (a["critical"] and a["raw"] > 0) or (a.get("threshold") is not None and a["threshold"] > 0 and a["current"] <= a["threshold"])
+            thresh_str = str(a["threshold"]) if a.get("threshold") is not None else "—"
             cells = [QTableWidgetItem(f"{a['id']:02X}"), QTableWidgetItem(("⚠ " if bad else "") + a["name"]),
-                     QTableWidgetItem(str(a["current"])), QTableWidgetItem(str(a["worst"])), QTableWidgetItem(str(a["raw"]))]
+                     QTableWidgetItem(str(a["current"])), QTableWidgetItem(str(a["worst"])),
+                     QTableWidgetItem(thresh_str), QTableWidgetItem(str(a["raw"]))]
             for c, it in enumerate(cells):
                 if bad:
                     it.setForeground(QColor(pal.danger[0]))

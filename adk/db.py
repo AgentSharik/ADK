@@ -248,12 +248,15 @@ def get_computer_by_login(login: str) -> str:
     if not login:
         return ""
     l_clean = normalize_login(login)
-    for sql, arg in (
-        ("SELECT computer_name FROM permanent_mapping WHERE login = ?", l_clean),
-        ("SELECT computer_name FROM audit_cache WHERE login = ? ORDER BY timestamp DESC", l_clean),
-        ("SELECT computer_name FROM pc_mapping WHERE LOWER(login) = ?", l_clean),
+    for sql, args in (
+        ("SELECT computer_name FROM permanent_mapping WHERE login = ?", (l_clean,)),
+        ("SELECT computer_name FROM pc_inventory WHERE LOWER(current_user) = ? OR LOWER(current_user) LIKE ? OR LOWER(current_user) LIKE ? ORDER BY is_online DESC, last_checked DESC",
+         (l_clean, f"%\\{l_clean}", f"{l_clean}@%")),
+        ("SELECT computer_name FROM pc_mapping WHERE LOWER(login) = ?", (l_clean,)),
+        ("SELECT computer_name FROM audit_cache WHERE login = ? ORDER BY timestamp DESC", (l_clean,)),
+        ("SELECT computer_name FROM pc_history WHERE LOWER(login) = ? ORDER BY last_seen DESC", (l_clean,)),
     ):
-        row = db_execute_with_retry(sql, (arg,), fetch="one")
+        row = db_execute_with_retry(sql, args, fetch="one")
         if row and row[0]:
             return clean_computer_name(row[0])
     return ""
