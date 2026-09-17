@@ -230,21 +230,108 @@ def _load() -> configparser.ConfigParser:
 
 
 def write_default_config(path: str = INI_FILE) -> None:
-    """Создаёт config.ini со значениями по умолчанию и автоопределением домена (если его ещё нет)."""
+    """Создаёт config.ini со значениями по умолчанию, комментариями и автоопределением домена."""
     if os.path.exists(path):
         return
     _ensure_dirs()
     detected_ad = detect_ad_domain_params()
     ad_sec = dict(_DEFAULTS["AD"])
     ad_sec.update(detected_ad)
-    cp = configparser.ConfigParser(interpolation=None)
-    defaults = {k: dict(v) for k, v in _DEFAULTS.items()}
-    defaults["AD"] = ad_sec
-    cp.read_dict(defaults)
+
+    content = f"""; ==============================================================================
+;                 ADK — Active Directory Kit · Конфигурация
+; ==============================================================================
+
+[AD]
+domain_netbios = {ad_sec.get('domain_netbios', 'EXAMPLE')}
+# FQDN контроллера домена или имя самого домена (для DNS round-robin)
+dc_host = {ad_sec.get('dc_host', 'dc01.example.local')}
+# Базовый корень поиска объектов каталога
+search_base = {ad_sec.get('search_base', 'DC=example,DC=local')}
+# Подразделение (OU) по умолчанию для создания новых пользователей
+users_ou = {ad_sec.get('users_ou', 'OU=Users,DC=example,DC=local')}
+# Суффикс UPN (логин@домен)
+upn_suffix = {ad_sec.get('upn_suffix', 'example.local')}
+# LDAPS (порт 636) для смены паролей; false — стандартный порт 389 без SSL
+use_ssl = {ad_sec.get('use_ssl', 'true')}
+# Проверка SSL-сертификата контроллера домена
+tls_validate = {ad_sec.get('tls_validate', 'true')}
+connect_timeout = 5
+# Срок действия пароля по доменной политике
+max_password_age_days = 90
+
+[Paths]
+# Путь к локальной или сетевой базе соответствий
+db_path = {os.path.join(DOCS_DIR, 'pc_mapping.db')}
+# Сетевые папки инвентаризации рабочих станций
+invent_hardware_dir = 
+invent_comp_dir = 
+invent_compexit_dir = 
+pst_backup_base = 
+# Путь к клиенту удалённого доступа RMS
+rms_viewer_path = C:\\Program Files (x86)\\Remote Manipulator System - Viewer\\rutview.exe
+db_backend = sqlite
+db_dsn = 
+templates_file = 
+
+[Scanner]
+auto_scan_interval_min = 30
+host_pattern = ^(WS-\\d+|PC-.*)$
+host_exclude = (VIRT|VM|VBOX|TEST|SRV|SQL|SERVER)
+valid_subnets = 10.,192.168.,172.
+# DHCP-серверы для проверки свободных IP
+dhcp_servers = 
+
+[Design]
+bg_style = background-color: #1C1C1E;
+is_dark = true
+font_family = Inter
+font_size = 10
+accent_color = #0A84FF
+panel_color = #2C2C2E
+text_color = #F5F5F7
+border_color = #48484A
+follow_system = false
+
+[UI]
+language = ru
+minimize_to_tray = true
+global_hotkey = Ctrl+Shift+A
+hide_role_welcome = false
+
+[Access]
+readonly = false
+readonly_group = 
+admin_groups = 
+pc_admin_groups = 
+ad_admin_groups = 
+
+[Updates]
+version_file = 
+
+[Plugins]
+dir = {PLUGINS_DIR}
+
+[Notify]
+smtp_host = 
+smtp_port = 25
+smtp_from = 
+smtp_to = 
+smtp_user = 
+smtp_password = 
+smtp_tls = false
+actions = reset_password,disable_user,bulk_disable,bulk_reset_password,create_user
+watch_logins = 
+
+[Attention]
+acct_days = 7
+no_logon_days = 90
+stale_pc_days = 30
+refresh_min = 30
+"""
     try:
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write("; ADK — настройки организации. Создан автоматически при первом запуске.\n")
-            cp.write(fh)
+            fh.write(content)
     except OSError as exc:
         logging.getLogger(__name__).warning("Не удалось записать начальный config.ini: %s", exc)
 
