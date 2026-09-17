@@ -523,6 +523,10 @@ def test_autodetect_ad_params(monkeypatch, tmp_path):
     assert params["users_ou"] == "OU=Users,DC=corp,DC=company,DC=local"
     assert params["dc_host"] == "dc01.corp.company.local"
 
+    monkeypatch.delenv("LOGONSERVER", raising=False)
+    params2 = config.detect_ad_domain_params()
+    assert params2["dc_host"] == "corp.company.local"
+
     cfg_file = str(tmp_path / "autocfg.ini")
     config.write_default_config(cfg_file)
     cp = config.configparser.ConfigParser()

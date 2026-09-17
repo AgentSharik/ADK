@@ -202,7 +202,7 @@ def detect_ad_domain_params() -> dict[str, str]:
             if logon_srv:
                 params["dc_host"] = f"{logon_srv}.{dns_domain}" if "." not in logon_srv else logon_srv
             else:
-                params["dc_host"] = f"dc01.{dns_domain}"
+                params["dc_host"] = dns_domain
     if netbios:
         params["domain_netbios"] = netbios
 
