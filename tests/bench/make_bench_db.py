@@ -121,7 +121,7 @@ def main():
         pcs.append((name, ip, online, user, last_logon, specs))
 
     conn = sqlite3.connect(a.out)
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA journal_mode=DELETE")
     ts = now.strftime("%Y-%m-%d %H:%M:%S")
     conn.executemany("INSERT INTO pc_inventory (computer_name, ip_address, is_online, current_user, last_checked, specs, last_logon, last_seen_online) "
                      "VALUES (?,?,?,?,?,?,?,?)",

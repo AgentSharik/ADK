@@ -28,7 +28,7 @@ ACCOUNT_DISABLE_FLAG = 0x0002
 NORMAL_ACCOUNT_FLAG = 0x0200
 SMARTCARD_REQUIRED_FLAG = 0x40000
 
-DB_RETRY_ATTEMPTS = 5
+DB_RETRY_ATTEMPTS = 3
 DB_RETRY_DELAY_SEC = 1.0
 LDAP_PAGE_SIZE = 500
 SEARCH_RESULT_LIMIT = 40
@@ -241,6 +241,8 @@ max_password_age_days = 90
 [Paths]
 # Путь к локальной или сетевой базе соответствий
 db_path = {os.path.join(DOCS_DIR, 'pc_mapping.db')}
+backup_every_hours = 6
+backup_keep = 12
 # Сетевые папки инвентаризации рабочих станций
 invent_hardware_dir = 
 invent_comp_dir = 
@@ -390,6 +392,15 @@ class Settings:
         self.db_dsn: str = (cp["Paths"].get("db_dsn", "") if "Paths" in cp else "") or ""
         # 3.5.11: вопрос «где база?» уже задан при первом запуске (см. setup_ui.needs_db_setup)
         self.db_ready: bool = str(cp["Paths"].get("db_ready", "false") if "Paths" in cp else "false").lower() in ("1", "true", "yes")
+        # 3.6.0: резервные копии базы — раз в N часов (0 — выключено), хранить K последних
+        try:
+            self.backup_every_hours: float = float((cp["Paths"].get("backup_every_hours", "6") if "Paths" in cp else "6") or 0)
+        except ValueError:
+            self.backup_every_hours = 6.0
+        try:
+            self.backup_keep: int = int((cp["Paths"].get("backup_keep", "12") if "Paths" in cp else "12") or 12)
+        except ValueError:
+            self.backup_keep = 12
 
         nt = cp["Notify"] if "Notify" in cp else {}
         self.notify: dict = {

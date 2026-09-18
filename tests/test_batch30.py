@@ -267,3 +267,166 @@ def test_no_portable_mode_traces(rel):
         if re.search(r"IS_PORTABLE|ADK_PORTABLE|ADK_HOME|portable", txt, re.I):
             bad.append(os.path.relpath(f, root))
     assert not bad, bad
+
+
+# =========================================================================== 3.6.0: база без WAL, сторож, бэкапы, аренда сканера
+def test_no_wal_anywhere_and_existing_wal_file_is_converted(tmp_path, monkeypatch):
+    """Файл, созданный 3.5.x в режиме WAL, при старте переводится в обычный журнал; новые базы WAL не получают."""
+    import sqlite3
+    from adk import config, db
+    path = str(tmp_path / "old_wal.db")
+    with contextlib.closing(sqlite3.connect(path)) as c:
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("CREATE TABLE t (x)")
+        c.commit()
+    assert os.path.exists(path + "-wal") or True
+    monkeypatch.setattr(config.settings, "db_path", path)
+    db.init_db()
+    with contextlib.closing(sqlite3.connect(path)) as c:
+        assert str(c.execute("PRAGMA journal_mode").fetchone()[0]).lower() == "delete"
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "adk", "db.py"), encoding="utf-8").read()
+    assert "journal_mode=WAL" not in src
+
+
+def test_connection_has_guard_and_short_busy_timeout():
+    from adk import db
+    with contextlib.closing(db.get_db_connection()) as c:
+        assert c.guard is not None and c.guard.tripped is False
+        assert int(c.execute("PRAGMA busy_timeout").fetchone()[0]) == db.BUSY_TIMEOUT_SEC * 1000
+    assert db.HANG_LIMIT_SEC == 60 and db.BUSY_TIMEOUT_SEC <= 15
+
+
+def test_hang_guard_interrupts_long_query_and_calls_hook(monkeypatch):
+    """Запрос дольше лимита прерывается сторожем, поднимается DbHangError, хук (окно + выход) вызван один раз."""
+    from adk import db
+    monkeypatch.setattr(db, "HANG_LIMIT_SEC", 0.3)
+    calls = []
+    db.set_hang_hook(calls.append)
+    try:
+        # рекурсивный CTE без конца — «зависший» запрос, который не ждёт блокировку, а просто молотит
+        with pytest.raises(db.DbHangError) as ei:
+            db.db_execute_with_retry("WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c) SELECT COUNT(*) FROM c", fetch="one")
+    finally:
+        db.set_hang_hook(None)
+    assert "дольше" in str(ei.value) and len(calls) == 1 and isinstance(calls[0], db.DbHangError)
+
+
+def test_locked_db_gives_up_within_limit_not_minutes(monkeypatch):
+    """База занята другим процессом: ждём busy_timeout × попытки, но не 2,5 минуты как раньше."""
+    import sqlite3
+    import time
+    from adk import config, db
+    monkeypatch.setattr(db, "BUSY_TIMEOUT_SEC", 0.2)
+    monkeypatch.setattr(db, "DB_RETRY_ATTEMPTS", 2)
+    monkeypatch.setattr(db, "DB_RETRY_DELAY_SEC", 0.05)
+    holder = sqlite3.connect(config.settings.db_path, isolation_level=None)
+    holder.execute("BEGIN EXCLUSIVE")
+    t0 = time.monotonic()
+    try:
+        with pytest.raises(sqlite3.OperationalError) as ei:
+            db.db_execute_with_retry("INSERT INTO meta (key, value) VALUES ('a', 'b')")
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+    assert "locked" in str(ei.value).lower() and time.monotonic() - t0 < 5
+
+
+def test_is_network_path():
+    from adk import db
+    assert db.is_network_path(r"\\srv\share\adk\pc_mapping.db") is True
+    assert db.is_network_path("//srv/share/adk/pc_mapping.db") is True
+    assert db.is_network_path(r"C:\Users\x\Documents\ADK\pc_mapping.db") is False
+    assert db.is_network_path("/home/x/pc_mapping.db") is False
+
+
+def test_backup_periodic_creates_rotates_and_respects_interval(tmp_path, monkeypatch):
+    import sqlite3
+    import time
+    from adk import config, db
+    monkeypatch.setattr(config.settings, "backup_every_hours", 6.0)
+    monkeypatch.setattr(config.settings, "backup_keep", 2)
+    path = config.settings.db_path
+    first = db.backup_periodic()
+    assert first and os.path.dirname(first) == db.backup_dir(path) and os.path.basename(first).startswith("pc_mapping-")
+    with contextlib.closing(sqlite3.connect(first)) as c:              # копия — настоящая база со схемой
+        assert c.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='pc_inventory'").fetchone()[0] == 1
+    assert db.backup_periodic() is None                                 # свежая — второй раз не делаем
+    old = time.time() - 7 * 3600
+    os.utime(first, (old, old))
+    time.sleep(1.1)                                                     # имя копии — с точностью до секунды
+    second = db.backup_periodic()
+    assert second and second != first
+    os.utime(second, (old, old))
+    time.sleep(1.1)
+    third = db.backup_periodic()
+    assert third and len(db.list_backups(path)) == 2                    # keep = 2 → старейшая удалена
+    assert first not in db.list_backups(path)
+    monkeypatch.setattr(config.settings, "backup_every_hours", 0)
+    assert db.backup_periodic() is None                                 # выключено
+
+
+def test_scan_lease_single_scanner_per_shared_db():
+    from adk import db
+    ok, holder, until = db.scan_lease_acquire("PC-A\\ivanov")
+    assert ok and holder == "PC-A\\ivanov" and len(until) == 19
+    ok2, holder2, _ = db.scan_lease_acquire("PC-B\\petrov")
+    assert not ok2 and holder2 == "PC-A\\ivanov"                        # второй ADK ждёт, а не сканирует параллельно
+    ok3, _, _ = db.scan_lease_acquire("PC-A\\ivanov")                   # свой же — продлевает
+    assert ok3
+    db.scan_lease_release("PC-A\\ivanov")
+    ok4, _, _ = db.scan_lease_acquire("PC-B\\petrov")
+    assert ok4
+
+
+def test_scan_lease_expires(monkeypatch):
+    from adk import db
+    db.scan_lease_acquire("PC-A\\x", minutes=0)                          # срок вышел сразу
+    ok, _, _ = db.scan_lease_acquire("PC-B\\y")
+    assert ok
+
+
+def test_main_window_skips_scan_when_other_pc_holds_lease(qapp, monkeypatch):
+    from adk import db
+    from adk.main_window import ADApp
+    from adk.workers import PCScannerWorker
+    started = []
+    monkeypatch.setattr(PCScannerWorker, "start", lambda self: started.append(1))
+    w = ADApp("CORP\\admin", "x")
+    w.scan_timer.stop()
+    try:
+        db.scan_lease_acquire("SRV-ADK\\kolya")
+        w.start_scan()
+        assert not started and "сканирует SRV-ADK\\kolya" in w.lbl_status.text() and w.btn_scan.isEnabled()
+        db.scan_lease_release("SRV-ADK\\kolya")
+        w.start_scan()
+        assert started == [1]
+        w.on_scan_done(0)
+        ok, _, _ = db.scan_lease_acquire("SRV-ADK\\kolya")
+        assert ok                                                       # после сканера аренда снята
+    finally:
+        w.close()
+
+
+def test_hang_exit_shows_message_and_quits(qapp, monkeypatch):
+    from adk import __main__ as m, db
+    from adk.widgets import MessageBox
+    shown, exits = [], []
+    monkeypatch.setattr(MessageBox, "critical", classmethod(lambda cls, p, t, text: shown.append((t, text))))
+    monkeypatch.setattr(type(qapp), "exit", lambda self, code=0: exits.append(code))
+    qapp._adk_hang_shown = False
+    m._db_hang_exit(db.DbHangError("тест"))
+    qapp.processEvents()
+    assert exits == [3] and shown and "признано зависшим" in shown[0][0]
+    txt = shown[0][1]
+    for phrase in ("дольше минуты", "отрезаны", "системным администраторам", "переименуйте файл базы", "администратору ПО"):
+        assert phrase in txt
+    m._db_hang_exit(db.DbHangError("ещё раз"))                          # второй раз окно не дублируется
+    assert len(shown) == 1
+
+
+def test_setup_dialog_warns_about_network_folder(qapp, monkeypatch):
+    from adk import setup_ui
+    dlg = setup_ui.DbSetupDialog()
+    dlg.rb_custom.setChecked(True)
+    dlg.path_in.setText(r"\\srv\share\ADK")
+    assert "сетевая папка" in dlg.lbl_found.text()

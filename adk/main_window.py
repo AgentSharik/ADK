@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import html
+import contextlib
 import logging
 import os
+import platform
 import subprocess
 import time
 
@@ -117,6 +119,7 @@ class ADApp(FramelessMainWindow):
         self.initial_fill = initial_fill          # 3.5.11: база только что создана — заполнить её (сканер + принтеры)
         self.fill_worker = None
         self.admin_name = username or os.environ.get("USERNAME", "sso")
+        self.scan_owner = f"{os.environ.get('COMPUTERNAME') or platform.node()}\\{self.admin_name}"
         self.results: list[dict] = []
         self._shown: dict | None = None
         self.active_ad_total = 0
@@ -149,6 +152,10 @@ class ADApp(FramelessMainWindow):
         self.scan_timer = QTimer(self)
         self.scan_timer.timeout.connect(self.start_scan)
         self.scan_timer.start(settings.auto_scan_interval_ms)
+        # 3.6.0: резервная копия базы по расписанию ([Paths] backup_every_hours); проверка раз в 15 минут — дёшево
+        self.backup_timer = QTimer(self)
+        self.backup_timer.timeout.connect(lambda: run_in_background(self, db.backup_periodic, lambda _p: None, lambda _m: None))
+        self.backup_timer.start(15 * 60_000)
         QTimer.singleShot(300, self.load_ad_count)
         QTimer.singleShot(1500, self.start_initial_fill if initial_fill else self.start_scan)
         # 3.1: сводка «Внимание» — в фоне, по таймеру из [Attention] refresh_min
@@ -1816,6 +1823,16 @@ class ADApp(FramelessMainWindow):
     def start_scan(self):
         if self.scanner and self.scanner.isRunning():
             return
+        # 3.6.0: общую базу сканирует один ADK — остальные не пишут в неё одновременно
+        try:
+            ok, holder, until = db.scan_lease_acquire(self.scan_owner)
+        except Exception as exc:  # noqa: BLE001
+            self.lbl_status.setText(f"⚠️ База: {exc}")
+            return
+        if not ok:
+            self.lbl_status.setText(f"⏳ Парк сканирует {holder} (до {until[11:16]}) — база общая, повторный опрос не нужен")
+            self.refresh_dashboard()
+            return
         self.btn_scan.setEnabled(False)
         self.scanner = PCScannerWorker(self.get_conn, parent=self)
         self.scanner.progress.connect(self.lbl_status.setText)
@@ -1825,6 +1842,8 @@ class ADApp(FramelessMainWindow):
 
     def on_scan_done(self, total: int):
         self.btn_scan.setEnabled(True)
+        with contextlib.suppress(Exception):
+            db.scan_lease_release(self.scan_owner)
         if total:
             self.active_ad_total = total
         self.lbl_status.setText("")          # после сканера в строке состояния — «Последнее сканирование: …»
@@ -1877,6 +1896,9 @@ class ADApp(FramelessMainWindow):
         if self.tray:
             self.tray.hide()
         self.scan_timer.stop()
+        self.backup_timer.stop()
+        with contextlib.suppress(Exception):
+            db.scan_lease_release(self.scan_owner)
         self.debounce.stop()
         if hasattr(self, "attention_timer"):
             self.attention_timer.stop()
