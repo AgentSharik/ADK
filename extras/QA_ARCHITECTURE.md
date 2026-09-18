@@ -91,29 +91,19 @@ Python ищет пакеты по списку `sys.path`. Когда вы за�
 в пути, откуда бы ни запустили.
 
 Внутри PyInstaller-сборки `sys.path` тоже свой (временная папка `_MEIPASS`), но `adk` туда упакован целиком,
-и та же строка не мешает. Разница между режимами спрятана в `config.py`:
+и та же строка не мешает. Разница между режимами спрятана в `tray.asset_path()`:
 
 ```python
-def _app_dir():
-    if getattr(sys, "frozen", False):                      # PyInstaller ставит этот флаг
-        return os.path.dirname(os.path.abspath(sys.executable))   # папка рядом с ADK.exe
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # корень репозитория
+def asset_path(name):
+    base = getattr(sys, "_MEIPASS", None) or <корень репозитория>   # в сборке PyInstaller — папка _internal
+    return os.path.join(base, "assets", name)
 ```
-
-Всё, что зависит от «где я лежу» (ищем `portable`, `version.txt`, `assets/logo.png`), спрашивает `_app_dir()`.
-Код приложения одинаковый, отличается только ответ этой функции.
 
 ### 1.4. Изоляция config.ini, баз и логов в Documents\ADK
 
-`config.py` при импорте один раз вычисляет `DOCS_DIR`:
-
-```python
-def _resolve_docs_dir():
-    if os.environ.get("ADK_HOME"): return ADK_HOME                       # явно заданный путь
-    if ADK_PORTABLE == "1" or os.path.exists(app_dir / "portable"):       # флешка
-        return app_dir / "data"
-    return ~/Documents/ADK                                               # обычный режим
-```
+`config.py` при импорте один раз вычисляет `DOCS_DIR = ~/Documents/ADK`. Путь к базе — отдельный ключ `[Paths] db_path`:
+его при первом запуске выбирает мастер `setup_ui.DbSetupDialog` (существующий файл подхватывается, новый создаётся и
+наполняется `InitialFillWorker`), после чего в конфиг пишется `db_ready = true`.
 
 Дальше от него строятся `CONFIG_FILE`, `DB_PATH`, `LOG_FILE`, `CRED_FILE`, `plugins/`, `templates.json`.
 Зачем именно так:
@@ -121,9 +111,8 @@ def _resolve_docs_dir():
 - **Профиль пользователя** (`Documents`) доступен на запись без прав администратора и попадает в перемещаемые
   профили/бэкапы. `Program Files` — только чтение.
 - **Каждый админ — своя база и свой конфиг.** Две учётки на одном ПК не мешают друг другу.
-- **Один exe — много режимов.** Тот же файл работает с флешки (`portable`), на сервере (`ADK_HOME=D:\adk-server`)
-  и у пользователя. В тестах `conftest.py` подменяет `settings.db_path` на временный файл — база на диске
-  не трогается.
+- **Один exe — одна база на отдел.** ADK ставят на один ПК, остальным дают ярлык; `db_path` может указывать и на
+  сетевую папку. В тестах `conftest.py` подменяет `settings.db_path` на временный файл — база на диске не трогается.
 - Логи — `RotatingFileHandler(maxBytes=2 МБ, backupCount=5)`: журнал не растёт бесконечно.
 - `config.example.ini` лежит в репозитории, а рабочий `config.ini` — в `Documents\ADK` и в git не попадает.
   При первом запуске программа сама создаёт его из `DEFAULTS` в `config.py`.

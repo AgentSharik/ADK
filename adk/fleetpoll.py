@@ -36,14 +36,14 @@ def fleet_hosts(conn_factory: Callable | None = None, online_only: bool = True) 
     if conn_factory is None:
         return []
     from . import ad
-    from .workers import ScanWorker
+    from .workers import PCScannerWorker
     conn = conn_factory()
     try:
         entries = ad.paged_search(conn, "(&(objectClass=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))"
                                         "(!(operatingSystem=*Server*)))", ["name"])
     finally:
         conn.unbind()
-    return ScanWorker.workstation_names(entries)
+    return PCScannerWorker.workstation_names(entries)
 
 
 def poll_fleet(hosts: list[str], fn: Callable[[str], dict], progress: Callable[[int, int, str], None] | None = None,

@@ -17,29 +17,7 @@ APP_TITLE = "ADK — Active Directory Kit"
 IS_WINDOWS = sys.platform.startswith("win")
 CREATE_NO_WINDOW = 0x08000000 if IS_WINDOWS else 0
 
-
-
-def _app_dir() -> str:
-    """Каталог приложения: рядом с exe (PyInstaller) или корень репозитория."""
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(os.path.abspath(sys.executable))
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def _resolve_docs_dir() -> str:
-    """Portable-режим: если рядом с exe лежит файл ``portable`` (или задан ADK_PORTABLE=1 / ADK_HOME),
-    данные (config.ini, БД, лог, плагины) живут в ``<app>/data`` — можно носить на флешке."""
-    env_home = os.environ.get("ADK_HOME")
-    if env_home:
-        return os.path.abspath(env_home)
-    app_dir = _app_dir()
-    if os.environ.get("ADK_PORTABLE") == "1" or os.path.exists(os.path.join(app_dir, "portable")):
-        return os.path.join(app_dir, "data")
-    return os.path.join(os.path.expanduser("~"), "Documents", APP_NAME)
-
-
-DOCS_DIR = _resolve_docs_dir()
-IS_PORTABLE = not DOCS_DIR.startswith(os.path.join(os.path.expanduser("~"), "Documents"))
+DOCS_DIR = os.path.join(os.path.expanduser("~"), "Documents", APP_NAME)
 INI_FILE = os.path.join(DOCS_DIR, "config.ini")
 LOG_FILE = os.path.join(DOCS_DIR, "adk.log")
 PLUGINS_DIR = os.path.join(DOCS_DIR, "plugins")
@@ -410,6 +388,8 @@ class Settings:
         self.templates_file: str = (cp["Paths"].get("templates_file", "") if "Paths" in cp else "") or ""
         self.db_backend: str = ((cp["Paths"].get("db_backend", "sqlite") if "Paths" in cp else "sqlite") or "sqlite").lower()
         self.db_dsn: str = (cp["Paths"].get("db_dsn", "") if "Paths" in cp else "") or ""
+        # 3.5.11: вопрос «где база?» уже задан при первом запуске (см. setup_ui.needs_db_setup)
+        self.db_ready: bool = str(cp["Paths"].get("db_ready", "false") if "Paths" in cp else "false").lower() in ("1", "true", "yes")
 
         nt = cp["Notify"] if "Notify" in cp else {}
         self.notify: dict = {
