@@ -250,8 +250,6 @@ invent_compexit_dir =
 pst_backup_base = 
 # Путь к клиенту удалённого доступа RMS
 rms_viewer_path = C:\\Program Files (x86)\\Remote Manipulator System - Viewer\\rutview.exe
-db_backend = sqlite
-db_dsn = 
 templates_file = 
 
 [Scanner]
@@ -388,8 +386,6 @@ class Settings:
         pl = cp["Plugins"] if "Plugins" in cp else {}
         self.plugins_dir: str = pl.get("dir", PLUGINS_DIR) or PLUGINS_DIR
         self.templates_file: str = (cp["Paths"].get("templates_file", "") if "Paths" in cp else "") or ""
-        self.db_backend: str = ((cp["Paths"].get("db_backend", "sqlite") if "Paths" in cp else "sqlite") or "sqlite").lower()
-        self.db_dsn: str = (cp["Paths"].get("db_dsn", "") if "Paths" in cp else "") or ""
         # 3.5.11: вопрос «где база?» уже задан при первом запуске (см. setup_ui.needs_db_setup)
         self.db_ready: bool = str(cp["Paths"].get("db_ready", "false") if "Paths" in cp else "false").lower() in ("1", "true", "yes")
         # 3.6.0: резервные копии базы — раз в N часов (0 — выключено), хранить K последних

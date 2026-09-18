@@ -44,13 +44,6 @@ def test_no_setup_when_already_answered(monkeypatch):
     assert setup_ui.needs_db_setup() is False
 
 
-def test_no_setup_for_postgres(monkeypatch):
-    from adk import config, setup_ui
-    monkeypatch.setattr(config.settings, "db_ready", False)
-    monkeypatch.setattr(config.settings, "db_backend", "postgres")
-    assert setup_ui.needs_db_setup() is False
-
-
 def test_old_install_with_filled_db_is_marked_ready_silently(tmp_path, monkeypatch):
     """Обновление с 3.5.10: база уже есть и заполнена → вопрос не задаём, а флаг записываем сами."""
     from adk import config, setup_ui

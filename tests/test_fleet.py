@@ -1,5 +1,5 @@
 """Парк ПК и служебные режимы: «Внимание», WoL/MAC, массовый пинг, ПО и входы, сравнение ПК, шаблоны,
-уведомления, PostgreSQL-адаптер, CLI и серверный режим, роли, опись ПК, безопасность фильтров/журнала.
+уведомления, CLI и серверный режим, роли, опись ПК, безопасность фильтров/журнала.
 
 Как читать: каждый тест — «дано → действие → проверка». Сеть и Windows не нужны — ответы подменяются готовыми данными.
 """
@@ -9,7 +9,7 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from adk import attention, cli, config, db, logons, nettools, netutils, notify, pgadapter, software, templates, workers
+from adk import attention, cli, config, db, logons, nettools, netutils, notify, software, templates, workers
 from adk.fleet import compare_lists, compare_specs, flatten_specs
 from adk.extras import password_card_text
 
@@ -295,27 +295,6 @@ def test_password_card_text():
     card = password_card_text("ivanov", "Qw3rty!_", True, "CORP")
     assert card.startswith("Логин: CORP\\ivanov") and "Qw3rty!_" in card and "сменить" in card
     assert "сменить" not in password_card_text("ivanov", "Qw3rty!_", False)
-
-
-# ------------------------------------------------------------------ 5. PostgreSQL
-def test_pg_translate_dialect():
-    t = pgadapter.translate
-    assert t("SELECT * FROM t WHERE a = ? AND b = ?") == "SELECT * FROM t WHERE a = %s AND b = %s"
-    assert "SERIAL PRIMARY KEY" in t("CREATE TABLE IF NOT EXISTS n (id INTEGER PRIMARY KEY AUTOINCREMENT, x TEXT)")
-    up = t("INSERT OR REPLACE INTO pc_mac (computer_name, mac, ts) VALUES (?, ?, datetime('now','localtime'))")
-    assert up.endswith("ON CONFLICT (computer_name) DO UPDATE SET mac = EXCLUDED.mac, ts = EXCLUDED.ts")
-    assert "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')" in up and "?" not in up
-    assert t("INSERT OR IGNORE INTO scanned VALUES (?)").endswith("ON CONFLICT DO NOTHING")
-    assert "(%s)::interval" in t("SELECT 1 WHERE x < datetime('now','localtime', ?)")
-    assert "interval '-30 days'" in t("SELECT 1 WHERE x < datetime('now','localtime', '-30 days')")
-    assert t("CREATE TEMP TABLE IF NOT EXISTS s (name TEXT PRIMARY KEY)").startswith("CREATE TEMPORARY TABLE")
-
-
-def test_pg_backend_requires_dsn(monkeypatch):
-    # backend=postgres без DSN → остаёмся на SQLite (ничего не ломается)
-    monkeypatch.setattr(config.settings, "db_backend", "postgres")
-    monkeypatch.setattr(config.settings, "db_dsn", "")
-    assert db.db_execute_with_retry("SELECT 1", fetch="one") == (1,)
 
 
 # ------------------------------------------------------------------ 6. CLI и серверный режим

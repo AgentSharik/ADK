@@ -57,7 +57,6 @@ adk/
   notify.py       3.1: почтовые уведомления из журнала (хук db.AUDIT_HOOKS)
   extras.py       настройки почтовых уведомлений, текст карточки с паролем
   cli.py          3.1: --find/--export-inventory/--attention/--ping/--wol/--scan/--serve
-  pgadapter.py    3.1: PostgreSQL поверх psycopg — транслятор SQLite-диалекта
   access.py       роль «только чтение» (config + группы AD)
   plugins.py      загрузка *.py-плагинов с классом Action
   health.py       PowerShell/CIM-опрос ПК, разбор S.M.A.R.T., карта диска (squarify), журнал событий Windows, пороги

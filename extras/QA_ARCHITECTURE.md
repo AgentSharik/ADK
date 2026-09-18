@@ -17,7 +17,7 @@
 11, после 3.0/3.1 стало 30, принцип тот же»). Они выстроены в слои:
 
 ```
-уровень 0  config, md4, theme, i18n, pgadapter, plugins, export, tray   — ни от кого не зависят
+уровень 0  config, md4, theme, i18n, plugins, export, tray   — ни от кого не зависят
 уровень 1  db, ad, credentials, access, templates, updates               — только от config
 уровень 2  netutils, nettools, software, logons, health, attention, notify — от config/db/ad
 уровень 3  workers (QThread)                                             — от ad/db/netutils
@@ -46,20 +46,26 @@
    только в момент вызова, когда все модули уже загружены — цикла не возникает.
    То же в `access.resolve()`: `from . import ad` внутри функции.
 
-### 1.2. Почему SQLite и как заложен переход на PostgreSQL
+### 1.2. Почему SQLite — и только он
 
-**Почему SQLite.** Он встроен в Python (`import sqlite3`, ставить нечего), база — один файл в `Documents\ADK`,
-не нужен сервер и учётка БД, для 1–3 админов и 30 000 ПК скорость с индексами достаточная (см. §4).
-Инвентарь — это кэш, который пересобирается сканером, потерять его не страшно.
+**Почему SQLite.** Он встроен в Python (`import sqlite3`, ставить нечего), база — один файл, не нужен сервер и учётка
+БД, для 1–3 админов и 30 000 ПК скорость с индексами достаточная (см. §4). Инвентарь — это кэш, который пересобирается
+сканером, потерять его не страшно; резервная копия = копия файла (`backups/`, каждые 6 ч).
 
-**Как заложен переход.** Весь доступ к базе идёт через две функции в `db.py`:
+**Почему не второй движок.** До 3.6.1 был адаптер PostgreSQL (`pgadapter.py`, трансляция диалекта на лету). Его убрали:
+на настоящем сервере он ни разу не проверялся, а второй способ хранения — это вторая инструкция и второй набор
+ошибок. Сценарий отдела решается иначе: ADK и база на сервере, у остальных ярлык, сканирует один экземпляр
+(`db.scan_lease_*`), запросы короткие (`busy_timeout` 10 с), сторож прерывает зависшие (`_HangGuard`, 60 с).
+**WAL запрещён** — на сетевых папках он ломает файл.
+
+**Одна точка доступа.** Весь доступ к базе идёт через две функции в `db.py`:
 
 ```python
 def get_db_connection():
-    if settings.db_backend == "postgres" and settings.db_dsn:
-        from .pgadapter import connect
-        return connect(settings.db_dsn)          # объект с тем же интерфейсом .execute/.fetchall
-    return sqlite3.connect(settings.db_path, timeout=...)
+    conn = sqlite3.connect(settings.db_path, timeout=BUSY_TIMEOUT_SEC, factory=_GuardedConnection,
+                           isolation_level="IMMEDIATE")
+    conn.set_progress_handler(_HangGuard(...), 100_000)     # сторож зависшего запроса
+    return conn
 
 def db_execute_with_retry(query, params=(), fetch=None):
     with contextlib.closing(get_db_connection()) as conn:
@@ -67,11 +73,8 @@ def db_execute_with_retry(query, params=(), fetch=None):
         ...
 ```
 
-Больше нигде в проекте `sqlite3.connect` не встречается. Значит, чтобы сменить БД, меняется одно место.
-`pgadapter.py` — «переводчик»: оборачивает соединение psycopg и на лету переписывает SQL, который написан
-в диалекте SQLite, в диалект PostgreSQL: `?` → `%s`, `datetime('now','localtime')` → `now()`,
-`INSERT OR IGNORE` → `ON CONFLICT DO NOTHING`, `AUTOINCREMENT` → `SERIAL` и т. п. Остальные 700 строк `db.py`
-не знают, с какой базой работают. Это классический паттерн «адаптер».
+Больше нигде в проекте `sqlite3.connect` не встречается (кроме резервного копирования и мастера первого запуска,
+которые открывают файл только на чтение).
 
 Что ответить на «почему не ORM (SQLAlchemy)?»: ORM — лишняя зависимость и слой магии для 15 таблиц; чистый SQL
 проще читать, и его точно так же можно тестировать (см. `tests/test_core.py`).
@@ -588,7 +591,7 @@ def test_access_two_rights_by_groups(monkeypatch):
 ```
 
 Такие тесты — 70 % набора (`test_core.py`, `test_fleet.py`): MD4 по RFC-векторам, разбор ARP/ping/JSON,
-классификация принтеров, статус УЗ по `userAccountControl`, `pgadapter`, транслитерация. Они выполняются
+классификация принтеров, статус УЗ по `userAccountControl`, транслитерация. Они выполняются
 за миллисекунды и точно говорят, *что* сломалось.
 
 **E2E-сценарий** (`test_gui.py`, `test_tools.py`) — «как пользователь»: создать `ADApp`, напечатать «иванов»,
@@ -610,6 +613,5 @@ def test_access_two_rights_by_groups(monkeypatch):
 ### Если спросят «что бы вы улучшили»
 
 - Полноценная DI-фабрика соединений вместо `get_conn` в окне (проще мокать).
-- `pgadapter` покрывает только используемые конструкции SQL — при новых запросах его надо расширять.
 - Массовые операции идут последовательно; при 500 учётках стоит батчить через `ThreadPoolExecutor`.
 - Роли ADK — UX-слой; аудит действий стоит дублировать в события домена (4738/4740) на стороне SIEM.

@@ -80,8 +80,7 @@ def serve(interval_min: int, iterations: int | None = None, sleep=None) -> int:
     from .workers import PCScannerWorker
     sleep = sleep or time.sleep
     factory = _conn_factory()
-    log.info("ADK %s: серверный режим, интервал %d мин, БД: %s", __version__, interval_min,
-             config.settings.db_backend if config.settings.db_backend != "sqlite" else config.settings.db_path)
+    log.info("ADK %s: серверный режим, интервал %d мин, БД: %s", __version__, interval_min, config.settings.db_path)
     n = 0
     while iterations is None or n < iterations:
         n += 1
@@ -119,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--scan", action="store_true", help="один проход сканера парка")
     p.add_argument("--serve", nargs="?", const=-1, type=int, metavar="МИН",
                    help="серверный режим: сканер парка по расписанию (по умолчанию auto_scan_interval_min из config.ini) "
-                        "+ уведомления по сводке «Внимание»; общая БД — [Paths] db_backend = postgres")
+                        "+ уведомления по сводке «Внимание» — для запуска на сервере, где лежит база")
     p.add_argument("--json", action="store_true", help="вывод в JSON")
     p.add_argument("--version", action="store_true")
     a = p.parse_args(argv)
