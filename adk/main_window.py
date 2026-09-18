@@ -111,9 +111,11 @@ class BadgeDelegate(QStyledItemDelegate):
 
 
 class ADApp(FramelessMainWindow):
-    def __init__(self, username: str | None, password: str | None):
+    def __init__(self, username: str | None, password: str | None, initial_fill: bool = False):
         super().__init__()
         self.username, self.password = username, password
+        self.initial_fill = initial_fill          # 3.5.11: база только что создана — заполнить её (сканер + принтеры)
+        self.fill_worker = None
         self.admin_name = username or os.environ.get("USERNAME", "sso")
         self.results: list[dict] = []
         self._shown: dict | None = None
@@ -148,7 +150,7 @@ class ADApp(FramelessMainWindow):
         self.scan_timer.timeout.connect(self.start_scan)
         self.scan_timer.start(settings.auto_scan_interval_ms)
         QTimer.singleShot(300, self.load_ad_count)
-        QTimer.singleShot(1500, self.start_scan)
+        QTimer.singleShot(1500, self.start_initial_fill if initial_fill else self.start_scan)
         # 3.1: сводка «Внимание» — в фоне, по таймеру из [Attention] refresh_min
         self.attention_items: list[dict] = []
         self.attention_timer = QTimer(self)
@@ -378,6 +380,12 @@ class ADApp(FramelessMainWindow):
         bottom = QHBoxLayout()
         self.btn_scan = QPushButton(tr("🔄 Обновить статус сети ПК"))
         self.btn_scan.clicked.connect(self.start_scan)
+        self.btn_fill_stop = QPushButton(tr("⏹ Остановить наполнение"))
+        self.btn_fill_stop.setObjectName("btnDanger")
+        self.btn_fill_stop.setToolTip(tr("Прервать первичное наполнение новой базы. Дозаполнить можно позже: "
+                                         "«Обновить статус сети ПК» и «Принтеры парка → Опросить парк»."))
+        self.btn_fill_stop.clicked.connect(self.stop_initial_fill)
+        self.btn_fill_stop.hide()
         self.lbl_status = QLabel("")
         self.lbl_status.setObjectName("statusLabel")
         self.lbl_role_status = QLabel(tr(access.role_title_short()))
@@ -386,6 +394,7 @@ class ADApp(FramelessMainWindow):
         self.lbl_role_status.setToolTip(f"{access.role_summary()[1]}\n(Клик — подробнее о возможностях роли)")
         self.lbl_role_status.mousePressEvent = lambda e: self.show_role_info()
         bottom.addWidget(self.btn_scan)
+        bottom.addWidget(self.btn_fill_stop)
         bottom.addWidget(self.lbl_status, 1)
         bottom.addWidget(self.lbl_role_status)
         content.addLayout(bottom)
@@ -1814,6 +1823,38 @@ class ADApp(FramelessMainWindow):
         if total:
             self.active_ad_total = total
         self.refresh_dashboard()
+
+    # ------------------------------------------------------------------ 3.5.11: первичное наполнение новой базы
+    def start_initial_fill(self):
+        """База создана мастером первого запуска: сканер парка + принтеры со всех ПК в сети, с прогрессом и стопом."""
+        from .setup_ui import InitialFillWorker
+        if self.fill_worker and self.fill_worker.isRunning():
+            return
+        self.btn_scan.setEnabled(False)
+        self.btn_fill_stop.show()
+        self.lbl_status.setText(tr("🗄️ Новая база: первичное наполнение…"))
+        self.fill_worker = InitialFillWorker(self.get_conn, parent=self)
+        self.fill_worker.progress.connect(self.lbl_status.setText)
+        self.fill_worker.finished_fill.connect(self.on_initial_fill_done)
+        self._threads.append(self.fill_worker)
+        self.fill_worker.start()
+
+    def stop_initial_fill(self):
+        if self.fill_worker and self.fill_worker.isRunning():
+            self.fill_worker.cancel()
+            self.btn_fill_stop.setEnabled(False)
+            self.lbl_status.setText(tr("⏹ Останавливаю наполнение — начатые ПК дорабатывают…"))
+
+    def on_initial_fill_done(self, summary: dict):
+        from .setup_ui import fill_summary_text
+        self.btn_fill_stop.hide()
+        self.btn_fill_stop.setEnabled(True)
+        self.btn_scan.setEnabled(True)
+        self.initial_fill = False
+        if summary.get("pcs"):
+            self.active_ad_total = summary["pcs"]
+        self.refresh_dashboard()
+        self.lbl_status.setText(tr(fill_summary_text(summary)))     # после дашборда: он пишет своё «Готово к работе»
 
     # ------------------------------------------------------------------ закрытие
     def closeEvent(self, event):  # noqa: N802

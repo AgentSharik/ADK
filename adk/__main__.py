@@ -53,6 +53,17 @@ def main() -> int:
     app.setQuitOnLastWindowClosed(not config.settings.minimize_to_tray)
     apply_theme(config.settings.design)
 
+    # 3.5.11: первый запуск — спросить, где лежит (или будет лежать) база, ещё до окна входа
+    initial_fill = False
+    from .setup_ui import needs_db_setup
+    if needs_db_setup():
+        from .setup_ui import DbSetupDialog
+        setup = DbSetupDialog()
+        if setup.exec() != QDialog.DialogCode.Accepted:
+            return 0
+        initial_fill = setup.is_new
+        setup.deleteLater()          # settings уже перечитаны — db.* открывают соединение по новому db_path
+
     try:
         db.init_db()
     except Exception as exc:  # noqa: BLE001
@@ -87,7 +98,7 @@ def main() -> int:
         dlg.deleteLater()
         break
 
-    window = ADApp(user, password)
+    window = ADApp(user, password, initial_fill=initial_fill)
     window.show()
     # справка по роли показывается самим окном — после того, как роль определена по группам AD
     # (ADApp.resolve_access → show_role_welcome), а не до проверки, иначе она могла описать не ту роль

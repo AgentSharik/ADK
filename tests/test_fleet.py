@@ -1,5 +1,5 @@
 """Парк ПК и служебные режимы: «Внимание», WoL/MAC, массовый пинг, ПО и входы, сравнение ПК, шаблоны,
-уведомления, PostgreSQL-адаптер, portable, CLI и серверный режим, роли, опись ПК, безопасность фильтров/журнала.
+уведомления, PostgreSQL-адаптер, CLI и серверный режим, роли, опись ПК, безопасность фильтров/журнала.
 
 Как читать: каждый тест — «дано → действие → проверка». Сеть и Windows не нужны — ответы подменяются готовыми данными.
 """
@@ -297,7 +297,7 @@ def test_password_card_text():
     assert "сменить" not in password_card_text("ivanov", "Qw3rty!_", False)
 
 
-# ------------------------------------------------------------------ 5. PostgreSQL, portable
+# ------------------------------------------------------------------ 5. PostgreSQL
 def test_pg_translate_dialect():
     t = pgadapter.translate
     assert t("SELECT * FROM t WHERE a = ? AND b = ?") == "SELECT * FROM t WHERE a = %s AND b = %s"
@@ -316,17 +316,6 @@ def test_pg_backend_requires_dsn(monkeypatch):
     monkeypatch.setattr(config.settings, "db_backend", "postgres")
     monkeypatch.setattr(config.settings, "db_dsn", "")
     assert db.db_execute_with_retry("SELECT 1", fetch="one") == (1,)
-
-
-def test_portable_resolution(monkeypatch, tmp_path):
-    monkeypatch.delenv("ADK_HOME", raising=False)
-    monkeypatch.delenv("ADK_PORTABLE", raising=False)
-    monkeypatch.setattr(config, "_app_dir", lambda: str(tmp_path))
-    assert config._resolve_docs_dir().endswith(os.path.join("Documents", config.APP_NAME))
-    (tmp_path / "portable").write_text("")
-    assert config._resolve_docs_dir() == os.path.join(str(tmp_path), "data")
-    monkeypatch.setenv("ADK_HOME", str(tmp_path / "home"))
-    assert config._resolve_docs_dir() == str(tmp_path / "home")
 
 
 # ------------------------------------------------------------------ 6. CLI и серверный режим

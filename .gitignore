@@ -25,3 +25,5 @@ extras/demo/frames*/
 Documents/
 uploads/
 extras/data/uploads/
+*.db-wal
+*.db-shm
