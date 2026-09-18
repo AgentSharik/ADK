@@ -24,13 +24,12 @@ from .workers import FreeIPWorker
 CELL = {
     # подпись честно говорит, ОТКУДА взят факт: сканер ADK (данные последнего опроса парка), DHCP-сервер,
     # ответ на ping прямо сейчас, запись в DNS. «Свободен» = ни один источник адрес не знает.
-    "inventory": ("ПК из последнего скана парка", "info"),
+    "inventory": ("занят компьютером из парка", "info"),
     "lease": ("аренда DHCP (активная)", "warning"),
     "reserved": ("резервирование DHCP", "warning"),
     "alive": ("отвечает на ping сейчас", "danger"),
     "ptr": ("есть имя в DNS (PTR)", "ptr"),
     "free": ("свободен — нигде не числится", "success"),
-    "found": ("выбранный результат", "accent"),
 }
 DHCP_ICON = {"free": "✅", "excluded": "✅", "outside": "ℹ️", "n/a": "⚠️", "unavailable": "⚠️"}
 
@@ -210,7 +209,9 @@ class FreeIPDialog(FramelessDialog):
         legend.setVerticalSpacing(4)
         legend.setVerticalSpacing(7)
         # пункты DHCP показываются только когда сверка настроена ([Scanner] dhcp_servers) — иначе они лишь путают
-        keys = ("free", "lease", "reserved", "alive", "ptr") if settings.dhcp_servers else ("free", "alive", "ptr")
+        # 3.5.10: «inventory» (синие ячейки — ПК из последнего скана парка) раньше в легенде отсутствовал
+        keys = (("free", "inventory", "lease", "reserved", "alive", "ptr") if settings.dhcp_servers
+                else ("free", "inventory", "alive", "ptr"))
         for i, key in enumerate(keys):
             sw = QLabel()
             sw.setFixedSize(16, 16)
@@ -370,9 +371,15 @@ class FreeIPDialog(FramelessDialog):
         self.btn_stop.setEnabled(False)
 
     def next_(self):
-        if self.found:
-            self.start.setValue(min(254, int(self.found.rsplit(".", 1)[1]) + 1))
-            self.search()
+        if not self.found:
+            return
+        self.start.setValue(min(254, int(self.found.rsplit(".", 1)[1]) + 1))
+        if self.worker and self.worker.isRunning():
+            # предыдущий поток ещё дожидается начатых проверок — стартуем сразу, как он закончит (а не молча игнорируем клик)
+            self.worker.finished.connect(self.search, Qt.ConnectionType.SingleShotConnection)
+            self.status.setText("⏳ Завершаю предыдущую проверку…")
+            return
+        self.search()
 
     def on_done(self, ip: str):
         self.btn_start.setEnabled(True)

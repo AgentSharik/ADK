@@ -1099,7 +1099,7 @@ class UserCardDialog(FramelessDialog):
                f"-FilePath '{os.path.join(folder, self.login)}.pst'")
         try:
             res = subprocess.run(["powershell", "-NoProfile", "-Command", cmd], capture_output=True,
-                                 text=True, timeout=180, creationflags=CREATE_NO_WINDOW)
+                                 text=True, encoding="utf-8", errors="replace", timeout=180, creationflags=CREATE_NO_WINDOW)
         except (subprocess.SubprocessError, OSError) as exc:
             return f"PST: не удалось запустить экспорт ({exc})"
         if res.returncode != 0 or res.stderr.strip():
@@ -1461,7 +1461,26 @@ class PrintersDialog(FramelessDialog):
         self.btn_csv = QPushButton("📤 CSV")
         self.btn_csv.clicked.connect(self.export_csv)
         top.addWidget(self.btn_csv)
+        # 3.5.10: живой опрос парка — принтеры берутся с самих ПК (WinRM/WMI), CSV и база не нужны
+        self.btn_live = QPushButton("📡 Опросить парк")
+        self.btn_live.setObjectName("btnPrimary")
+        self.btn_live.setToolTip("Спросить каждый ПК в сети, какие принтеры у него установлены прямо сейчас.\n"
+                                 "Работает без инвентарных CSV; ничего не записывает, пока не нажать «Сохранить в базу».")
+        self.btn_live.clicked.connect(self.poll_live)
+        top.addWidget(self.btn_live)
+        self.btn_stop = QPushButton("⏹ Стоп")
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.clicked.connect(self.stop_live)
+        top.addWidget(self.btn_stop)
+        self.btn_save = QPushButton("💾 Сохранить в базу")
+        self.btn_save.setToolTip("Записать результат живого опроса в кэш принтеров — по нему работает поиск по IP/модели")
+        self.btn_save.setEnabled(False)
+        self.btn_save.clicked.connect(self.save_live)
+        top.addWidget(self.btn_save)
         self.body.addLayout(top)
+        self.live_results: dict[str, dict] = {}
+        self.live_rows: list[dict] | None = None
+        self.worker = None
 
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(["Принтер", "Тип", "IP", "ПК", "В сети", "Компьютеры"])
@@ -1486,7 +1505,7 @@ class PrintersDialog(FramelessDialog):
         q = self.text.text().strip().casefold()
         kind = self.kind.currentData() or ""
         try:
-            data = db.printer_summary()
+            data = self.live_rows if self.live_rows is not None else db.printer_summary()
         except Exception as exc:  # noqa: BLE001
             self.status.setText(f"⚠️ {exc}")
             return
@@ -1506,7 +1525,68 @@ class PrintersDialog(FramelessDialog):
         self.table.setSortingEnabled(True)
         fit_columns(self.table, max_width=420)
         total_pcs = sum(r["pcs"] for r in self.rows)
-        self.status.setText(f"Принтеров: {len(self.rows)} · подключений: {total_pcs}")
+        src = "живой опрос" if self.live_rows is not None else "сохранённые данные"
+        if not self.rows and self.live_rows is None:
+            self.status.setText("В базе пока нет принтеров — нажмите «Опросить парк», чтобы собрать их с ПК прямо сейчас")
+        else:
+            self.status.setText(f"Принтеров: {len(self.rows)} · подключений: {total_pcs} · {src}")
+
+    # --- живой опрос парка (3.5.10)
+    def poll_live(self):
+        from . import fleetpoll
+        try:
+            hosts = fleetpoll.fleet_hosts(self.app.get_conn)
+        except Exception as exc:  # noqa: BLE001
+            self.status.setText(f"⚠️ Список ПК не получен: {exc}")
+            return
+        if not hosts:
+            self.status.setText("⚠️ ПК для опроса не найдены: инвентарь пуст и AD не вернул рабочих станций (проверьте host_pattern)")
+            return
+        self.btn_live.setEnabled(False)
+        self.btn_stop.setEnabled(True)
+        self.btn_save.setEnabled(False)
+        self.live_results = {}
+        self.status.setText(f"⏳ Опрашиваю {len(hosts)} ПК…")
+        self.worker = fleetpoll.FleetPollWorker(hosts, fleetpoll.printers_live, parent=self)
+        self.worker.progress.connect(lambda i, n, h: self.status.setText(f"⏳ Опрошено {i} из {n} ПК · {h}"))
+        self.worker.finished_poll.connect(self._live_done)
+        self.worker.error.connect(lambda m: (self._live_done({}), self.status.setText(f"⚠️ {m}")))
+        self.worker.start()
+
+    def stop_live(self):
+        if self.worker:
+            self.worker.cancel()
+        self.btn_stop.setEnabled(False)
+        self.status.setText("⏹ Останавливаю — начатые опросы доработают…")
+
+    def _live_done(self, results: dict):
+        from . import fleetpoll
+        self.btn_live.setEnabled(True)
+        self.btn_stop.setEnabled(False)
+        self.live_results = results
+        if results:
+            self.live_rows = fleetpoll.group_printers(results)
+            self.btn_save.setEnabled(bool(self.live_rows))
+        self.reload()
+        if results:
+            sm = fleetpoll.summarize(results)
+            self.status.setText(f"{self.status.text()} · ответили {sm['ok']} ПК, не в сети {sm['skipped']}, "
+                                f"не удалось опросить {sm['failed']}")
+
+    def save_live(self):
+        n = 0
+        for comp, r in self.live_results.items():
+            if "printers" in r:
+                db.replace_printers(comp, r["printers"])
+                n += 1
+        db.log_action(getattr(self.app, "admin_name", ""), "printers_fleet", "fleet", f"{n} ПК")
+        self.live_rows = None
+        self.reload()
+        self.status.setText(f"✅ Сохранено в базу: принтеры {n} ПК. Теперь они находятся поиском по IP и модели.")
+
+    def on_dialog_done(self):
+        if self.worker:
+            self.worker.cancel()
 
     def selected(self) -> dict | None:
         r = self.table.currentRow()

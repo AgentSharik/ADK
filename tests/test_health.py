@@ -443,7 +443,7 @@ def test_drive_picker_lists_all_volumes_and_map_uses_chosen_one(qapp, monkeypatc
     titles = [a.text() for a in hd.cb_drive.menu.actions()]
     assert any("D:" in t and "Data" in t and "402" in t for t in titles)     # подсказка «сколько свободно»
     called = []
-    monkeypatch.setattr(health, "get_disk_usage", lambda comp, drive, top: called.append(drive) or {"error": "стоп"})
+    monkeypatch.setattr(health, "get_disk_usage", lambda comp, drive, top, cancelled=None: called.append(drive) or {"error": "стоп"})
     hd.cb_drive.setCurrentText("D:")
     assert "D:" in hd.cb_drive.text()
     hd.load_usage()

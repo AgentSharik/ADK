@@ -74,7 +74,10 @@ pw_ok = all(len(p) == 12 and any(c.islower() for c in p) and any(c.isupper() for
 check("generate_secure_password: политика на 300 образцах", pw_ok)
 check("describe_ldap_error: 52e", "пароль" in ad.describe_ldap_error(Exception("80090308: LdapErr: DSID-0C09042A, comment: AcceptSecurityContext error, data 52e")))
 check("describe_ldap_error: 775 lockout", "заблокирована" in ad.describe_ldap_error(Exception("... data 775, v3839")))
-check("describe_ldap_error: socket", config.settings.dc_host in ad.describe_ldap_error(Exception("socket connection error while opening")))
+from ldap3.core.exceptions import LDAPSocketOpenError
+check("describe_ldap_error: socket", config.settings.dc_host in ad.describe_ldap_error(LDAPSocketOpenError("socket connection error while opening")))
+# 3.5.10: «timeout» в ошибке опроса ПК (не LDAP) — не про контроллер домена
+check("describe_ldap_error: не-LDAP timeout как есть", ad.describe_ldap_error(RuntimeError("WS-1: timeout")) == "WS-1: timeout")
 check("describe_ldap_error: cert", "tls_validate" in ad.describe_ldap_error(Exception("[SSL: CERTIFICATE_VERIFY_FAILED]")))
 check("escape_filter_chars", ad.escape_filter_chars("a*(b)\\c") == "a\\2a\\28b\\29\\5cc", ad.escape_filter_chars("a*(b)\\c"))
 

@@ -1,6 +1,6 @@
 # ADK — Active Directory Kit · руководство для продолжения работы в новом чате
 
-Актуально на 2026-09-17. Версия проекта **3.5.9**, тестов **258**, e2e 46 + 82 + 45 + 41, стенд `tests/bench/` (1500 ПК). Раздел О — обязательный регламент работы.
+Актуально на 2026-09-18. Версия проекта **3.5.10**, тестов **278**, e2e 46 + 83 + 45 + 41, стенд `tests/bench/` (1500 ПК). Раздел О — обязательный регламент работы.
 Внутренний документ: лежит в `extras/`, не входит в zip и не упоминается в README/CHANGELOG.
 Прочитать целиком до первой правки — здесь всё от А до Я, включая производство видео и чистку истории git.
 
@@ -109,7 +109,9 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
 | `adk/icons.py` | контурные SVG-иконки: `PATHS` (в т.ч. `printer`, `printer.network/usb/shared`, `puzzlepiece`), `install()` (эмодзи → иконка автоматически), `icon(name, role=)`, `refresh()`, `strip()` |
 | `adk/widgets.py` | `FramelessDialog`, `MessageBox`, `BadgeButton`, `FlowLayout`, `DrivePicker`, `apply_theme`, `app_palette`, `run_in_background`, `retheme` |
 | `adk/health_ui.py` / `health.py` | «Здоровье ПК»: Обзор, S.M.A.R.T., Карта диска (`Treemap`, `show_usage`, `show_hogs` — подпись «На компьютере …, диск X:»), Ошибки, Диагностика (заглушка) |
-| `adk/freeip_ui.py` / `dhcp.py` / `workers.py` | «Свободный IP»: `SubnetMap`, карточка результата, `FreeIPWorker._reason/verdict` |
+| `adk/freeip_ui.py` / `dhcp.py` / `workers.py` | «Свободный IP»: `SubnetMap`, карточка результата, `FreeIPWorker._reason/verdict/run` (скользящее окно `WINDOW = 48`, `_ptr_exists` с таймаутом) |
+| `adk/psrun.py` (3.5.10) | **единственный** способ запускать PowerShell: `run(script, timeout, cancelled) → PsResult(ok, stdout, error)`; `wrap` (прелюдия UTF-8 + try/catch → JSON-ошибка), `encode` (`-EncodedCommand`, длинный скрипт → `-File`), `explain_error` (`_HINTS`: WinRM/RPC/доступ/Kerberos/DNS/таймаут → причина + что сделать), `interpret`. На не-Windows → `ok=False`, «Опрос доступен только с Windows». Новый вызов PowerShell — только через него, `subprocess` напрямую нельзя |
+| `adk/fleetpoll.py` (3.5.10) | опрос парка без базы: `fleet_hosts` (инвентарь → рабочие станции AD), `printers_live`/`software_live` (выключенные пропускаются по TCP 445/ICMP), `poll_fleet` (пул потоков, прогресс, отмена), `group_printers`, `summarize`, `FleetPollWorker` (QThread). Используют `dialogs.PrintersDialog.poll_live/stop_live/save_live` и `fleet.SoftwareDialog.poll_fleet/_fleet_done` |
 | `adk/pingui.py` | окно «Пинг» (`PingWorker`, фильтры `filter_btns`, `toggle_pause`, `copy_report`) — **ожидается полная переработка, автор ещё не описал** |
 | `adk/fleet.py`, `tools.py` | ПО, сравнение ПК, массовый пинг; группы как у…, заметки, история, массовые операции |
 | `adk/inventory_ui.py`, `attention_ui.py`, `colorpicker.py` | опись Excel, «Внимание», свой выбор цвета |
@@ -156,6 +158,17 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
   снизу нет места); в видео `_demo_pos` меню брать из настоящего `menu.pos()`, а не считать «под кнопкой». `DrivePicker` —
   таблетка «иконка тома · буква · стрелка» (LeftToRight, `menu-indicator` со стрелкой темы). `InventoryWorker` после LDAP
   перепроверяет `company` — в опись только выбранная организация; в демо `_INV_ROWS` строить по отфильтрованным записям.
+- **3.5.10 (партия 29 — проверка на реальном домене):** любой удалённый опрос ПК — только через `adk/psrun.py` (иначе
+  снова «нет ответа» без причины: обрезанный stderr, `SilentlyContinue`, cp866). Ошибка опроса должна говорить **что сделать**
+  (WinRM/RPC/права). Архив — **полгода** (`ARCHIVE_DAYS`), правило одно для всех ПК: недавно был в сети → показывать без
+  «Архивы». Опись и поиск выбирают ПК сотрудника **одним и тем же** способом (`pick_computer`). Поиск по IP: если в базе
+  никого — проверить сам адрес и, если это принтер, показать его с честной пометкой «в базе не числится» (никогда не
+  выдавать компьютер за принтер). Принтеры/ПО парка должны собираться вживую **без базы и CSV**; живой опрос базу не пишет,
+  сохранение — отдельной кнопкой. Free IP: каждый цвет ячейки — в легенде, «выбранный результат» — не цвет, а рамка; без
+  `dhcp_servers` никаких DHCP-элементов; сканирование скользящим окном (без пачек — иначе рывки). Кнопки окна, иконки меню
+  и попап QCompleter — всегда своими иконками/палитрой темы, системным значкам и наследованию стиля на Windows не верить.
+  Windows-артефакты (чёрные значки, залитый квадрат иконки, белый попап) в offscreen не воспроизводятся — чинить по
+  построению и проверять на реальном домене у автора.
 
 ---
 
@@ -474,7 +487,9 @@ Kyocera, 10.0.9.93, Шевченко+архивы, набор по буквам.
 
 **3.5.9** (партия 28) — надёжный S.M.A.R.T. физических дисков (в стиле CrystalDiskInfo) с порогами изготовителя (`MSStorageDriver_FailurePredictThresholds`) и 6 колонками таблицы, fallback с CIM на WMI/DCOM и с `MSFT_PhysicalDisk` на `Win32_DiskDrive`; ускорение карты диска (однопроходный сбор без повторных обходов профилей и Temp); надёжная привязка ПК в карточке сотрудника и выдаче поиска (`db.get_computer_by_login` опрашивает `pc_inventory`, `pc_history`, `audit_cache`, AD `userWorkstations`); исправление темы и фона подсказок автодополнения (`QCompleter` / `QListView` / `QAbstractItemView`), отображение нейтрального прочерка `—` вместо красного статуса «Не в сети» для сотрудников без назначенного ПК в базе, сохранение контрастности значка диска при выделении в `DrivePicker`, понятная расшифровка ошибки SSO `00002027` (`authMethodNotSupported` при попытке Kerberos без LDAPS). Тестов 258 (+3). Видео 30.
 
-Открытые задачи: **полная переработка окна «Пинг»** (автор ещё не описал желаемое; в 3.5.4 сделан только крупный шрифт); при следующем видео — номер 31.
+**3.5.10** (партия 29 — автор проверил 3.5.9 на реальном домене, 16 скриншотов) — `adk/psrun.py` (единый запуск PowerShell, `-EncodedCommand`, try/catch → JSON, `explain_error`, отмена), все семь вызовов PowerShell переведены на него; ПО и принтеры ПК — WinRM → WMI → удалённый реестр с полем `how`; `adk/fleetpoll.py` + кнопки «📡 Опросить парк сейчас» в «Принтеры парка» и «Установленное ПО» (без базы, инвентарь → AD, сохранение отдельной кнопкой); поиск по IP, которого нет в базе → `netutils.discover_printer` (`probe_printer` → `snmp_get_string` без библиотек, BER вручную, `_SNMP_OIDS`, `port=` для тестов → `_http_title` → PTR), строка принтера с `discovered=True` и инспектор «в базе не числится»; дашборд `show_category` → `_enrich_rows_from_ad`; архив: `db.ARCHIVE_DAYS=180`, `db.parse_ts`, `db.recent_links` (связка текущая, если моложе 180 дней **или** ПК был в сети за 180 дней), `get_computer_by_login` понимает `DOMAIN\login`; опись: `workers.pick_computer` — тот же порядок источников, что и поиск; `TitleBar` — собственные иконки `minus/xmark/square/square.on.square` + `refresh_icons()`; `icons.menu_icon` (Active/Selected-пиксмапы цветом `on_accent`) для всех иконок QMenu/QAction, `QMenu::icon` прозрачный; `ADApp._style_completer` (палитра + QSS попапу QCompleter, при смене темы тоже); Free IP: легенда со всеми цветами (`inventory` = «занят компьютером из парка»), `found` из `CELL` убран, DHCP-элементы только при `dhcp_servers`, `FreeIPWorker.run` — скользящее окно 48 с ответом по первому по порядку свободному, `_ptr_exists` ≤ 1,5 с, «Следующий» ждёт дозавершения через `SingleShotConnection`; `probe_printer` проверяет 7 портов параллельно; `describe_ldap_error` подсказку «Контроллер домена недоступен» даёт только для `LDAPException`/`OSError`; `health_ui` карта диска — «⏹ Стоп» + таймер; сканер и `_export_pst` читают вывод с `errors="replace"`. Тестов 278 (+20, `tests/test_batch28.py`; в `conftest` появилась заглушка `discover_printer → None`, настоящие функции тесты берут через `REAL_DISCOVER/REAL_PROBE`). Видео — 31 (ещё не снято, ≥ 648 с).
+
+Открытые задачи: **полная переработка окна «Пинг»** (автор ещё не описал желаемое; в 3.5.4 сделан только крупный шрифт); при следующем видео — номер 31 (после 3.5.10 видео 30 ещё лежит в `extras/videos/`, `make_demo30.py` в `extras/demo/` — при съёмке 31 удалить с корнями).
 
 ---
 
@@ -494,6 +509,16 @@ Kyocera, 10.0.9.93, Шевченко+архивы, набор по буквам.
   не понимает `<wbr/>`. pyflakes игнорирует `# noqa: F401` — использовать `__all__`.
 - `git show <commit>:extras/demo/make_demoXX.py` для вычищенных файлов не работает — только по хэшу blob через `git cat-file -p`.
 - Реальный `.exe` в песочнице не собрать (это делает CI).
+- (3.5.10) `tests/conftest.py` подменяет `netutils.probe_printer` («всё принтер») и `netutils.discover_printer` (`None`) для
+  всех тестов — иначе поиск по любому IP честно показывает «найденный» принтер и ломает тесты «ничего не найдено».
+  Настоящие функции в тестах берутся до подмены: `REAL_DISCOVER/REAL_PROBE` в `test_batch28.py`. SNMP в тестах — свой
+  UDP-агент на `127.0.0.1` (`_mini_snmp_agent`), `snmp_get_string(..., port=)`.
+- (3.5.10) `describe_ldap_error` даёт «Контроллер домена недоступен» **только** для `LDAPException`/`OSError` — в e2e
+  и тестах передавать `LDAPSocketOpenError`, а не голый `Exception("socket …")`.
+- (3.5.10) `FreeIPWorker` после ответа выставляет `_settled` — начатые проверки завершаются без `host_checked`; поток ещё
+  живёт ≤ 1–2 с, поэтому «Следующий» подписывается на `finished` через `SingleShotConnection`, а не игнорирует клик.
+- (3.5.10) `probe_printer` открывает 7 TCP-соединений параллельно (пул на вызов) — под монкипатчем `socket.create_connection`
+  помнить, что порядок вызовов недетерминирован.
 
 ---
 

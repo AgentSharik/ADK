@@ -7,34 +7,95 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import subprocess
 from datetime import datetime
 
 from . import db
-from .config import CREATE_NO_WINDOW
 from .netutils import is_valid_hostname
 
 log = logging.getLogger(__name__)
 
+# 3.5.10: без Invoke-Command (только WinRM) — читаем реестр удалённо через StdRegProv (DCOM/WMI, работает там же, где
+# работает «Здоровье ПК»), а если и WMI закрыт — через удалённый реестр (служба RemoteRegistry). Первый успешный путь побеждает.
 _PS = r"""
 $ErrorActionPreference = 'Stop'
 $c = '__HOST__'
 $paths = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-$soft = Invoke-Command -ComputerName $c -ScriptBlock {
-  param($paths)
-  foreach ($p in $paths) {
-    Get-ChildItem "HKLM:\$p" -ErrorAction SilentlyContinue | ForEach-Object {
-      $i = Get-ItemProperty $_.PSPath
-      if ($i.DisplayName -and -not $i.SystemComponent) {
-        [pscustomobject]@{ name = $i.DisplayName; version = [string]$i.DisplayVersion; publisher = [string]$i.Publisher; installed = [string]$i.InstallDate }
+$soft = @()
+$how = ''
+$errs = @()
+$HKLM = [uint32]2147483650
+
+# 1. WinRM (быстрее всего и не требует RemoteRegistry)
+try {
+  $soft = @(Invoke-Command -ComputerName $c -ErrorAction Stop -ScriptBlock {
+    param($paths)
+    foreach ($p in $paths) {
+      Get-ChildItem "HKLM:\$p" -ErrorAction SilentlyContinue | ForEach-Object {
+        $i = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+        if ($i.DisplayName -and -not $i.SystemComponent) {
+          [pscustomobject]@{ name = $i.DisplayName; version = [string]$i.DisplayVersion; publisher = [string]$i.Publisher; installed = [string]$i.InstallDate }
+        }
       }
     }
-  }
-} -ArgumentList (,$paths)
-$hot = Get-CimInstance Win32_QuickFixEngineering -ComputerName $c | Sort-Object InstalledOn -Descending | Select-Object -First 15 |
-  ForEach-Object { [pscustomobject]@{ id = $_.HotFixID; desc = $_.Description; installed = if ($_.InstalledOn) { $_.InstalledOn.ToString('yyyy-MM-dd') } else { '' } } }
-[pscustomobject]@{ software = @($soft); hotfixes = @($hot) } | ConvertTo-Json -Depth 4 -Compress
+  } -ArgumentList (,$paths) | Select-Object name, version, publisher, installed)
+  $how = 'WinRM'
+} catch { $errs += ('WinRM: ' + $_.Exception.Message) }
+
+# 2. WMI StdRegProv по DCOM
+if (-not $how) {
+  try {
+    $reg = Get-WmiObject -List -Namespace 'root\default' -ComputerName $c -ErrorAction Stop | Where-Object { $_.Name -eq 'StdRegProv' }
+    if (-not $reg) { throw 'StdRegProv недоступен' }
+    foreach ($p in $paths) {
+      $keys = $reg.EnumKey($HKLM, $p)
+      if ($keys.ReturnValue -ne 0 -or -not $keys.sNames) { continue }
+      foreach ($k in $keys.sNames) {
+        $sub = "$p\$k"
+        $name = ($reg.GetStringValue($HKLM, $sub, 'DisplayName')).sValue
+        if (-not $name) { continue }
+        $sys = ($reg.GetDWORDValue($HKLM, $sub, 'SystemComponent')).uValue
+        if ($sys -eq 1) { continue }
+        $soft += [pscustomobject]@{ name = $name; version = [string]($reg.GetStringValue($HKLM, $sub, 'DisplayVersion')).sValue
+                                    publisher = [string]($reg.GetStringValue($HKLM, $sub, 'Publisher')).sValue
+                                    installed = [string]($reg.GetStringValue($HKLM, $sub, 'InstallDate')).sValue }
+      }
+    }
+    $how = 'WMI'
+  } catch { $errs += ('WMI: ' + $_.Exception.Message) }
+}
+
+# 3. Удалённый реестр (служба RemoteRegistry)
+if (-not $how) {
+  try {
+    $base = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, $c)
+    foreach ($p in $paths) {
+      $k = $base.OpenSubKey($p)
+      if (-not $k) { continue }
+      foreach ($n in $k.GetSubKeyNames()) {
+        $s = $k.OpenSubKey($n)
+        if (-not $s) { continue }
+        $name = $s.GetValue('DisplayName')
+        if (-not $name -or $s.GetValue('SystemComponent') -eq 1) { continue }
+        $soft += [pscustomobject]@{ name = [string]$name; version = [string]$s.GetValue('DisplayVersion'); publisher = [string]$s.GetValue('Publisher'); installed = [string]$s.GetValue('InstallDate') }
+      }
+    }
+    $how = 'RemoteRegistry'
+  } catch { $errs += ('RemoteRegistry: ' + $_.Exception.Message) }
+}
+
+if (-not $how) { throw ("Список ПО не прочитан. " + ($errs -join ' | ')) }
+
+$hot = @()
+try {
+  $hot = @(Get-CimInstance Win32_QuickFixEngineering -ComputerName $c -ErrorAction Stop | Sort-Object InstalledOn -Descending | Select-Object -First 15 |
+    ForEach-Object { [pscustomobject]@{ id = $_.HotFixID; desc = $_.Description; installed = if ($_.InstalledOn) { $_.InstalledOn.ToString('yyyy-MM-dd') } else { '' } } })
+} catch {
+  try {
+    $hot = @(Get-WmiObject Win32_QuickFixEngineering -ComputerName $c -ErrorAction Stop | Sort-Object InstalledOn -Descending | Select-Object -First 15 |
+      ForEach-Object { [pscustomobject]@{ id = $_.HotFixID; desc = $_.Description; installed = if ($_.InstalledOn) { ([datetime]$_.InstalledOn).ToString('yyyy-MM-dd') } else { '' } } })
+  } catch {}
+}
+[pscustomobject]@{ software = @($soft); hotfixes = @($hot); how = $how } | ConvertTo-Json -Depth 4 -Compress
 """
 
 
@@ -56,22 +117,16 @@ def parse_software_json(text: str) -> dict:
     soft.sort(key=lambda s: s["name"].casefold())
     hot = [{"id": h.get("id", ""), "desc": h.get("desc", ""), "installed": h.get("installed", "")} for h in d.get("hotfixes") or [] if h.get("id")]
     hot.sort(key=lambda h: h["installed"], reverse=True)
-    return {"software": soft, "hotfixes": hot}
+    return {"software": soft, "hotfixes": hot, "how": str(d.get("how") or "")}
 
 
-def get_software(host: str, timeout: int = 60) -> dict:
+def get_software(host: str, timeout: int = 90) -> dict:
     if not is_valid_hostname(host):
         return {"error": f"Недопустимое имя узла: {host!r}"}
-    if os.name != "nt":
-        return {"error": "Опрос ПО доступен только с Windows (PowerShell Remoting)"}
-    try:
-        res = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", _PS.replace("__HOST__", host)],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
-                             timeout=timeout, creationflags=CREATE_NO_WINDOW)
-    except (subprocess.SubprocessError, OSError) as exc:
-        return {"error": f"PowerShell: {exc}"}
-    if res.returncode != 0 or not res.stdout.strip():
-        return {"error": (res.stderr or "нет ответа").strip().splitlines()[0][:200]}
+    from . import psrun
+    res = psrun.run(_PS.replace("__HOST__", host), timeout=timeout)
+    if not res.ok:
+        return {"error": res.error}
     try:
         data = parse_software_json(res.stdout)
     except (ValueError, KeyError) as exc:

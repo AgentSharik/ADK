@@ -10,7 +10,7 @@ from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QtMsgType, p
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QLabel, QMenu, QLayout, QLineEdit, QMainWindow, QPushButton, QSizeGrip,
-    QStyle, QVBoxLayout, QWidget,
+    QVBoxLayout, QWidget,
 )
 
 from .theme import Palette
@@ -103,7 +103,6 @@ class TitleBar(QWidget):
         self.label.setObjectName("titleLabel")
         lay.addWidget(self.label)
         lay.addStretch()
-        style = self.style()
         if is_main:
             from .tray import asset_path
             logo_path = asset_path("logo.png")
@@ -118,9 +117,9 @@ class TitleBar(QWidget):
             brand.setToolTip("ADK — Active Directory Kit")
             lay.addWidget(brand)
             lay.addSpacing(16)
-            # системные иконки стиля вместо символов 🗕🗖 — они есть в любом шрифте/ОС, квадратиков не будет
+            # 3.5.10: свои контурные иконки в цвете текста темы — системные SP_TitleBar* на Windows чёрные и на тёмных
+            # темах кнопки просто не видно (перекрашиваются при смене темы в _sync_max_icon/refresh_icons)
             self.btn_min = QPushButton()
-            self.btn_min.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_TitleBarMinButton))
             self.btn_min.setToolTip("Свернуть")
             self.btn_min.clicked.connect(window.showMinimized)
             self.btn_max = QPushButton()
@@ -132,21 +131,35 @@ class TitleBar(QWidget):
                 lay.addWidget(b)
             self._sync_max_icon()
         close = QPushButton()
-        close.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_TitleBarCloseButton))
         close.setObjectName("btnClose")
         close.setProperty("class", "winBtn")
         close.setFixedSize(34, 28)
         close.setToolTip("Закрыть")
         close.clicked.connect(window.close)
         lay.addWidget(close)
+        self.btn_close = close
+        self.refresh_icons()
+
+    def refresh_icons(self) -> None:
+        """Иконки кнопок окна в цвете текущей темы (вызывается при создании и после смены темы)."""
+        from . import icons
+        from PyQt6.QtCore import QSize
+        pal = app_palette()
+        for b, name in ((getattr(self, "btn_min", None), "minus"), (getattr(self, "btn_close", None), "xmark")):
+            if b is not None:
+                b.setIcon(icons.icon(name, color=pal.text))
+                b.setIconSize(QSize(16, 16))
+        self._sync_max_icon()
 
     # ------------------------------------------------------------------ окно: развернуть / восстановить / во весь экран
     def _sync_max_icon(self):
-        if not self.is_main:
+        if not self.is_main or not hasattr(self, "btn_max"):
             return
+        from . import icons
+        from PyQt6.QtCore import QSize
         maximized = self.win.isMaximized() or self.win.isFullScreen()
-        self.btn_max.setIcon(self.style().standardIcon(
-            QStyle.StandardPixmap.SP_TitleBarNormalButton if maximized else QStyle.StandardPixmap.SP_TitleBarMaxButton))
+        self.btn_max.setIcon(icons.icon("square.on.square" if maximized else "square", color=app_palette().text))
+        self.btn_max.setIconSize(QSize(16, 16))
 
     def toggle_max(self):
         if self.win.isFullScreen() or self.win.isMaximized():
@@ -630,6 +643,8 @@ def apply_theme(design: dict) -> None:
         icons.refresh(w)
         if old_map:
             retheme(w, old_map, new_pal.color_map())   # 3.4.1: inline-цвета открытых окон переходят на новую тему
+        for tb in w.findChildren(TitleBar):
+            tb.refresh_icons()                          # 3.5.10: кнопки окна — в цвете новой темы
     _LAST_PALETTE["map"] = new_pal.color_map()
 
 
@@ -743,7 +758,7 @@ class DrivePicker(QPushButton):
         head = self.menu.addAction("Том для карты:")
         head.setEnabled(False)
         for drive, hint in self._items:
-            act = self.menu.addAction(icons.icon("internaldrive", role="text"),
+            act = self.menu.addAction(icons.menu_icon("internaldrive"),
                                       f"{drive}$" + (f"    {hint}" if hint else ""))
             act.triggered.connect(lambda _c=False, d=drive: self.setCurrentText(d))
         if not self._items:

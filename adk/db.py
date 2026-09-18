@@ -7,7 +7,7 @@ import os
 import re
 import sqlite3
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Iterable, Sequence
 
 from .config import DB_RETRY_ATTEMPTS, DB_RETRY_DELAY_SEC, settings
@@ -253,8 +253,10 @@ def get_computer_by_login(login: str) -> str:
         ("SELECT computer_name FROM pc_inventory WHERE LOWER(current_user) = ? OR LOWER(current_user) LIKE ? OR LOWER(current_user) LIKE ? ORDER BY is_online DESC, last_checked DESC",
          (l_clean, f"%\\{l_clean}", f"{l_clean}@%")),
         ("SELECT computer_name FROM pc_mapping WHERE LOWER(login) = ?", (l_clean,)),
-        ("SELECT computer_name FROM audit_cache WHERE login = ? ORDER BY timestamp DESC", (l_clean,)),
-        ("SELECT computer_name FROM pc_history WHERE LOWER(login) = ? ORDER BY last_seen DESC", (l_clean,)),
+        ("SELECT computer_name FROM pc_history WHERE LOWER(login) = ? OR LOWER(login) LIKE ? ORDER BY last_seen DESC",
+         (l_clean, f"%\\{l_clean}")),
+        ("SELECT computer_name FROM audit_cache WHERE LOWER(login) = ? OR LOWER(login) LIKE ? ORDER BY timestamp DESC",
+         (l_clean, f"%\\{l_clean}")),
     ):
         row = db_execute_with_retry(sql, args, fetch="one")
         if row and row[0]:
@@ -357,6 +359,62 @@ def load_inventory_maps() -> tuple[dict, dict, dict]:
         for login, comp in conn.execute("SELECT login, computer_name FROM pc_mapping"):
             pcm[normalize_login(login)] = clean_computer_name(comp)
     return inv, perm, pcm
+
+
+ARCHIVE_DAYS = 180   # 3.5.10: связка «пользователь ↔ ПК» считается текущей, пока ей меньше полугода
+
+
+def parse_ts(text: str | None) -> "datetime | None":
+    """Дата из текстовых полей БД/журналов: ISO «2026-09-04 10:00:00», «04.09.2026 10:00», «04.09.2026»; иначе None."""
+    t = (text or "").strip()
+    if not t:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
+                "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(t[:len(datetime.now().strftime(fmt))], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def recent_links(days: int = ARCHIVE_DAYS, now: "datetime | None" = None) -> dict[str, dict[str, str]]:
+    """Связки пользователь → {ПК: дата}, которые ещё **не архив** (``pc_history`` + ``audit_cache``).
+
+    Правило одно для всех ПК: связка текущая, если её видели за последние ``days`` дней **или** сам ПК был в сети
+    за этот срок (``pc_inventory.last_seen_online``). Такие ПК показываются в выдаче без галочки «Архивы»;
+    всё, что старше, — только с ней. Ключи — нормализованный логин и ФИО в нижнем регистре (в журналах бывает
+    и то и другое).
+    """
+    cutoff = (now or datetime.now()) - timedelta(days=days)
+    out: dict[str, dict[str, str]] = {}
+
+    with contextlib.closing(get_db_connection()) as conn:
+        alive: dict[str, str] = {}
+        for comp, seen in conn.execute("SELECT computer_name, last_seen_online FROM pc_inventory"):
+            dt = parse_ts(seen)
+            if dt and dt >= cutoff:
+                alive[clean_computer_name(comp)] = seen
+
+        def add(key: str, comp: str, when: str) -> None:
+            comp = clean_computer_name(comp)
+            if not key or not comp:
+                return
+            dt = parse_ts(when)
+            if not ((dt and dt >= cutoff) or comp in alive):
+                return
+            when = when if dt else alive.get(comp, "")
+            cur = out.setdefault(key, {})
+            if comp not in cur or (cur[comp] or "") < when:
+                cur[comp] = when
+
+        for comp, login, seen in conn.execute("SELECT computer_name, login, MAX(last_seen) FROM pc_history "
+                                              "WHERE login != '' GROUP BY computer_name, login"):
+            add(normalize_login(login), comp, seen or "")
+        for login, fio, comp, ts in conn.execute("SELECT login, full_name, computer_name, timestamp FROM audit_cache"):
+            add(normalize_login(login or ""), comp, ts or "")
+            add((fio or "").lower().strip(), comp, ts or "")
+    return out
 
 
 def load_audit_map() -> dict[str, list[dict]]:

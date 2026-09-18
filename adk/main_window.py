@@ -8,7 +8,7 @@ import subprocess
 import time
 
 from PyQt6.QtCore import QRectF, QSettings, QSize, Qt, QTimer
-from PyQt6.QtGui import QAction, QColor, QCursor, QFont, QKeySequence, QPainter, QPen, QShortcut
+from PyQt6.QtGui import QAction, QColor, QCursor, QFont, QKeySequence, QPainter, QPalette, QPen, QShortcut
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QCompleter, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView,
     QLabel, QLineEdit, QMenu, QPushButton, QScrollArea, QSizePolicy, QSplitter, QStackedWidget, QStyle, QStyledItemDelegate,
@@ -340,6 +340,7 @@ class ADApp(FramelessMainWindow):
         self.completer.setMaxVisibleItems(8)
         self.completer.activated.connect(lambda _: QTimer.singleShot(0, self.start_search))
         self.search_input.setCompleter(self.completer)
+        self._style_completer()
         self.search_input.textChanged.connect(self.on_text_changed)
         self.search_input.returnPressed.connect(self.start_search)
         btn_search = QPushButton(tr("Найти"))
@@ -686,7 +687,31 @@ class ADApp(FramelessMainWindow):
             lay.addWidget(x)
         return card
 
+    def _style_completer(self) -> None:
+        """3.5.10: список подсказок — это отдельное всплывающее окно (Qt::Popup); на Windows оно не всегда наследует
+        стиль приложения и появлялось белой полосой с невидимым текстом. Красим его напрямую: палитра + свой QSS."""
+        pop = self.completer.popup()
+        if pop is None:
+            return
+        pal = app_palette()
+        pop.setObjectName("completerPopup")
+        pop.setAutoFillBackground(True)
+        qp = pop.palette()
+        for role, color in ((QPalette.ColorRole.Base, pal.card), (QPalette.ColorRole.Window, pal.card),
+                            (QPalette.ColorRole.Text, pal.text), (QPalette.ColorRole.WindowText, pal.text),
+                            (QPalette.ColorRole.Highlight, pal.selection), (QPalette.ColorRole.HighlightedText, pal.text)):
+            qp.setColor(role, QColor(color))
+        pop.setPalette(qp)
+        pop.viewport().setPalette(qp)
+        pop.setStyleSheet(
+            f"QListView#completerPopup {{ background-color: {pal.card}; color: {pal.text}; border: 1px solid {pal.border}; "
+            f"border-radius: 8px; padding: 4px; outline: none; font-size: {settings.design['font_size']}pt; }}"
+            f"QListView#completerPopup::item {{ padding: 6px 10px; border-radius: 4px; color: {pal.text}; }}"
+            f"QListView#completerPopup::item:hover, QListView#completerPopup::item:selected "
+            f"{{ background-color: {pal.selection}; color: {pal.text}; }}")
+
     def on_theme_changed(self):
+        self._style_completer()
         self.table.verticalHeader().setDefaultSectionSize(max(36, int(settings.design["font_size"] * 3.2)))
         self.refresh_dashboard()
         if self.results:
@@ -715,7 +740,55 @@ class ADApp(FramelessMainWindow):
         self.results = rows
         self.stack.setCurrentIndex(1)
         self.fill_table(rows)
-        self.lbl_status.setText(f"Компьютеров {tag}: {len(rows)}")
+        self.lbl_status.setText(f"Компьютеров {tag}: {len(rows)} · подтягиваю карточки из AD…")
+        self._enrich_rows_from_ad(rows, tag)
+
+    def _enrich_rows_from_ad(self, rows: list[dict], tag: str) -> None:
+        """3.5.10: строки категории дашборда получают те же данные, что и результат поиска (ФИО, телефоны, отдел,
+        учётка) — одним LDAP-запросом по всем логинам, а не по клику на каждую строку."""
+        logins = sorted({db.normalize_login(r["login"]) for r in rows if r.get("login") and r["login"] != "—"})
+        if not logins:
+            self.lbl_status.setText(f"Компьютеров {tag}: {len(rows)}")
+            return
+
+        def work():
+            found: dict[str, object] = {}
+            c = self.get_conn()
+            try:
+                for i in range(0, len(logins), 100):     # LDAP-фильтр не резиновый — порциями по 100 логинов
+                    chunk = logins[i:i + 100]
+                    flt = "(&(objectCategory=person)(objectClass=user)(|" + "".join(
+                        f"(sAMAccountName={ad.escape_filter_chars(l)})" for l in chunk) + "))"
+                    for e in ad.paged_search(c, flt, ad.USER_ATTRS):
+                        found[db.normalize_login(ad.get_ad_value(e, "sAMAccountName"))] = e
+            finally:
+                c.unbind()
+            return found
+
+        def done(found: dict):
+            if self.results is not rows:
+                return                                   # пользователь уже ушёл в другой поиск
+            for r in rows:
+                e = found.get(db.normalize_login(r.get("login") or ""))
+                if e is None:
+                    continue
+                fio_full = ad.get_full_fio(e, r["login"])
+                badge_text, badge_kind = ad.account_badge(e)
+                r.update(entry=e, full_fio=fio_full, fio=ad.short_fio(fio_full), is_disabled=ad.is_disabled(e),
+                         account_text=badge_text, account_kind=badge_kind, _ldap_loaded=True,
+                         title=ad.get_ad_value(e, "title"), company=ad.get_ad_value(e, "company"),
+                         dept=ad.get_ad_value(e, "department"), mail=ad.get_ad_value(e, "mail"),
+                         phone=ad.get_ad_value(e, "telephoneNumber"), ip_phone=ad.get_ad_value(e, "ipPhone"),
+                         address=ad.get_ad_value(e, "streetAddress"),
+                         office=ad.get_ad_value(e, "physicalDeliveryOfficeName"))
+            sel = self.selected()
+            self.fill_table(rows)
+            if sel is not None and sel in rows:
+                self._shown = None
+                self.select_row(rows.index(sel))
+            self.lbl_status.setText(f"Компьютеров {tag}: {len(rows)}")
+
+        run_in_background(self, work, done, lambda m: self.lbl_status.setText(f"Компьютеров {tag}: {len(rows)} · AD: {m}"))
 
     # ------------------------------------------------------------------ поиск
     def on_text_changed(self, text: str):
@@ -796,9 +869,11 @@ class ADApp(FramelessMainWindow):
             if not ((u.get("printer") or {}).get("ip")):
                 return StatusItem("—", "checking")  # USB/локальный принтер: сетевого статуса у него нет (3.5.6)
             return StatusItem("● В сети" if u.get("is_online") else "● Не в сети", "online" if u.get("is_online") else "offline")
-        comp = (u.get("computer_name") or "").strip()
+        # 3.5.10: в строках поиска ПК лежит в ключе «comp», а IP без ПК = «Не найден» — раньше проверялись другие ключи,
+        # и у сотрудника без ПК горело красное «Не в сети» вместо нейтрального прочерка
+        comp = (u.get("comp") or u.get("computer_name") or "").strip()
         ip = (u.get("ip_address") or u.get("ip") or "").strip()
-        if (not comp or comp == "—") and not ip:
+        if (not comp or comp == "—") and ip in ("", "Не найден", "Не указан", "—"):
             return StatusItem("—", "checking")      # У сотрудника нет ПК и IP — сети нет, нейтральный прочерк
         return StatusItem("● В сети" if u.get("is_online") else "● Не в сети", "online" if u.get("is_online") else "offline")
 
@@ -1052,7 +1127,12 @@ class ADApp(FramelessMainWindow):
         self.btn_printer_ping.setVisible(bool(ip))
         self.btn_printer_web.setVisible(bool(ip))
         self.pvals["kind"].setText(kind)
-        self.pvals["port"].setText(g.get("port") or "—")
+        if g.get("discovered"):
+            # 3.5.10: принтер найден прямо по адресу (в базе его не было) — честно говорим откуда модель и имя узла
+            self.pvals["port"].setText((f"узел {g['port']} · " if g.get("port") else "") + f"модель: {g.get('source', '')}")
+            self.lbl_sub.setText(f"Принтер · {kind} · в базе не числится — найден по адресу")
+        else:
+            self.pvals["port"].setText(g.get("port") or "—")
         pr = u.get("probe")
         if not ip:
             self.pvals["probe"].setText("не сетевой — проверка по IP не применима")
@@ -1074,7 +1154,10 @@ class ADApp(FramelessMainWindow):
             self.pvals["probe"].setText(f"не проверено — {pr.get('evidence', 'узел не отвечает')}")
             self.pvals["probe"].setStyleSheet(f"color: {pal.warning[0]}; font-weight: bold;")
         pcs = g.get("pcs") or []
-        self.pvals["count"].setText(f"{len(pcs)} (в сети: {sum(1 for x in pcs if x['is_online'])})")
+        if g.get("discovered"):
+            self.pvals["count"].setText("неизвестно — ПК с этим принтером в инвентаре нет (опросите парк в «Принтеры парка»)")
+        else:
+            self.pvals["count"].setText(f"{len(pcs)} (в сети: {sum(1 for x in pcs if x['is_online'])})")
         self.printer_pcs.setRowCount(len(pcs))
         for r, x in enumerate(pcs):
             self.printer_pcs.setItem(r, 0, QTableWidgetItem(x["comp"]))
