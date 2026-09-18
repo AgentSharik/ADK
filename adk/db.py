@@ -112,15 +112,12 @@ def is_network_path(path: str) -> bool:
 
 
 def get_db_connection(path: str | None = None):
-    """SQLite; ``[Paths] db_backend = postgres`` → общая БД отдела через :mod:`adk.pgadapter`.
+    """SQLite — единственный движок ADK (3.6.1: PostgreSQL-адаптер удалён — один способ хранения, одна инструкция).
 
     3.6.0: обычный журнал (``journal_mode=DELETE``), **без WAL** — база может лежать на сервере/в сетевой папке,
     где WAL не поддерживается (ему нужен общий файл ``-shm`` в памяти, SMB его не даёт).
     ``busy_timeout`` 10 с; сторож прерывает запрос дольше 60 с (:class:`DbHangError` поднимается в
     :func:`db_execute_with_retry`)."""
-    if getattr(settings, "db_backend", "sqlite") == "postgres" and getattr(settings, "db_dsn", ""):
-        from .pgadapter import connect
-        return connect(settings.db_dsn)
     # isolation_level="IMMEDIATE": транзакция записи сразу берёт блокировку на запись (с ожиданием busy_timeout),
     # а не «читаю → потом пишу» — второй вариант при двух писателях даёт мгновенный отказ без ожидания
     conn = sqlite3.connect(path or settings.db_path, timeout=BUSY_TIMEOUT_SEC, factory=_GuardedConnection,
@@ -285,11 +282,10 @@ def quick_check(path: str | None = None) -> str:
 
 
 def init_db() -> None:
-    sqlite = getattr(settings, "db_backend", "sqlite") != "postgres"
     parent = os.path.dirname(settings.db_path)
-    if parent and sqlite:
+    if parent:
         os.makedirs(parent, exist_ok=True)
-    if sqlite and os.path.exists(settings.db_path):
+    if os.path.exists(settings.db_path):
         # схема меняется только при обновлении ADK — тогда сначала резервная копия, потом ALTER TABLE
         with contextlib.closing(sqlite3.connect(settings.db_path, timeout=30)) as conn:
             current = int(conn.execute("PRAGMA user_version").fetchone()[0])
@@ -304,21 +300,19 @@ def init_db() -> None:
             try:
                 conn.execute(stmt)
                 conn.commit()
-            except Exception:  # noqa: BLE001 — столбец уже есть (sqlite3.OperationalError / psycopg DuplicateColumn)
-                if hasattr(conn, "rollback"):
-                    conn.rollback()
-        if sqlite:
-            conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
-            conn.commit()
-            # 3.6.0: WAL убран совсем. Файлы, созданные 3.5.4–3.5.11 в режиме WAL, переводятся обратно в обычный
-            # журнал (режим хранится в самом файле): база может переехать на сервер/сетевую папку, где WAL не поддерживается.
-            with contextlib.suppress(sqlite3.Error):
-                mode = str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower()
-                if mode == "wal":
-                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                    mode = str(conn.execute("PRAGMA journal_mode=DELETE").fetchone()[0]).lower()
-                    log.info("journal_mode WAL → %s", mode)
-                conn.execute("PRAGMA synchronous=FULL")
+            except sqlite3.OperationalError:       # столбец уже есть
+                conn.rollback()
+        conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+        conn.commit()
+        # 3.6.0: WAL убран совсем. Файлы, созданные 3.5.4–3.5.11 в режиме WAL, переводятся обратно в обычный
+        # журнал (режим хранится в самом файле): база может переехать на сервер/сетевую папку, где WAL не поддерживается.
+        with contextlib.suppress(sqlite3.Error):
+            mode = str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower()
+            if mode == "wal":
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                mode = str(conn.execute("PRAGMA journal_mode=DELETE").fetchone()[0]).lower()
+                log.info("journal_mode WAL → %s", mode)
+            conn.execute("PRAGMA synchronous=FULL")
 
 
 # --------------------------------------------------------------------------- helpers

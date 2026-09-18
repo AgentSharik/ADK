@@ -37,8 +37,6 @@ def needs_db_setup() -> bool:
 
     Установки до 3.5.11 (база уже есть и заполнена) вопрос не видят — им просто выставляется флаг.
     """
-    if getattr(settings, "db_backend", "sqlite") == "postgres":
-        return False
     if getattr(settings, "db_ready", False):
         return False
     path = settings.db_path

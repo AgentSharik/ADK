@@ -1,6 +1,6 @@
 # ADK — Active Directory Kit · руководство для продолжения работы в новом чате
 
-Актуально на 2026-09-18. Версия проекта **3.6.0**, тестов **309**, e2e 46 + 83 + 45 + 41, стенд `tests/bench/` (1500 ПК). Раздел О — обязательный регламент работы.
+Актуально на 2026-09-18. Версия проекта **3.6.1**, тестов **306**, e2e 46 + 83 + 45 + 41, стенд `tests/bench/` (1500 ПК). Раздел О — обязательный регламент работы.
 Внутренний документ: лежит в `extras/`, не входит в zip и не упоминается в README/CHANGELOG.
 Прочитать целиком до первой правки — здесь всё от А до Я, включая производство видео и чистку истории git.
 
@@ -43,7 +43,7 @@ git fetch -q origin main && git reset -q --hard FETCH_HEAD
 ## Б. Что это за проект и как о нём говорить
 
 **ADK (Active Directory Kit)** — наша настольная утилита администратора домена: PyQt6 + ldap3 + pywin32 (Windows),
-SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начиналась как однофайловый монолит автора; после аудита —
+SQLite (один файл; для отдела — ADK и база на сервере, ярлыки, `adk --serve`). Начиналась как однофайловый монолит автора; после аудита —
 пакет `adk/`, тесты, документация, отчёт. Позиционируется как портфолио-проект.
 
 Правила речи (требования автора, не обсуждаются):
@@ -118,7 +118,7 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
 | `adk/pingui.py` | окно «Пинг» (`PingWorker`, фильтры `filter_btns`, `toggle_pause`, `copy_report`) — **ожидается полная переработка, автор ещё не описал** |
 | `adk/fleet.py`, `tools.py` | ПО, сравнение ПК, массовый пинг; группы как у…, заметки, история, массовые операции |
 | `adk/inventory_ui.py`, `attention_ui.py`, `colorpicker.py` | опись Excel, «Внимание», свой выбор цвета |
-| `adk/netutils.py`, `ad.py`, `db.py`, `config.py`, `credentials.py`, `software.py`, `templates.py`, `export.py`, `updates.py`, `i18n.py`, `pgadapter.py`, `md4.py` | сеть/принтеры (`classify_printer_port`), LDAP, БД, настройки (`hide_role_welcome`, `plugins_dir`), хранилище паролей, ПО, шаблоны пользователей и пр. |
+| `adk/netutils.py`, `ad.py`, `db.py`, `config.py`, `credentials.py`, `software.py`, `templates.py`, `export.py`, `updates.py`, `i18n.py`, `md4.py` | сеть/принтеры (`classify_printer_port`), LDAP, БД, настройки (`hide_role_welcome`, `plugins_dir`), хранилище паролей, ПО, шаблоны пользователей и пр. |
 
 Слои: `config/theme/md4/plugins` внизу → `db/ad/netutils` → `widgets` → диалоги → `main_window`. Импорты только вниз.
 
@@ -161,6 +161,8 @@ SQLite для 1–3 админов или PostgreSQL (`adk --serve`). Начин
   снизу нет места); в видео `_demo_pos` меню брать из настоящего `menu.pos()`, а не считать «под кнопкой». `DrivePicker` —
   таблетка «иконка тома · буква · стрелка» (LeftToRight, `menu-indicator` со стрелкой темы). `InventoryWorker` после LDAP
   перепроверяет `company` — в опись только выбранная организация; в демо `_INV_ROWS` строить по отфильтрованным записям.
+- **3.6.1:** движок базы — **только SQLite**; не добавлять второй бэкенд (PostgreSQL/MS SQL/CSV) без прямой просьбы автора
+  и тестового сервера у него. Сценарий отдела — ADK и база на сервере + ярлыки.
 - **3.6.0 (партия 31):** **WAL в SQLite запрещён навсегда** — база может лежать на сервере/сетевой папке. Любое новое обращение
   к базе — через `db_execute_with_retry` или `closing(get_db_connection())`, никаких долгих соединений: сторож прервёт запрос
   дольше 60 с и закроет программу. Окно сторожа — текст автора (`DB_HANG_TEXT`), не переформулировать.
@@ -373,7 +375,7 @@ git reflog expire --expire=now --all && git gc --prune=now --aggressive -q && gi
 ## М. История версий (что уже сделано — не переделывать)
 
 2.0 — переработка после аудита (модули, LDAPS, тесты). 2.1–2.2 — сброс пароля, журнал, принтеры, точный поиск.
-3.0 — ребрендинг в ADK, набор инструментов. 3.1 — инструменты парка, CLI, PostgreSQL. 3.2 — S.M.A.R.T., карта диска.
+3.0 — ребрендинг в ADK, набор инструментов. 3.1 — инструменты парка, CLI, серверный режим. 3.2 — S.M.A.R.T., карта диска.
 3.2.1 — новое окно пинга, журнал ошибок, DHCP, живой опрос принтеров. 3.2.2 — карта подсети, опись с предпросмотром.
 3.2.3 — единая лента пинга, свой выбор цвета, читаемые таблицы. 3.2.4 — честный дашборд, принтер по IP. 3.2.5 — новая
 карточка, два состояния учётки, объёмная карта диска. 3.2.6 — честный пинг офлайн-ПК. 3.2.7 — выбор тома для карты.
@@ -498,7 +500,9 @@ Kyocera, 10.0.9.93, Шевченко+архивы, набор по буквам.
 
 **3.5.10** (партия 29 — замечания автора к 3.5.9, 16 скриншотов) — `adk/psrun.py` (единый запуск PowerShell, `-EncodedCommand`, try/catch → JSON, `explain_error`, отмена), все семь вызовов PowerShell переведены на него; ПО и принтеры ПК — WinRM → WMI → удалённый реестр с полем `how`; `adk/fleetpoll.py` + кнопки «📡 Опросить парк сейчас» в «Принтеры парка» и «Установленное ПО» (без базы, инвентарь → AD, сохранение отдельной кнопкой); поиск по IP, которого нет в базе → `netutils.discover_printer` (`probe_printer` → `snmp_get_string` без библиотек, BER вручную, `_SNMP_OIDS`, `port=` для тестов → `_http_title` → PTR), строка принтера с `discovered=True` и инспектор «в базе не числится»; дашборд `show_category` → `_enrich_rows_from_ad`; архив: `db.ARCHIVE_DAYS=180`, `db.parse_ts`, `db.recent_links` (связка текущая, если моложе 180 дней **или** ПК был в сети за 180 дней), `get_computer_by_login` понимает `DOMAIN\login`; опись: `workers.pick_computer` — тот же порядок источников, что и поиск; `TitleBar` — собственные иконки `minus/xmark/square/square.on.square` + `refresh_icons()`; `icons.menu_icon` (Active/Selected-пиксмапы цветом `on_accent`) для всех иконок QMenu/QAction, `QMenu::icon` прозрачный; `ADApp._style_completer` (палитра + QSS попапу QCompleter, при смене темы тоже); Free IP: легенда со всеми цветами (`inventory` = «занят компьютером из парка»), `found` из `CELL` убран, DHCP-элементы только при `dhcp_servers`, `FreeIPWorker.run` — скользящее окно 48 с ответом по первому по порядку свободному, `_ptr_exists` ≤ 1,5 с, «Следующий» ждёт дозавершения через `SingleShotConnection`; `probe_printer` проверяет 7 портов параллельно; `describe_ldap_error` подсказку «Контроллер домена недоступен» даёт только для `LDAPException`/`OSError`; `health_ui` карта диска — «⏹ Стоп» + таймер; сканер и `_export_pst` читают вывод с `errors="replace"`. Тестов 278 (+20, `tests/test_batch28.py`; в `conftest` появилась заглушка `discover_printer → None`, настоящие функции тесты берут через `REAL_DISCOVER/REAL_PROBE`). Видео — 31 (ещё не снято, ≥ 648 с).
 
-**3.6.0** (партия 31 — сохранность базы, список автора со скрина) — WAL убран совсем (`init_db` переводит старые файлы в DELETE, `synchronous=FULL`); `db.get_db_connection` → `_GuardedConnection` + `_HangGuard` (progress_handler, `HANG_LIMIT_SEC=60`, `BUSY_TIMEOUT_SEC=10`, `DB_RETRY_ATTEMPTS=3`, `isolation_level="IMMEDIATE"`), `DbHangError`, `set_hang_hook` → `__main__._db_hang_exit` (окно `DB_HANG_TEXT` в GUI-потоке, `app.exit(3)`); `db.backup_periodic/list_backups/backup_dir/last_backup_age_hours` (`[Paths] backup_every_hours=6`, `backup_keep=12`, папка `backups` рядом с базой; `ADApp.backup_timer` каждые 15 мин + при старте); таблица `meta`, `scan_lease_acquire/release` (`ADApp.scan_owner`, `start_scan` пропускает при чужой аренде); `db.is_network_path` + предупреждение в `DbSetupDialog`. **Не сделано (обсуждается с автором):** «единый стандарт SQL, не lite» — предложено MS SQL Server (Express) как серверный бэкенд вместо PostgreSQL; ждём решения. Тестов 309 (+11 в `tests/test_batch30.py`). Видео — 31 (ещё не снято, ≥ 648 с).
+**3.6.1** (партия 31, продолжение — «единый стандарт, не lite») — автор сказал «сделай как считаешь лучше»: выбран **SQLite как единственный движок**; `adk/pgadapter.py`, `db_backend`/`db_dsn`, `psycopg`, тесты транслятора удалены; INSTALL «Серверный режим и CLI» = ADK + база на сервере, ярлыки, `--serve` в планировщике. CSV и MS SQL Express отклонены с обоснованием (CHANGELOG 3.6.1). Тестов 306.
+
+**3.6.0** (партия 31 — сохранность базы, список автора со скрина) — WAL убран совсем (`init_db` переводит старые файлы в DELETE, `synchronous=FULL`); `db.get_db_connection` → `_GuardedConnection` + `_HangGuard` (progress_handler, `HANG_LIMIT_SEC=60`, `BUSY_TIMEOUT_SEC=10`, `DB_RETRY_ATTEMPTS=3`, `isolation_level="IMMEDIATE"`), `DbHangError`, `set_hang_hook` → `__main__._db_hang_exit` (окно `DB_HANG_TEXT` в GUI-потоке, `app.exit(3)`); `db.backup_periodic/list_backups/backup_dir/last_backup_age_hours` (`[Paths] backup_every_hours=6`, `backup_keep=12`, папка `backups` рядом с базой; `ADApp.backup_timer` каждые 15 мин + при старте); таблица `meta`, `scan_lease_acquire/release` (`ADApp.scan_owner`, `start_scan` пропускает при чужой аренде); `db.is_network_path` + предупреждение в `DbSetupDialog`. «Единый стандарт SQL» — решено в 3.6.1 (SQLite единственный). Тестов 309 (+11 в `tests/test_batch30.py`). Видео — 31 (ещё не снято, ≥ 648 с).
 
 **3.5.11** (партия 30 — вопросы автора по INSTALL.md) — `adk/setup_ui.py`: мастер «где база?» до окна входа + первичное наполнение новой базы (сканер + принтеры, с прогрессом и «⏹ Остановить наполнение»); `Settings.db_ready`; совет «один ADK на отдел, остальным ярлык» в мастере/README/INSTALL/FEATURES/config.example.ini; portable-режим удалён с корнями (`_app_dir`, `_resolve_docs_dir`, `IS_PORTABLE`, docs, QA_ARCHITECTURE 1.4, `test_portable_resolution`); `fleetpoll.fleet_hosts` — исправлен импорт `PCScannerWorker`; INSTALL.md — понятные объяснения SmartScreen (подпись кода платная/корпоративный ЦС) и антивируса (PyInstaller, без UPX, в папку). Тестов 298 (+20, `tests/test_batch30.py`). Видео — 31 (ещё не снято, ≥ 648 с).
 
