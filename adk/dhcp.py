@@ -12,9 +12,8 @@ import ipaddress
 import json
 import logging
 import os
-import subprocess
 
-from .config import CREATE_NO_WINDOW, settings
+from .config import settings
 from .netutils import is_valid_hostname
 
 log = logging.getLogger(__name__)
@@ -107,19 +106,10 @@ def query(prefix: str, servers: tuple[str, ...] | None = None, timeout: int = 40
         if not is_valid_hostname(srv):
             out["errors"].append(f"Недопустимое имя сервера: {srv!r}")
             continue
-        try:
-            res = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-                                  _PS.replace("__SERVER__", srv).replace("__PREFIX__", prefix + ".")],
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
-                                 timeout=timeout, creationflags=CREATE_NO_WINDOW)
-        except subprocess.TimeoutExpired:
-            out["errors"].append(f"{srv}: не ответил за {timeout} с")
-            continue
-        except (subprocess.SubprocessError, OSError) as exc:
-            out["errors"].append(f"{srv}: PowerShell — {exc}")
-            continue
-        if res.returncode != 0 or not res.stdout.strip():
-            out["errors"].append(f"{srv}: {(res.stderr or 'нет ответа').strip().splitlines()[0][:160]}")
+        from . import psrun
+        res = psrun.run(_PS.replace("__SERVER__", srv).replace("__PREFIX__", prefix + "."), timeout=timeout)
+        if not res.ok:
+            out["errors"].append(f"{srv}: {res.error[:200]}")
             continue
         try:
             data = parse_dhcp_json(res.stdout)

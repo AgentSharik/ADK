@@ -401,6 +401,7 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
         subcontrol-origin: padding; subcontrol-position: center right; right: 10px; }}
     QMenu {{ background-color: {p.card}; border: 1px solid {p.border}; border-radius: 10px; padding: 6px; }}
     QMenu::item {{ padding: 7px 22px; border-radius: 6px; }}
+    QMenu::icon {{ background: transparent; border: none; margin-left: 6px; }}
     QMenu::item:selected {{ background: {relief(accent, 110, 94)}; color: {p.on_accent}; }}
     QMenu::separator {{ height: 1px; background: {p.border}; margin: 4px 8px; }}
     QMenu#diskMenu {{ border: 1px solid {p.border}; border-radius: 10px; padding: 6px; }}

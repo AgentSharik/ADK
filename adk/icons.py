@@ -119,6 +119,7 @@ PATHS: dict[str, str] = {
     "circle.fill": '<circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/>',
     "circle": '<circle cx="12" cy="12" r="6"/>',
     "square": '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+    "square.on.square": '<rect x="4.5" y="8.5" width="11" height="11" rx="1.8"/><path d="M8.5 8.5v-2a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-2"/>',
     "chevron.down": '<path d="m6 9.5 6 6 6-6"/>',
     "chevron.up": '<path d="m6 14.5 6-6 6 6"/>',
     "arrow.up.circle": '<circle cx="12" cy="12" r="9"/><path d="M12 16.5v-9M8.5 11 12 7.5l3.5 3.5"/>',
@@ -233,25 +234,43 @@ LABEL_PX = 19       # размер иконки в подписях (<img> в ri
 _cache: dict[tuple, QIcon] = {}
 
 
-def icon(name: str, color: str | None = None, role: str = "text") -> QIcon:
-    """QIcon с контурной пиктограммой в цвете темы (кэшируется по имени и цвету)."""
+def _render(name: str, color: str, px: int) -> QPixmap:
+    from PyQt6.QtSvg import QSvgRenderer
+    pm = QPixmap(px, px)
+    pm.fill(Qt.GlobalColor.transparent)
+    r = QSvgRenderer(QByteArray(svg(name, color, px)))
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    r.render(p)
+    p.end()
+    return pm
+
+
+def icon(name: str, color: str | None = None, role: str = "text", active_color: str | None = None) -> QIcon:
+    """QIcon с контурной пиктограммой в цвете темы (кэшируется по имени и цветам).
+
+    ``active_color`` — цвет для состояний Active/Selected (подсвеченный пункт меню): иначе стиль ОС сам «генерирует»
+    активный вариант, и на Windows это давало залитый квадрат вместо значка (3.5.10).
+    """
     color = color or role_color(role)
-    key = (name, color)
+    key = (name, color, active_color or "")
     if key in _cache:
         return _cache[key]
-    from PyQt6.QtSvg import QSvgRenderer
     ic = QIcon()
     for px in (16, 18, 20, 24, 32, 48):
-        pm = QPixmap(px, px)
-        pm.fill(Qt.GlobalColor.transparent)
-        r = QSvgRenderer(QByteArray(svg(name, color, px)))
-        p = QPainter(pm)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        r.render(p)
-        p.end()
-        ic.addPixmap(pm)
+        pm = _render(name, color, px)
+        ic.addPixmap(pm, QIcon.Mode.Normal)
+        act = _render(name, active_color, px) if active_color else pm
+        ic.addPixmap(act, QIcon.Mode.Active)
+        ic.addPixmap(act, QIcon.Mode.Selected)
     _cache[key] = ic
     return ic
+
+
+def menu_icon(name: str, role: str = "text") -> QIcon:
+    """Иконка для пункта QMenu: обычный цвет по роли, на подсвеченном пункте — цвет текста на акценте."""
+    from .widgets import app_palette
+    return icon(name, role=role, active_color=app_palette().on_accent)
 
 
 def pixmap(name: str, size: int = ICON_PX, color: str | None = None, role: str = "text") -> QPixmap:
@@ -370,7 +389,7 @@ def install() -> None:
             name, rest = f
             act._adk_icon = (name, emoji_role(text))
             _act_set(act, rest.strip())
-            act.setIcon(icon(name, role=emoji_role(text)))
+            act.setIcon(menu_icon(name, role=emoji_role(text)))
 
     def _action_init(self, *a, **k):
         _act_init(self, *a, **k)
@@ -467,14 +486,14 @@ def install() -> None:
         if a and isinstance(a[0], str):
             f = find_leading(a[0])
             if f:
-                a = (icon(f[0], role=emoji_role(a[0])), f[1].strip()) + tuple(a[1:])
+                a = (menu_icon(f[0], role=emoji_role(a[0])), f[1].strip()) + tuple(a[1:])
         return _m_add(self, *a, **k)
 
     def _menu_add_menu(self, *a, **k):
         if a and isinstance(a[0], str):
             f = find_leading(a[0])
             if f:
-                a = (icon(f[0], role=emoji_role(a[0])), f[1].strip()) + tuple(a[1:])
+                a = (menu_icon(f[0], role=emoji_role(a[0])), f[1].strip()) + tuple(a[1:])
         return _m_menu(self, *a, **k)
 
     QMenu.addAction, QMenu.addMenu = _menu_add_action, _menu_add_menu
@@ -521,7 +540,7 @@ def refresh(root) -> None:
     for a in root.findChildren(QAction):
         meta = getattr(a, "_adk_icon", None)
         if meta:
-            a.setIcon(icon(meta[0], role=meta[1]))
+            a.setIcon(menu_icon(meta[0], role=meta[1]))
     for t in root.findChildren(QTabWidget):
         metas = getattr(t, "_adk_tab_icons", None) or {}
         for i in range(t.count()):

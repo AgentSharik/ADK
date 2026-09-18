@@ -221,6 +221,17 @@ class SoftwareDialog(FramelessDialog):
         b.setObjectName("btnPrimary")
         b.clicked.connect(self.search_fleet)
         top.addWidget(b)
+        # 3.5.10: опрос всего парка отсюда — без него вкладка у организации без сохранённых данных была пустой
+        self.btn_fleet_poll = QPushButton("📡 Опросить парк")
+        self.btn_fleet_poll.setToolTip("Опросить все ПК в сети (WinRM → WMI → удалённый реестр) и сохранить их ПО в базу")
+        self.btn_fleet_poll.clicked.connect(self.poll_fleet)
+        top.addWidget(self.btn_fleet_poll)
+        self.btn_fleet_stop = QPushButton("⏹ Стоп")
+        self.btn_fleet_stop.setEnabled(False)
+        self.btn_fleet_stop.clicked.connect(lambda: (self.fleet_worker.cancel() if self.fleet_worker else None,
+                                                     self.btn_fleet_stop.setEnabled(False)))
+        top.addWidget(self.btn_fleet_stop)
+        self.fleet_worker = None
         lay.addLayout(top)
         self.fleet = _table(["ПК", "Программа", "Версия", "Опрошен"])
         self.fleet.itemDoubleClicked.connect(lambda it: self.app.search_text(self.fleet.item(it.row(), 0).text()) if hasattr(self.app, "search_text") else None)
@@ -233,6 +244,7 @@ class SoftwareDialog(FramelessDialog):
     def _fill_summary(self):
         top = software.software_summary()
         if not top:
+            self.fleet_lbl.setText("Сохранённых данных о ПО пока нет — нажмите «Опросить парк» или опросите ПК из его карточки.")
             return
         self.fleet_lbl.setText("Топ программ по числу ПК (по сохранённым данным). Введите название для точного поиска.")
         _fill(self.fleet, [(f"{n} ПК", name, "", "") for name, n in top[:100]])
@@ -252,7 +264,7 @@ class SoftwareDialog(FramelessDialog):
 
     def poll(self):
         self.btn_poll.setEnabled(False)
-        self.lbl.setText("⏳ Опрос через PowerShell Remoting (10–60 с)…")
+        self.lbl.setText("⏳ Опрашиваю ПК (WinRM → WMI → удалённый реестр), обычно 10–60 с…")
 
         def done(d: dict):
             self.btn_poll.setEnabled(True)
@@ -262,11 +274,46 @@ class SoftwareDialog(FramelessDialog):
             self._items = d["software"]
             self._apply_filter()
             _fill(self.hot, [(h["id"], h["desc"], h["installed"]) for h in d["hotfixes"]])
-            self.lbl.setText(f"Опрошено: программ — {len(d['software'])}, обновлений — {len(d['hotfixes'])}")
+            how = {"WinRM": "по WinRM", "WMI": "по WMI/DCOM", "RemoteRegistry": "через удалённый реестр"}.get(d.get("how", ""), "")
+            self.lbl.setText(f"Опрошено {how}: программ — {len(d['software'])}, обновлений — {len(d['hotfixes'])}".replace("  ", " "))
             db.log_action(self.app.admin_name, "software", self.comp, f"{len(d['software'])} программ")
 
         run_in_background(self, lambda: software.get_software(self.comp), done,
                           lambda m: (self.btn_poll.setEnabled(True), self.lbl.setText(f"⚠️ {m}")))
+
+    def poll_fleet(self):
+        from . import fleetpoll
+        try:
+            hosts = fleetpoll.fleet_hosts(self.app.get_conn)
+        except Exception as exc:  # noqa: BLE001
+            self.fleet_lbl.setText(f"⚠️ Список ПК не получен: {exc}")
+            return
+        if not hosts:
+            self.fleet_lbl.setText("⚠️ ПК для опроса не найдены: инвентарь пуст и AD не вернул рабочих станций")
+            return
+        self.btn_fleet_poll.setEnabled(False)
+        self.btn_fleet_stop.setEnabled(True)
+        self.fleet_lbl.setText(f"⏳ Опрашиваю {len(hosts)} ПК…")
+        self.fleet_worker = fleetpoll.FleetPollWorker(hosts, fleetpoll.software_live, parent=self)
+        self.fleet_worker.progress.connect(lambda i, n, h: self.fleet_lbl.setText(f"⏳ Опрошено {i} из {n} ПК · {h}"))
+        self.fleet_worker.finished_poll.connect(self._fleet_done)
+        self.fleet_worker.error.connect(lambda m: (self._fleet_done({}), self.fleet_lbl.setText(f"⚠️ {m}")))
+        self.fleet_worker.start()
+
+    def _fleet_done(self, results: dict):
+        from . import fleetpoll
+        self.btn_fleet_poll.setEnabled(True)
+        self.btn_fleet_stop.setEnabled(False)
+        sm = fleetpoll.summarize(results)
+        self._fill_summary()
+        if results:
+            self.fleet_lbl.setText(f"Опрос парка: ответили {sm['ok']} ПК, не в сети {sm['skipped']}, не удалось {sm['failed']}. "
+                                   "ПО сохранено — введите название для поиска.")
+            db.log_action(self.app.admin_name, "software_fleet", "fleet", f"{sm['ok']} ПК")
+
+    def on_dialog_done(self):
+        if self.fleet_worker:
+            self.fleet_worker.cancel()
 
     def search_fleet(self):
         rows = software.find_software(self.q.text())
@@ -311,7 +358,7 @@ class LogonsDialog(FramelessDialog):
         self.load()
 
     def load(self):
-        self.summary.setText("⏳ Читаю журнал Security (Get-WinEvent)…")
+        self.summary.setText("⏳ Читаю журнал Security на ПК (Get-WinEvent, до 1–2 минут на большом журнале)…")
         hours = int(self.hours.currentData())
         run_in_background(self, lambda: logons.get_logons(self.comp, hours), self._done, lambda m: self.summary.setText(f"⚠️ {m}"))
 

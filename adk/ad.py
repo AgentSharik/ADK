@@ -22,6 +22,7 @@ from ldap3 import (
 )
 from ldap3.utils.conv import escape_filter_chars
 from ldap3.utils.dn import escape_rdn
+from ldap3.core.exceptions import LDAPException
 
 from .config import ACCOUNT_DISABLE_FLAG, LDAP_PAGE_SIZE, NORMAL_ACCOUNT_FLAG, settings
 
@@ -138,7 +139,9 @@ def describe_ldap_error(exc: Exception) -> str:
         return "Сертификат контроллера домена не доверен (см. tls_validate в config.ini)."
     if "authmethodnotsupported" in text.lower() or "00002027" in text:
         return "Вход по SSO (Kerberos/GSSAPI) не поддерживается контроллером по незащищённому LDAP (порт 389). Войдите с логином и паролем или настройте LDAPS (use_ssl=true)."
-    if "socket" in text.lower() or "timeout" in text.lower():
+    if ("socket" in text.lower() or "timeout" in text.lower()) and isinstance(exc, (LDAPException, OSError)):
+        # 3.5.10: только для ошибок самого LDAP/сети — раньше любое сообщение со словом «timeout» (PowerShell, WinRM,
+        # опрос ПК) превращалось в «Контроллер домена недоступен», хотя не отвечал удалённый ПК
         return f"Контроллер домена недоступен: {settings.dc_host}"
     if "insufficientAccessRights" in text:
         return "Недостаточно прав для операции."

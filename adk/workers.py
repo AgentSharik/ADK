@@ -123,6 +123,8 @@ class SearchWorker(BaseWorker):
             # запрос — просто IP принтера: показываем только сам принтер (кто подключён — в его инспекторе),
             # иначе рядом появлялись «пустые» строки ПК без ФИО
             free = [] if (printer_rows and self.printer_query is None) else self._free_pc_rows()
+            if not printer_rows and not free:
+                printer_rows = self._discovered_printer_rows()   # 3.5.10: принтера нет в базе — спросим сам адрес
             if self.cancelled:
                 return
             self.results_ready.emit(printer_rows + free, self.raw_query, False)
@@ -260,6 +262,27 @@ class SearchWorker(BaseWorker):
 
     PRINTER_ROWS_LIMIT = 20
 
+    def _discovered_printer_rows(self) -> list[dict]:
+        """Полный IP, за которым в базе ничего нет: проверяем сам адрес (порты печати/SNMP/веб-панель) и, если это
+        принтер, показываем его строкой — с моделью и честной пометкой «в базе не числится» (3.5.10)."""
+        q = self.printer_query if self.printer_query is not None else self.query
+        if not re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", q or ""):
+            return []
+        try:
+            d = netutils.discover_printer(q)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("discover_printer: %s", exc)
+            return []
+        if not d or self.cancelled:
+            return []
+        g = {"name": d["name"], "kind": "network", "ip": d["ip"], "port": d["host"] or "", "pcs": [], "discovered": True,
+             "source": d["source"]}
+        row = self.printer_row(g, True)
+        row["probe"] = d["probe"]
+        row["net_pending"] = False
+        row["last_logon"] = f"в базе не числится · найден по адресу ({d['source']})"
+        return [row]
+
     @staticmethod
     def printer_row(g: dict, is_online: bool) -> dict:
         """Строка таблицы для принтера (та же схема ключей, что у людей, + ``kind='printer'`` и ``printer``)."""
@@ -298,6 +321,9 @@ class SearchWorker(BaseWorker):
         кэша строка получает статус из инвентаря и ``net_pending=True``, а их имена копятся в ``_net_pending``."""
         inv, perm, pcm = db.load_inventory_maps()
         audit = db.load_audit_map() if self.include_archives else {}
+        # 3.5.10: ПК, за которым человека видели за последние полгода (или который сам был в сети за полгода),
+        # — не архив: он показывается всегда. «Архивы» добавляют только связки старше db.ARCHIVE_DAYS.
+        recent = db.recent_links()
 
         inv_by_user: dict[str, list[str]] = {}
         for comp, data in inv.items():
@@ -316,6 +342,8 @@ class SearchWorker(BaseWorker):
                 comps.add(pcm[login])
             for k in keys:
                 comps.update(inv_by_user.get(k, ()))
+            for k in keys:
+                comps.update(recent.get(k, {}).keys())
             if not comps:
                 db_comp = db.get_computer_by_login(login)
                 if db_comp:
@@ -384,13 +412,17 @@ class SearchWorker(BaseWorker):
                     last_logon = inv[comp]["last_logon"]
                     if ip == "Не найден":
                         ip = inv[comp]["ip"]
-                elif self.include_archives:
+                else:
                     for k in (login, fio_full.lower(), disp.lower()):
-                        for item in audit.get(k, []):
-                            if item["comp"] == comp:
-                                last_logon = item["date"]
-                                if ip == "Не найден":
-                                    ip = item["ip"]
+                        when = recent.get(k, {}).get(comp)
+                        if when:
+                            last_logon = when
+                        if self.include_archives:
+                            for item in audit.get(k, []):
+                                if item["comp"] == comp:
+                                    last_logon = item["date"]
+                                    if ip == "Не найден":
+                                        ip = item["ip"]
                 if self.include_archives and comp and last_logon in ("Нет данных", "Неизвестно"):
                     csv_ip, csv_date = netutils.get_pc_info_from_csv(comp, login, disp)
                     if csv_date != "Нет данных":
@@ -570,8 +602,8 @@ class PCScannerWorker(BaseWorker):
         try:
             self._proc = subprocess.Popen(
                 ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
-                creationflags=CREATE_NO_WINDOW,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+                creationflags=CREATE_NO_WINDOW,   # errors=replace: stderr PowerShell бывает в cp866 — не ронять скан
             )
             out, err = self._proc.communicate(timeout=900)
         finally:
@@ -657,6 +689,7 @@ class FreeIPWorker(BaseWorker):
         self.start_host = max(1, min(254, start_host))
         self.use_dhcp = use_dhcp and bool(settings.dhcp_servers)
         self.dhcp_data: dict | None = None
+        self._settled = False          # ответ уже отдан — начатые проверки завершаются без работы и без сигналов
         try:
             rows = db.db_execute_with_retry(
                 "SELECT ip_address FROM pc_inventory WHERE ip_address IS NOT NULL", fetch="all")
@@ -686,7 +719,7 @@ class FreeIPWorker(BaseWorker):
 
     def _reason(self, ip: str) -> str:
         """Почему адрес занят (или ``free``). Порядок — от дешёвого к дорогому: инвентарь → DHCP → ICMP → PTR."""
-        if self.cancelled:
+        if self.cancelled or self._settled:
             return "cancelled"
         if ip in self.known:
             return "inventory"
@@ -697,19 +730,16 @@ class FreeIPWorker(BaseWorker):
                 return st
         if netutils.is_host_alive(ip, timeout=1.0):
             return "alive"
-        import socket
-        try:
-            socket.gethostbyaddr(ip)
-            return "ptr"  # есть PTR — адрес кем-то занят
-        except OSError:
-            return "free"
+        if self.cancelled or self._settled:
+            return "cancelled"
+        return "ptr" if _ptr_exists(ip) else "free"  # есть PTR — адрес кем-то занят
 
     def _is_free(self, ip: str) -> bool:
         return self._reason(ip) == "free"
 
     def _check(self, ip: str) -> str:
         r = self._reason(ip)
-        if r != "cancelled":
+        if r != "cancelled" and not self._settled:
             self.host_checked.emit(int(ip.rsplit(".", 1)[1]), r)
         return r
 
@@ -722,30 +752,75 @@ class FreeIPWorker(BaseWorker):
         from . import dhcp
         return dhcp.classify(ip, self.dhcp_data)
 
+    WINDOW = 48   # одновременно проверяемых адресов
+
     def run(self) -> None:
         if not re.match(r"^\d{1,3}(\.\d{1,3}){2}$", self.prefix):
             # только error: finished_search затёр бы сообщение об ошибке в диалоге
             self.error.emit("Префикс подсети должен быть вида 10.0.2")
             return
         self._load_dhcp()
-        batch = 30
-        cur = self.start_host
-        while cur <= 254 and not self.cancelled:
-            end = min(cur + batch - 1, 254)
-            self.progress.emit(f"⚡ Проверка {self.prefix}.{cur}–{end}…")
-            ips = [f"{self.prefix}.{h}" for h in range(cur, end + 1)]
-            with ThreadPoolExecutor(max_workers=batch) as ex:
-                verdict = dict(zip(ips, ex.map(self._check, ips)))
-            if self.cancelled:
-                return
-            free = [ip for ip in ips if verdict.get(ip) == "free"]
-            if free:
-                self.dhcp_info.emit(self.verdict(free[0]))
-                self.finished_search.emit(free[0])
-                return
-            cur += batch
+        # 3.5.10: скользящее окно вместо пачек по 30 — карта закрашивается ровно по мере ответов (раньше пачка ждала
+        # самого медленного адреса, и ячейки появлялись рывками), а ответ отдаётся, как только решён первый по порядку
+        # свободный адрес, не дожидаясь остальных в пачке
+        hosts = list(range(self.start_host, 255))
+        verdict: dict[int, str] = {}
+        it = iter(hosts)
+        next_report = self.start_host
+        with ThreadPoolExecutor(max_workers=self.WINDOW) as ex:
+            futs = {}
+            for h in it:
+                futs[ex.submit(self._check, f"{self.prefix}.{h}")] = h
+                if len(futs) >= self.WINDOW:
+                    break
+            found = ""
+            while futs and not self.cancelled:
+                for f in as_completed(list(futs)):
+                    h = futs.pop(f)
+                    try:
+                        verdict[h] = f.result()
+                    except Exception:  # noqa: BLE001
+                        verdict[h] = "free"
+                    # первый по порядку адрес, о котором уже всё известно
+                    while next_report in verdict and verdict[next_report] != "free":
+                        next_report += 1
+                    if next_report in verdict:          # вердикт «free», и все адреса до него заняты
+                        found = f"{self.prefix}.{next_report}"
+                        break
+                    if len(verdict) % 8 == 0:
+                        self.progress.emit(f"⚡ Проверено {len(verdict)} адресов, заняты все до {self.prefix}.{next_report - 1}…")
+                    nxt = next(it, None)
+                    if nxt is not None:
+                        futs[ex.submit(self._check, f"{self.prefix}.{nxt}")] = nxt
+                    break
+                if found:
+                    break
+            if found:
+                self._settled = True
+                for f in futs:
+                    f.cancel()                          # ещё не начатые проверки не нужны
+                self.dhcp_info.emit(self.verdict(found))
+                self.finished_search.emit(found)
+                return                                  # выход из with дождётся начатых проверок (≤ 1–2 с)
         if not self.cancelled:
             self.finished_search.emit("")
+
+
+_ptr_pool = ThreadPoolExecutor(max_workers=64, thread_name_prefix="ptr")
+
+
+def _ptr_exists(ip: str, timeout: float = 1.5) -> bool:
+    """Есть ли у адреса PTR-запись. ``gethostbyaddr`` не умеет таймаут и на «мёртвых» адресах может думать
+    5–10 с — ждём не дольше ``timeout``; не успел — считаем, что записи нет."""
+    import socket
+    fut = _ptr_pool.submit(socket.gethostbyaddr, ip)
+    try:
+        fut.result(timeout=timeout)
+        return True
+    except (OSError, TimeoutError):
+        return False
+    except Exception:  # noqa: BLE001 — concurrent.futures.TimeoutError на старых Python не наследует TimeoutError
+        return False
 
 
 # --------------------------------------------------------------------------- опись в Excel
@@ -755,6 +830,38 @@ INVENTORY_COLUMNS = (
     ("disks", "Диски"), ("printers", "Принтеры"), ("last_seen", "Был в сети"),
 )
 INVENTORY_DEFAULT = ("fio", "title", "dept", "office", "comp", "ip", "os", "cpu", "ram", "disks", "printers")
+
+
+def pick_computer(e, login: str, disp: str, inv: dict, inv_by_user: dict, perm: dict, pcm: dict, recent: dict) -> str:
+    """Один «текущий» ПК сотрудника для описи — в том же порядке источников, что и поиск.
+
+    Приоритет: постоянная привязка → pc_mapping → инвентарь (ПК, где он сейчас залогинен; в сети — первым) →
+    связки за полгода (``db.recent_links``) → таблицы БД → AD ``userWorkstations``.
+    """
+    l = db.normalize_login(login)
+    keys = [l, ad.get_full_fio(e).lower().strip(), (disp or "").lower().strip()]
+    if l in perm and perm[l]["comp"]:
+        return perm[l]["comp"]
+    if l in pcm and pcm[l]:
+        return pcm[l]
+    cands: list[str] = []
+    for k in keys:
+        cands += inv_by_user.get(k, [])
+    if cands:
+        cands.sort(key=lambda c: (not inv.get(c, {}).get("is_online"), c))
+        return cands[0]
+    best, best_when = "", ""
+    for k in keys:
+        for comp, when in recent.get(k, {}).items():
+            if when >= best_when:
+                best, best_when = comp, when
+    if best:
+        return best
+    comp = db.get_computer_by_login(login)
+    if comp:
+        return comp
+    ad_ws = ad.get_ad_value(e, "userWorkstations")
+    return db.clean_computer_name(ad_ws.split(",")[0]) if ad_ws else ""
 
 
 def build_inventory_rows(entries: list, cancelled=lambda: False, progress=lambda i, n: None) -> list[dict]:
@@ -768,8 +875,17 @@ def build_inventory_rows(entries: list, cancelled=lambda: False, progress=lambda
         disp = ad.get_ad_value(e, "displayName").strip()
         if disp:
             people.append((e, disp, ad.get_ad_value(e, "sAMAccountName")))
-    comps = {login: db.get_computer_by_login(login) for _e, _d, login in people}
-    inv, _perm, _pcm = db.load_inventory_maps()
+    inv, perm, pcm = db.load_inventory_maps()
+    # 3.5.10: ПК подбирается так же, как в поиске (привязки → инвентарь по логину/ФИО → свежая история → AD
+    # userWorkstations), а не только по get_computer_by_login: у организации с данными опись показывала «Не привязан»
+    inv_by_user: dict[str, list[str]] = {}
+    for comp, data in inv.items():
+        if data["user"]:
+            inv_by_user.setdefault(data["user"], []).append(comp)
+    recent = db.recent_links()
+    comps: dict[str, str] = {}
+    for e, disp, login in people:
+        comps[login] = pick_computer(e, login, disp, inv, inv_by_user, perm, pcm, recent)
     printers = db.printers_for_computers([c for c in comps.values() if c])
     for i, (e, disp, login) in enumerate(people, 1):
         if cancelled():

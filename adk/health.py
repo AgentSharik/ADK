@@ -19,11 +19,8 @@ import base64
 import json
 import logging
 import ntpath
-import os
-import subprocess
 from datetime import datetime, timedelta
 
-from .config import CREATE_NO_WINDOW
 from .netutils import is_valid_hostname
 
 log = logging.getLogger(__name__)
@@ -34,11 +31,13 @@ $c = '__HOST__'
 
 # 1. Операционная система, логические диски, процессор
 $os = $null
+$why = @()
 try { $os = Get-CimInstance Win32_OperatingSystem -ComputerName $c -ErrorAction Stop } catch {
-    try { $os = Get-WmiObject Win32_OperatingSystem -ComputerName $c -ErrorAction Stop } catch {}
+    $why += ('WinRM: ' + $_.Exception.Message)
+    try { $os = Get-WmiObject Win32_OperatingSystem -ComputerName $c -ErrorAction Stop } catch { $why += ('DCOM: ' + $_.Exception.Message) }
 }
 if (-not $os) {
-    throw "ПК $c не отвечает по CIM/WMI (WinRM и DCOM недоступны)"
+    throw ("ПК $c не отвечает по CIM/WMI. " + ($why -join ' | '))
 }
 
 $disks = @()
@@ -215,6 +214,10 @@ _PS_USAGE = r"""
 $ErrorActionPreference = 'SilentlyContinue'
 $root = '__ROOT__'
 $top = __TOP__
+if (-not [IO.Directory]::Exists($root)) {
+    $ErrorActionPreference = 'Stop'
+    throw "Ресурс $root недоступен: ПК выключен, административные общие ресурсы (C$) отключены или нет прав администратора"
+}
 $dirs = @(); $files = New-Object System.Collections.Generic.List[object]; $errors = 0; $totalFiles = 0
 $hogsMap = @{}
 $userMap = @{}
@@ -749,20 +752,13 @@ def get_events(host: str, start: datetime, end: datetime, levels: tuple[int, ...
 
 
 # --------------------------------------------------------------------------- запуск PowerShell
-def _run_ps(script: str, timeout: int) -> dict | str:
-    """Строка вывода PowerShell или dict с error."""
-    if os.name != "nt":
-        return {"error": "Проверка доступна только с Windows (PowerShell/CIM)"}
-    try:
-        res = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
-                             timeout=timeout, creationflags=CREATE_NO_WINDOW)
-    except subprocess.TimeoutExpired:
-        return {"error": f"ПК не ответил за {timeout} с"}
-    except (subprocess.SubprocessError, OSError) as exc:
-        return {"error": f"PowerShell: {exc}"}
-    if res.returncode != 0 or not res.stdout.strip():
-        return {"error": (res.stderr or "нет ответа").strip().splitlines()[0][:200]}
+def _run_ps(script: str, timeout: int, cancelled=None, on_tick=None) -> dict | str:
+    """Строка вывода PowerShell или dict с error (3.5.10: через :mod:`adk.psrun` — EncodedCommand, UTF-8,
+    понятная причина отказа вместо «нет ответа»)."""
+    from . import psrun
+    res = psrun.run(script, timeout=timeout, cancelled=cancelled, on_tick=on_tick)
+    if not res.ok:
+        return {"error": res.error}
     return res.stdout
 
 
@@ -778,7 +774,7 @@ def get_health(host: str, timeout: int = 40) -> dict:
         return {"error": f"Разбор ответа: {exc}"}
 
 
-def get_disk_usage(host: str, drive: str = "C:", top: int = 40, timeout: int = 900) -> dict:
+def get_disk_usage(host: str, drive: str = "C:", top: int = 40, timeout: int = 900, cancelled=None, on_tick=None) -> dict:
     """Карта диска через административный ресурс ``\\\\host\\C$``. Долго (минуты) — запускать только вручную."""
     if not is_valid_hostname(host):
         return {"error": f"Недопустимое имя узла: {host!r}"}
@@ -786,7 +782,7 @@ def get_disk_usage(host: str, drive: str = "C:", top: int = 40, timeout: int = 9
     if len(letter) != 1 or not letter.isalpha():
         return {"error": f"Недопустимый диск: {drive!r}"}
     root = f"\\\\{host}\\{letter}$"
-    out = _run_ps(_PS_USAGE.replace("__ROOT__", root).replace("__TOP__", str(int(top))), timeout)
+    out = _run_ps(_PS_USAGE.replace("__ROOT__", root).replace("__TOP__", str(int(top))), timeout, cancelled, on_tick)
     if isinstance(out, dict):
         return out
     try:

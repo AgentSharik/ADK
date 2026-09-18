@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 
-
-from PyQt6.QtCore import QDateTime, QPointF, QRectF, Qt
+from PyQt6.QtCore import QDateTime, QPointF, QRectF, Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor, QFont, QLinearGradient, QPainter, QPen
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDateTimeEdit, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
@@ -508,6 +508,11 @@ class HealthDialog(FramelessDialog):
         self.btn_usage.setObjectName("btnInfo")
         self.btn_usage.clicked.connect(self.load_usage)
         top.addWidget(self.btn_usage)
+        self.btn_usage_stop = QPushButton("⏹ Стоп")
+        self.btn_usage_stop.setToolTip("Прервать обход диска (процесс PowerShell на вашем ПК будет остановлен)")
+        self.btn_usage_stop.setEnabled(False)
+        self.btn_usage_stop.clicked.connect(self.stop_usage)
+        top.addWidget(self.btn_usage_stop)
         top.addStretch()
         self.lbl_usage = QLabel("Обход по \\\\ПК\\C$ — запускается только вручную, ПК при этом не тормозит, но ждать придётся.")
         self.lbl_usage.setObjectName("subtle")
@@ -888,12 +893,40 @@ class HealthDialog(FramelessDialog):
         drive = self.cb_drive.currentText() or "C:"
         top_count = self.sp_top.value() if hasattr(self, "sp_top") else TOP_FILES
         self.btn_usage.setEnabled(False)
-        self.lbl_usage.setText(f"⏳ Обхожу \\\\{self.comp}\\{drive.rstrip(':')}$ — это может занять несколько минут…")
-        run_in_background(self, lambda: health.get_disk_usage(self.comp, drive, top_count), self.show_usage,
-                          lambda m: self.show_usage({"error": m}))
+        self.btn_usage_stop.setEnabled(True)
+        self._usage_stop = False
+        self._usage_started = time.monotonic()
+        root = f"\\\\{self.comp}\\{drive.rstrip(':')}$"
+        self.lbl_usage.setText(f"⏳ Обхожу {root}… 0 с")
+        # 3.5.10: обход можно прервать («Стоп»), а подпись показывает, что процесс жив (секунды идут) — раньше окно
+        # выглядело зависшим: одна и та же строка на минуты, без возможности отменить
+        self._usage_timer = QTimer(self)
+        self._usage_timer.setInterval(1000)
+        self._usage_timer.timeout.connect(lambda: self.lbl_usage.setText(
+            f"⏳ Обхожу {root}… {int(time.monotonic() - self._usage_started)} с — большие диски занимают несколько минут"))
+        self._usage_timer.start()
+        run_in_background(self, lambda: health.get_disk_usage(self.comp, drive, top_count,
+                                                                cancelled=lambda: self._usage_stop),
+                          self.show_usage, lambda m: self.show_usage({"error": m}))
+
+    def on_dialog_done(self) -> None:
+        self._usage_stop = True          # закрыли окно — обход диска прерываем, процесс PowerShell не остаётся висеть
+        t = getattr(self, "_usage_timer", None)
+        if t is not None:
+            t.stop()
+
+    def stop_usage(self):
+        self._usage_stop = True
+        self.btn_usage_stop.setEnabled(False)
+        self.lbl_usage.setText("⏹ Останавливаю обход…")
 
     def show_usage(self, u: dict):
         self.btn_usage.setEnabled(True)
+        if hasattr(self, "btn_usage_stop"):
+            self.btn_usage_stop.setEnabled(False)
+        t = getattr(self, "_usage_timer", None)
+        if t is not None:
+            t.stop()
         self.usage_data = u
         if "error" in u:
             self.lbl_usage.setText(f"⚠️ {u['error']}")

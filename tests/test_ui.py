@@ -416,12 +416,16 @@ def test_diskmap_tabs_three_and_no_profiles(qapp):
 
 
 def test_freeip_legend_no_inventory(qapp):
-    """3.5.0: из легенды поиска свободного IP удален пункт «ПК из скана»."""
-    from adk.freeip_ui import FreeIPDialog
+    """3.5.0: из легенды убран пункт «ПК из скана»; 3.5.10: но каждый цвет, которым карта красит ячейку, объяснён —
+    ячейки ПК из парка (синие) получили честную подпись «занят компьютером из парка»."""
+    from adk.freeip_ui import CELL, FreeIPDialog
     fd = FreeIPDialog()
     labels = [fd.legend_box.layout().itemAtPosition(r, 1).widget().text() for r in range(fd.legend_box.layout().rowCount()) if fd.legend_box.layout().itemAtPosition(r, 1)]
     assert not any("скана" in t for t in labels)
     assert any("свободен" in t for t in labels)
+    assert "found" not in CELL                          # «выбранный результат» — не цвет ячейки, а рамка
+    for key in ("free", "inventory", "alive", "ptr"):   # статусы, которые FreeIPWorker реально присылает без DHCP
+        assert CELL[key][0] in labels
     fd.close()
 
 

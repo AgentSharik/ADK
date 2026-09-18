@@ -29,6 +29,9 @@ def temp_db(tmp_path, monkeypatch):
     from adk import netutils
     monkeypatch.setattr(netutils, "probe_printer",
                         lambda ip, **kw: {"alive": True, "is_printer": True, "evidence": "открыт порт печати 9100"})
+    # 3.5.10: поиск по IP, которого нет в базе, опрашивает сам адрес (SNMP/веб-панель) — в тестах «принтер не найден»,
+    # тесты обнаружения включают его сами
+    monkeypatch.setattr(netutils, "discover_printer", lambda ip: None)
     db.init_db()
     yield
 

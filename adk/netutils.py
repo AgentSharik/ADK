@@ -10,6 +10,7 @@ import socket
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Iterable
 
 from .config import CREATE_NO_WINDOW, settings
@@ -115,14 +116,17 @@ def probe_printer(ip: str, timeout: float = 0.6) -> dict:
             return False
 
     alive = False
+    # 3.5.10: все порты проверяются одновременно (раньше — по очереди: молчащий адрес ждал 7 × timeout ≈ 4 с)
+    with ThreadPoolExecutor(max_workers=7, thread_name_prefix="probe") as ex:
+        opened = dict(zip((9100, 631, 445, 3389, 135, 80, 443), ex.map(port_open, (9100, 631, 445, 3389, 135, 80, 443))))
     for port in (9100, 631):
-        if port_open(port):
+        if opened[port]:
             return {"alive": True, "is_printer": True, "evidence": f"открыт порт печати {port}"}
     for port in (445, 3389, 135):
-        if port_open(port):
+        if opened[port]:
             return {"alive": True, "is_printer": False, "evidence": f"открыт порт {port} — это компьютер, а не принтер"}
     for port in (80, 443):
-        if not port_open(port):
+        if not opened[port]:
             continue
         alive = True
         try:
@@ -155,6 +159,119 @@ PRINTER_WEB_MARKERS = ("hp-chai", "hp http server", "laserjet", "officejet", "de
                        "canon", "imagerunner", "xerox", "workcentre", "versalink", "brother", "epson", "ricoh", "lexmark",
                        "konica", "bizhub", "pantum", "samsung printer", "printer", "принтер", "мфу", "ipp", "embedded web server",
                        "ews", "cups")
+
+
+# --------------------------------------------------------------------------- принтер, которого нет в базе (3.5.10)
+_SNMP_OIDS = (
+    "1.3.6.1.2.1.25.3.2.1.3.1",     # hrDeviceDescr — «HP LaserJet M1536dnf MFP»
+    "1.3.6.1.2.1.43.5.1.1.16.1",    # prtGeneralPrinterName
+    "1.3.6.1.2.1.1.1.0",            # sysDescr
+)
+
+
+def _ber_len(n: int) -> bytes:
+    return bytes([n]) if n < 128 else b"\x82" + n.to_bytes(2, "big")
+
+
+def _ber(tag: int, body: bytes) -> bytes:
+    return bytes([tag]) + _ber_len(len(body)) + body
+
+
+def _ber_oid(oid: str) -> bytes:
+    parts = [int(x) for x in oid.split(".")]
+    out = bytearray([40 * parts[0] + parts[1]])
+    for v in parts[2:]:
+        chunk = bytearray([v & 0x7F])
+        v >>= 7
+        while v:
+            chunk.insert(0, 0x80 | (v & 0x7F))
+            v >>= 7
+        out += chunk
+    return _ber(0x06, bytes(out))
+
+
+def snmp_get_string(ip: str, oid: str, community: str = "public", timeout: float = 0.7, port: int = 161) -> str:
+    """Одно SNMPv1 GET без внешних библиотек: строка или «». Только чтение; community по умолчанию «public»."""
+    req_id = int(time.time() * 1000) & 0x7FFFFFFF
+    pdu = _ber(0xA0, _ber(0x02, req_id.to_bytes(4, "big")) + _ber(0x02, b"\x00") + _ber(0x02, b"\x00")
+               + _ber(0x30, _ber(0x30, _ber_oid(oid) + _ber(0x05, b""))))
+    msg = _ber(0x30, _ber(0x02, b"\x00") + _ber(0x04, community.encode()) + pdu)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(timeout)
+            sock.sendto(msg, (ip, port))
+            data, _ = sock.recvfrom(4096)
+    except OSError:
+        return ""
+    # ответ: последняя OCTET STRING (0x04) в varbind — берём её (разбор без полноценного BER-парсера достаточен)
+    i = data.rfind(b"\x04")
+    while i > 0:
+        try:
+            ln = data[i + 1]
+            start = i + 2
+            if ln & 0x80:
+                nb = ln & 0x7F
+                ln = int.from_bytes(data[start:start + nb], "big")
+                start += nb
+            val = data[start:start + ln]
+            if start + ln == len(data) and val and val != community.encode():
+                return val.decode("utf-8", "replace").strip()
+        except (IndexError, ValueError):
+            pass
+        i = data.rfind(b"\x04", 0, i)
+    return ""
+
+
+def _http_title(ip: str, timeout: float = 0.8) -> str:
+    """<title> веб-панели устройства (HP/Kyocera/Canon пишут в нём модель), «» если недоступна."""
+    import http.client
+    import html as _html
+    for port in (80, 443):
+        try:
+            cls = http.client.HTTPSConnection if port == 443 else http.client.HTTPConnection
+            conn = cls(ip, port, timeout=timeout) if port == 80 else cls(ip, port, timeout=timeout, context=_insecure_ssl())
+            conn.request("GET", "/", headers={"User-Agent": "ADK"})
+            resp = conn.getresponse()
+            body = resp.read(20000).decode("utf-8", "ignore")
+            conn.close()
+        except Exception:  # noqa: BLE001
+            continue
+        m = re.search(r"<title[^>]*>(.*?)</title>", body, re.I | re.S)
+        if m:
+            t = " ".join(_html.unescape(m.group(1)).split())
+            if t and len(t) < 120:
+                return t
+    return ""
+
+
+def discover_printer(ip: str) -> dict | None:
+    """Принтер по IP, которого нет в базе: проверить, что по адресу принтер, и узнать модель (SNMP → веб-панель → PTR).
+
+    Возвращает ``{"name", "ip", "kind": "network", "host", "probe", "source"}`` или None, если по адресу не принтер
+    (или узел молчит). Ничего не записывает.
+    """
+    if not _IPV4_RE.match(ip or ""):
+        return None
+    probe = probe_printer(ip)
+    if probe.get("is_printer") is not True:
+        return None
+    name, source = "", ""
+    for oid in _SNMP_OIDS:
+        name = snmp_get_string(ip, oid)
+        if name:
+            source = "SNMP"
+            break
+    if not name:
+        name = _http_title(ip)
+        source = "веб-панель" if name else ""
+    host = ""
+    try:
+        host = socket.gethostbyaddr(ip)[0].split(".")[0]
+    except OSError:
+        pass
+    if not name:
+        name, source = (f"Сетевой принтер {host}" if host else f"Сетевой принтер {ip}"), "по портам печати"
+    return {"name": name.strip(), "ip": ip, "kind": "network", "host": host, "probe": probe, "source": source}
 
 
 def _insecure_ssl():
@@ -502,11 +619,18 @@ def index_printers(hosts, progress=None, cancelled=None) -> int:
 _PS_LIVE_PRINTERS = r"""
 $ErrorActionPreference = 'Stop'
 $c = '__HOST__'
-$ps = Get-CimInstance Win32_Printer -ComputerName $c | Select-Object Name, PortName, Default, PrinterStatus, WorkOffline, DriverName
+$ps = $null
+try { $ps = Get-CimInstance Win32_Printer -ComputerName $c -ErrorAction Stop } catch {
+  $w = $_.Exception.Message
+  try { $ps = Get-WmiObject Win32_Printer -ComputerName $c -ErrorAction Stop } catch { throw ("Принтеры $c не прочитаны. WinRM: $w | DCOM: " + $_.Exception.Message) }
+}
+$ps = @($ps | Select-Object Name, PortName, Default, PrinterStatus, WorkOffline, DriverName)
 $ports = @{}
-try { Get-CimInstance Win32_TCPIPPrinterPort -ComputerName $c | ForEach-Object { $ports[$_.Name] = $_.HostAddress } } catch {}
-@($ps | ForEach-Object { @{ name = $_.Name; port = $_.PortName; default = [bool]$_.Default; status = [int]$_.PrinterStatus
-                            offline = [bool]$_.WorkOffline; driver = $_.DriverName; host = $ports[$_.PortName] } }) | ConvertTo-Json -Compress -Depth 3
+try { Get-CimInstance Win32_TCPIPPrinterPort -ComputerName $c -ErrorAction Stop | ForEach-Object { $ports[$_.Name] = $_.HostAddress } } catch {
+  try { Get-WmiObject Win32_TCPIPPrinterPort -ComputerName $c -ErrorAction Stop | ForEach-Object { $ports[$_.Name] = $_.HostAddress } } catch {}
+}
+ConvertTo-Json -InputObject @($ps | ForEach-Object { @{ name = $_.Name; port = $_.PortName; default = [bool]$_.Default; status = [int]$_.PrinterStatus
+                            offline = [bool]$_.WorkOffline; driver = $_.DriverName; host = $ports[$_.PortName] } }) -Compress -Depth 3
 """
 PRINTER_STATUS = {1: "другое", 2: "неизвестно", 3: "готов", 4: "печатает", 5: "прогрев", 6: "остановлен", 7: "офлайн"}
 
@@ -534,24 +658,16 @@ def parse_live_printers_json(text: str) -> list[dict]:
     return out
 
 
-def get_live_printers(computer_name: str, timeout: int = 30) -> dict:
+def get_live_printers(computer_name: str, timeout: int = 45) -> dict:
     """Принтеры ПК прямо сейчас (CIM Win32_Printer по WinRM/DCOM). **Ничего не пишет** ни в БД, ни в CSV —
     это разовый взгляд «как на самом деле», инвентарный кэш остаётся снимком сканера."""
     name = clean_computer_name(computer_name)
     if not name or not is_valid_hostname(name):
         return {"error": f"Недопустимое имя узла: {computer_name!r}"}
-    if os.name != "nt":
-        return {"error": "Живой опрос доступен только с Windows (PowerShell/CIM)"}
-    try:
-        res = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", _PS_LIVE_PRINTERS.replace("__HOST__", name)],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
-                             timeout=timeout, creationflags=CREATE_NO_WINDOW)
-    except subprocess.TimeoutExpired:
-        return {"error": f"ПК не ответил за {timeout} с"}
-    except (subprocess.SubprocessError, OSError) as exc:
-        return {"error": f"PowerShell: {exc}"}
-    if res.returncode != 0:
-        return {"error": (res.stderr or "нет ответа").strip().splitlines()[0][:200]}
+    from . import psrun
+    res = psrun.run(_PS_LIVE_PRINTERS.replace("__HOST__", name), timeout=timeout)
+    if not res.ok:
+        return {"error": res.error}
     try:
         return {"printers": parse_live_printers_json(res.stdout)}
     except ValueError as exc:

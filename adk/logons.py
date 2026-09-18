@@ -7,11 +7,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import subprocess
 from collections import Counter
 
-from .config import CREATE_NO_WINDOW
 from .netutils import is_valid_hostname
 
 log = logging.getLogger(__name__)
@@ -25,15 +22,21 @@ _PS = r"""
 $ErrorActionPreference = 'Stop'
 $c = '__HOST__'
 $since = (Get-Date).AddHours(-__HOURS__)
-$ev = Get-WinEvent -ComputerName $c -FilterHashtable @{LogName='Security'; Id=4624,4625; StartTime=$since} -MaxEvents 2000 |
+$ev = @()
+try {
+  $ev = Get-WinEvent -ComputerName $c -FilterHashtable @{LogName='Security'; Id=4624,4625; StartTime=$since} -MaxEvents 2000 -ErrorAction Stop
+} catch {
+  if ($_.Exception.Message -notmatch 'No events were found|Не найдено событий') { throw ('Журнал Security ' + $c + ': ' + $_.Exception.Message) }
+}
+$rows = @(@($ev) | Where-Object { $_ } |
   ForEach-Object {
     $x = [xml]$_.ToXml()
     $d = @{}
     foreach ($n in $x.Event.EventData.Data) { $d[$n.Name] = $n.'#text' }
     [pscustomobject]@{ id = $_.Id; ts = $_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss'); user = $d['TargetUserName'];
                        domain = $d['TargetDomainName']; type = [string]$d['LogonType']; ip = $d['IpAddress']; status = $d['SubStatus'] }
-  }
-ConvertTo-Json -InputObject @($ev) -Compress -Depth 3
+  })
+ConvertTo-Json -InputObject $rows -Compress -Depth 3
 """
 
 FAIL_REASONS = {"0xc000006a": "неверный пароль", "0xc0000064": "нет такого пользователя", "0xc0000234": "учётка заблокирована",
@@ -66,23 +69,17 @@ def parse_events_json(text: str) -> dict:
             "fails": sum(1 for x in events if x["kind"] == "fail")}
 
 
-def get_logons(host: str, hours: int = 24, timeout: int = 90) -> dict:
+def get_logons(host: str, hours: int = 24, timeout: int = 120) -> dict:
     if not is_valid_hostname(host):
         return {"error": f"Недопустимое имя узла: {host!r}"}
-    if os.name != "nt":
-        return {"error": "Журнал входов доступен только с Windows (Get-WinEvent)"}
+    from . import psrun
     script = _PS.replace("__HOST__", host).replace("__HOURS__", str(int(hours)))
-    try:
-        res = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
-                             timeout=timeout, creationflags=CREATE_NO_WINDOW)
-    except (subprocess.SubprocessError, OSError) as exc:
-        return {"error": f"PowerShell: {exc}"}
-    if res.returncode != 0:
-        err = (res.stderr or "нет ответа").strip().splitlines()[0][:200]
-        if "No events were found" in err or "Не найдено событий" in err:
+    res = psrun.run(script, timeout=timeout)
+    if not res.ok:
+        low = res.error.lower()
+        if "no events were found" in low or "не найдено событий" in low:
             return parse_events_json("[]")
-        return {"error": err}
+        return {"error": res.error}
     try:
         return parse_events_json(res.stdout)
     except (ValueError, KeyError) as exc:
