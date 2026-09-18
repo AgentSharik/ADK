@@ -34,6 +34,40 @@ def _excepthook(exc_type, exc, tb):
         pass
 
 
+def _db_hang_exit(err) -> None:
+    """3.6.0: сторож базы сработал — окно с объяснением и выход. Вызывается из любого потока; окно показываем в GUI-потоке."""
+    from PyQt6.QtCore import QThread, QTimer
+    from PyQt6.QtWidgets import QApplication
+    from . import db
+
+    app = QApplication.instance()
+    if app is None:
+        return
+
+    def show():
+        if getattr(app, "_adk_hang_shown", False):
+            return
+        app._adk_hang_shown = True                 # noqa: SLF001
+        backups = db.list_backups()
+        last = f"\n\nПоследняя резервная копия: {backups[-1]}" if backups else ""
+        MessageBox.critical(None, "Соединение с базой признано зависшим", DB_HANG_TEXT + f"\n\nПодробности: {err}{last}")
+        app.exit(3)
+
+    if app.thread() is QThread.currentThread():
+        show()
+    else:
+        QTimer.singleShot(0, app, show)             # таймер принадлежит app → слот выполнится в GUI-потоке
+
+
+DB_HANG_TEXT = (
+    "Запрос к базе ADK выполнялся дольше минуты и был прерван. Ваше соединение с базой признано зависшим — вы отрезаны "
+    "от базы до следующего запуска программы, ADK сейчас закроется.\n\n"
+    "Если проблема повторится, сначала обратитесь к вашим системным администраторам.\n"
+    "Если вы администратор: переименуйте файл базы (например, pc_mapping.db → pc_mapping.old.db) и запустите ADK заново — "
+    "база будет создана и заполнена повторно; прежние данные лежат в папке backups рядом с базой.\n"
+    "Если не помогло — обратитесь к администратору ПО.")
+
+
 _CLI_FLAGS = ("--find", "--export-inventory", "--attention", "--wol", "--ping", "--scan", "--serve", "--version", "-h", "--help")
 
 
@@ -69,6 +103,8 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         MessageBox.critical(None, "База данных", f"Не удалось открыть {config.settings.db_path}:\n{exc}")
         return 2
+    db.set_hang_hook(_db_hang_exit)          # 3.6.0: запрос дольше минуты → окно и выход
+    db.backup_periodic()                     # 3.6.0: копия при старте, если последней больше backup_every_hours
     _install_notify_hook()
 
     from .dialogs import LoginDialog

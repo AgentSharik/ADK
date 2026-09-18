@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 _SCHEMA = (
     "CREATE TABLE IF NOT EXISTS pc_mapping (login TEXT PRIMARY KEY, computer_name TEXT)",
+    "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)",      # 3.6.0: аренда сканера и служебные отметки
     "CREATE TABLE IF NOT EXISTS permanent_mapping (login TEXT PRIMARY KEY, computer_name TEXT, "
     "ip_address TEXT, last_updated TEXT)",
     "CREATE TABLE IF NOT EXISTS pc_inventory (computer_name TEXT PRIMARY KEY, ip_address TEXT, "
@@ -63,21 +64,94 @@ _MIGRATIONS = (
 )
 
 
+# 3.6.0: ожидание занятой базы. Раньше 30 с × 5 повторов = до 2,5 минут «висящего» окна; теперь один запрос ждёт
+# не дольше BUSY_TIMEOUT_SEC, повторов 3, а сторож (`HANG_LIMIT_SEC`) отрезает соединение, если запрос завис совсем.
+BUSY_TIMEOUT_SEC = 10
+HANG_LIMIT_SEC = 60
+
+
+class DbHangError(RuntimeError):
+    """Запрос к базе держался дольше ``HANG_LIMIT_SEC`` — соединение признано зависшим (см. `__main__._db_hang_exit`)."""
+
+
+class _HangGuard:
+    """Сторож одного соединения: если запрос идёт дольше лимита — просит SQLite прерваться (``interrupt``) и помечает
+    зависание. Проверяется через ``progress_handler`` каждые ~100 тыс. инструкций VM — без отдельного потока."""
+    __slots__ = ("t0", "limit", "conn", "tripped")
+
+    def __init__(self, conn, limit: float):
+        self.t0, self.limit, self.conn, self.tripped = time.monotonic(), limit, conn, False
+
+    def __call__(self) -> int:
+        if time.monotonic() - self.t0 > self.limit:
+            self.tripped = True
+            return 1            # ненулевое значение = прервать текущий запрос (sqlite3.OperationalError: interrupted)
+        return 0
+
+    def reset(self) -> None:
+        self.t0 = time.monotonic()
+
+
+class _GuardedConnection(sqlite3.Connection):
+    """sqlite3.Connection + атрибут ``guard`` (сторож зависания). Сам класс ничего не переопределяет."""
+    guard: "_HangGuard | None" = None
+
+
+def is_network_path(path: str) -> bool:
+    """UNC (``\\\\server\\share``) или подключённый сетевой диск — там WAL невозможен, а блокировки медленные."""
+    p = (path or "").replace("/", "\\")
+    if p.startswith("\\\\"):
+        return True
+    if os.name == "nt" and len(p) >= 2 and p[1] == ":":
+        try:
+            import ctypes
+            return ctypes.windll.kernel32.GetDriveTypeW(p[:3]) == 4      # DRIVE_REMOTE
+        except Exception:  # noqa: BLE001
+            return False
+    return False
+
+
 def get_db_connection(path: str | None = None):
-    """SQLite по умолчанию; ``[Paths] db_backend = postgres`` → общая БД отдела через :mod:`adk.pgadapter`."""
+    """SQLite; ``[Paths] db_backend = postgres`` → общая БД отдела через :mod:`adk.pgadapter`.
+
+    3.6.0: обычный журнал (``journal_mode=DELETE``), **без WAL** — база может лежать на сервере/в сетевой папке,
+    где WAL не поддерживается (ему нужен общий файл ``-shm`` в памяти, SMB его не даёт).
+    ``busy_timeout`` 10 с; сторож прерывает запрос дольше 60 с (:class:`DbHangError` поднимается в
+    :func:`db_execute_with_retry`)."""
     if getattr(settings, "db_backend", "sqlite") == "postgres" and getattr(settings, "db_dsn", ""):
         from .pgadapter import connect
         return connect(settings.db_dsn)
-    conn = sqlite3.connect(path or settings.db_path, timeout=30)
-    conn.execute("PRAGMA busy_timeout=30000;")
-    with contextlib.suppress(sqlite3.Error):
-        conn.execute("PRAGMA synchronous=NORMAL")    # с WAL безопасно и заметно быстрее на обычных дисках
+    # isolation_level="IMMEDIATE": транзакция записи сразу берёт блокировку на запись (с ожиданием busy_timeout),
+    # а не «читаю → потом пишу» — второй вариант при двух писателях даёт мгновенный отказ без ожидания
+    conn = sqlite3.connect(path or settings.db_path, timeout=BUSY_TIMEOUT_SEC, factory=_GuardedConnection,
+                           isolation_level="IMMEDIATE")
+    conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_SEC * 1000};")
+    conn.guard = _HangGuard(conn, HANG_LIMIT_SEC)
+    conn.set_progress_handler(conn.guard, 100_000)
     return conn
+
+
+_hang_hook = None      # callable(DbHangError) — ставит __main__: показать окно и закрыть программу
+
+
+def set_hang_hook(fn) -> None:
+    global _hang_hook
+    _hang_hook = fn
+
+
+def _hang(exc: Exception, query: str) -> DbHangError:
+    err = DbHangError(f"Запрос к базе выполнялся дольше {HANG_LIMIT_SEC} с и был прерван: {query[:80]}… ({exc})")
+    log.error("%s", err)
+    if _hang_hook:
+        with contextlib.suppress(Exception):
+            _hang_hook(err)
+    return err
 
 
 def db_execute_with_retry(query: str, params: Sequence[Any] = (), fetch: str | None = None):
     """Выполняет запрос с повтором при блокировке; соединение всегда закрывается."""
     last_exc: Exception | None = None
+    t_start = time.monotonic()
     for attempt in range(1, DB_RETRY_ATTEMPTS + 1):
         try:
             with contextlib.closing(get_db_connection()) as conn:
@@ -92,7 +166,13 @@ def db_execute_with_retry(query: str, params: Sequence[Any] = (), fetch: str | N
                 return result
         except sqlite3.OperationalError as exc:
             last_exc = exc
+            guard = getattr(conn, "guard", None) if "conn" in locals() else None
+            if (guard and guard.tripped) or "interrupted" in str(exc).lower():
+                raise _hang(exc, query) from exc
+            # занятая база: повторяем, но суммарно не дольше HANG_LIMIT_SEC — потом это тоже «зависание»
             if attempt < DB_RETRY_ATTEMPTS and "locked" in str(exc).lower():
+                if time.monotonic() - t_start > HANG_LIMIT_SEC:
+                    raise _hang(exc, query) from exc
                 time.sleep(DB_RETRY_DELAY_SEC)
                 continue
             raise
@@ -115,6 +195,84 @@ def backup_sqlite(path: str, keep: int = 3) -> str | None:
         with contextlib.suppress(OSError):
             os.remove(os.path.join(os.path.dirname(path) or ".", f))
     return dst
+
+
+BACKUP_DIR_NAME = "backups"
+
+
+def backup_dir(path: str | None = None) -> str:
+    """``<папка базы>\\backups`` — рядом с файлом, чтобы при переезде базы на сервер копии уехали вместе с ней."""
+    return os.path.join(os.path.dirname(path or settings.db_path) or ".", BACKUP_DIR_NAME)
+
+
+def list_backups(path: str | None = None) -> list[str]:
+    d = backup_dir(path)
+    if not os.path.isdir(d):
+        return []
+    return sorted(os.path.join(d, f) for f in os.listdir(d) if f.startswith("pc_mapping-") and f.endswith(".db"))
+
+
+def last_backup_age_hours(path: str | None = None) -> float | None:
+    """Сколько часов последней копии; None — копий нет."""
+    files = list_backups(path)
+    if not files:
+        return None
+    return (time.time() - os.path.getmtime(files[-1])) / 3600
+
+
+def backup_periodic(path: str | None = None, every_hours: float | None = None, keep: int | None = None) -> str | None:
+    """3.6.0: регулярная копия ``backups/pc_mapping-YYYYmmdd-HHMM.db`` через ``Connection.backup`` (согласованный
+    снимок даже во время записи). Делается, если последней копии нет или она старше ``every_hours``
+    (``[Paths] backup_every_hours``, 0 — выключено). Хранится ``keep`` последних (``backup_keep``). Возвращает путь
+    новой копии или None, если делать было не нужно / не удалось."""
+    path = path or settings.db_path
+    every = settings.backup_every_hours if every_hours is None else every_hours
+    keep = settings.backup_keep if keep is None else keep
+    if not every or every <= 0 or not path or not os.path.exists(path):
+        return None
+    age = last_backup_age_hours(path)
+    if age is not None and age < every:
+        return None
+    d = backup_dir(path)
+    try:
+        os.makedirs(d, exist_ok=True)
+        dst = os.path.join(d, f"pc_mapping-{time.strftime('%Y%m%d-%H%M%S')}.db")
+        with contextlib.closing(sqlite3.connect(path, timeout=BUSY_TIMEOUT_SEC)) as src, \
+                contextlib.closing(sqlite3.connect(dst)) as out:
+            src.backup(out)
+        for old in list_backups(path)[:-max(1, keep)]:
+            with contextlib.suppress(OSError):
+                os.remove(old)
+        log.info("Резервная копия базы: %s", dst)
+        return dst
+    except (sqlite3.Error, OSError) as exc:
+        log.warning("Резервная копия не удалась: %s", exc)
+        return None
+
+
+# --------------------------------------------------------------------------- аренда сканера (одна общая база — один сканер)
+SCAN_LEASE_MIN = 20
+
+
+def scan_lease_acquire(owner: str, minutes: int = SCAN_LEASE_MIN) -> tuple[bool, str, str]:
+    """Общую базу сканирует **один** ADK за раз. Возвращает (получили ли, кто держит, до какого времени).
+
+    Аренда — строка ``scan_lease`` в таблице ``meta``: владелец (``ПК\\пользователь``) и срок. Если срок вышел или
+    владелец — мы сами, аренда переписывается. Остальные ADK видят «парк сканирует ПК X» и не толкаются в базе."""
+    now = datetime.now()
+    row = db_execute_with_retry("SELECT value FROM meta WHERE key = 'scan_lease'", fetch="one")
+    if row and row[0]:
+        holder, _, until = str(row[0]).partition("|")
+        until_dt = parse_ts(until)
+        if holder != owner and until_dt and until_dt > now:
+            return False, holder, until
+    until = (now + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    db_execute_with_retry("INSERT OR REPLACE INTO meta (key, value) VALUES ('scan_lease', ?)", (f"{owner}|{until}",))
+    return True, owner, until
+
+
+def scan_lease_release(owner: str) -> None:
+    db_execute_with_retry("DELETE FROM meta WHERE key = 'scan_lease' AND value LIKE ?", (f"{owner}|%",))
 
 
 def quick_check(path: str | None = None) -> str:
@@ -152,11 +310,15 @@ def init_db() -> None:
         if sqlite:
             conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
             conn.commit()
-            # 3.5.4: WAL — фоновый сканер пишет инвентарь, а поиск в это время читает без ожиданий; на медленном
-            # SSD/HDD это заметно (раньше запись блокировала чтение до commit). Режим хранится в самом файле БД.
+            # 3.6.0: WAL убран совсем. Файлы, созданные 3.5.4–3.5.11 в режиме WAL, переводятся обратно в обычный
+            # журнал (режим хранится в самом файле): база может переехать на сервер/сетевую папку, где WAL не поддерживается.
             with contextlib.suppress(sqlite3.Error):
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("PRAGMA synchronous=NORMAL")
+                mode = str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower()
+                if mode == "wal":
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    mode = str(conn.execute("PRAGMA journal_mode=DELETE").fetchone()[0]).lower()
+                    log.info("journal_mode WAL → %s", mode)
+                conn.execute("PRAGMA synchronous=FULL")
 
 
 # --------------------------------------------------------------------------- helpers

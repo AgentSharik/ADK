@@ -166,19 +166,23 @@ class DbSetupDialog(FramelessDialog):
             self.btn_ok.setEnabled(False)
             return
         self.btn_ok.setEnabled(True)
+        net = ""
+        if db.is_network_path(path):
+            net = ("<br>⚠️ Это сетевая папка. Так можно, если ADK запускают <b>ярлыком с одного ПК/сервера</b> и парк сканирует "
+                   "один экземпляр; для отдела с несколькими одновременными пользователями лучше держать ADK и базу на сервере.")
         if os.path.exists(path) and os.path.getsize(path) > 0:
             if db_has_inventory(path):
                 self.is_new = False
-                self.lbl_found.setText(f"✅ База найдена: {describe_db(path)}. ADK будет использовать её как есть.")
+                self.lbl_found.setText(f"✅ База найдена: {describe_db(path)}. ADK будет использовать её как есть.{net}")
                 self.btn_ok.setText("Использовать эту базу")
             else:
                 self.is_new = True
-                self.lbl_found.setText("ℹ️ Файл есть, но инвентарь в нём пуст — после входа ADK заполнит его: опросит домен и ПК.")
+                self.lbl_found.setText(f"ℹ️ Файл есть, но инвентарь в нём пуст — после входа ADK заполнит его: опросит домен и ПК.{net}")
                 self.btn_ok.setText("Продолжить")
         else:
             self.is_new = True
             self.lbl_found.setText("🆕 Базы здесь нет — она будет создана, и после входа ADK заполнит её: "
-                                   "ПК из домена, их адреса, кто за ними работает, принтеры.")
+                                   f"ПК из домена, их адреса, кто за ними работает, принтеры.{net}")
             self.btn_ok.setText("Создать базу здесь")
 
     def browse(self):
