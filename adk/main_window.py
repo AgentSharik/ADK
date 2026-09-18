@@ -647,7 +647,12 @@ class ADApp(FramelessMainWindow):
         total = max(self.active_ad_total, summ["total"])
         offline = max(summ["offline"], total - online)
         self.dashboard_counts = {"online": online, "offline": offline, "total": total}   # для тестов и статуса
-        self.lbl_status.setText(f"Последнее сканирование: {last}" if last else "Готово к работе")
+        # строку состояния дашборд трогает, только если там его же прежний текст: результат поиска, прогресс
+        # наполнения или предупреждение не должны пропадать из-за фонового пересчёта карточек (load_ad_count)
+        dash_text = f"Последнее сканирование: {last}" if last else "Готово к работе"
+        if self.lbl_status.text() in ("", getattr(self, "_dash_status", "")):
+            self.lbl_status.setText(dash_text)
+        self._dash_status = dash_text
         while self.cards.count():
             it = self.cards.takeAt(0)
             if it.widget():
@@ -1822,6 +1827,7 @@ class ADApp(FramelessMainWindow):
         self.btn_scan.setEnabled(True)
         if total:
             self.active_ad_total = total
+        self.lbl_status.setText("")          # после сканера в строке состояния — «Последнее сканирование: …»
         self.refresh_dashboard()
 
     # ------------------------------------------------------------------ 3.5.11: первичное наполнение новой базы
