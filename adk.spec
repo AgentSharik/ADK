@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller: ``pyinstaller adk.spec`` → dist/ADK/ADK.exe (onedir, без консоли).
+"""PyInstaller: ``pyinstaller adk.spec`` → dist/ADK/ (onedir, без консоли); build_exe.bat и CI затем поднимают
+содержимое в dist/ — ADK.exe и _internal/ лежат прямо там.
 
 Onedir выбран сознательно: стартует быстрее onefile (PyQt6 не распаковывается во временную папку
 при каждом запуске) и реже ложно срабатывает у антивирусов.

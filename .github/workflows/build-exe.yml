@@ -5,6 +5,9 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+permissions:
+  contents: write          # публикация файлов в GitHub Release по тегу
+
 jobs:
   windows:
     runs-on: windows-latest
@@ -21,11 +24,16 @@ jobs:
         run: python -c "import adk, PyQt6, ldap3, win32crypt, winkerberos; print(adk.__version__)"
       - name: Build
         run: pyinstaller --noconfirm --clean adk.spec
+      - name: Flatten dist (ADK.exe + _internal прямо в dist\)
+        shell: pwsh
+        run: |
+          Move-Item dist\ADK\* dist\ -Force
+          Remove-Item dist\ADK -Recurse -Force
       - name: Launch smoke (exe starts, creates config, exits)
         shell: pwsh
         run: |
           $env:QT_QPA_PLATFORM = "offscreen"
-          $p = Start-Process -FilePath "dist\ADK\ADK.exe" -PassThru
+          $p = Start-Process -FilePath "dist\ADK.exe" -PassThru
           Start-Sleep -Seconds 8
           if ($p.HasExited) { throw "exe exited early with $($p.ExitCode)" }
           Stop-Process -Id $p.Id -Force
@@ -34,8 +42,16 @@ jobs:
         shell: pwsh
         run: |
           $v = (python -c "import adk; print(adk.__version__)")
-          Compress-Archive -Path "dist\ADK\*" -DestinationPath "ADK-$v-win64.zip"
+          Compress-Archive -Path "dist\*" -DestinationPath "ADK-$v-win64.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: ADK-win64
           path: ADK-*-win64.zip
+      - name: GitHub Release (по тегу v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ADK ${{ github.ref_name }}
+          files: |
+            ADK-*-win64.zip
+            config.example.ini
