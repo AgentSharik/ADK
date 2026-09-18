@@ -45,16 +45,17 @@ python run.py
 ```
 
 Первый запуск создаёт `Documents\ADK\config.ini` — заполните LDAP-параметры (образец `config.example.ini`) и запустите снова.
-Готовый `ADK.exe` собирается одной командой `build_exe.bat`. Подробнее: **[установка, exe, роли, PostgreSQL, плагины](docs/INSTALL.md)**.
+Готовый `ADK.exe` без Python — в **[Releases](https://github.com/AgentSharik/ADK/releases)**; свой собирается одной командой `build_exe.bat`.
+Подробно (зависимости, PyCharm, откуда брать данные домена, `use_ssl`, роли, PostgreSQL, плагины): **[docs/INSTALL.md](docs/INSTALL.md)**.
 
 ## 🧪 Качество
 
 ```bash
 pyflakes adk tests
-QT_QPA_PLATFORM=offscreen pytest -q          # 255 тестов
+QT_QPA_PLATFORM=offscreen pytest -q          # 278 тестов
 ```
 
-Плюс три сквозных сценария (172 проверки), CI на Python 3.11/3.12, короткий [отчёт о тестировании](docs/TEST_REPORT.pdf) (4 страницы, цифры берутся из логов).
+Плюс четыре сквозных сценария (215 проверок), CI на Python 3.11/3.12, короткий [отчёт о тестировании](docs/TEST_REPORT.pdf) (4 страницы, цифры берутся из логов).
 Архитектура, структура модулей и правила работы с потоками — **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
 
 ## ⚠️ Ограничения
