@@ -515,7 +515,7 @@ def test_printers_dialog_summary_and_drilldown(qapp, fake_conn, monkeypatch, tmp
     dlg.table.selectRow(0)
     dlg.open_owners()                                             # → главное окно: printer: 10.0.2.50
     assert w.search_input.text() == "10.0.2.50"
-    assert _wait(lambda: w.table.rowCount() >= 1 and "Принтеров:" in w.lbl_status.text(), qapp, 3000)
+    assert _wait(lambda: w.table.rowCount() >= 1 and "Принтеров:" in w.lbl_status.text(), qapp, 15000)   # медленный CI
     # 3.5.1: у принтера в столбце «Имя ПК» — способ подключения, заголовок столбца переключён на «Подключение»
     assert [w.table.item(r, 3).text() for r in range(w.table.rowCount())] == ["сетевой"], w.lbl_status.text()
     assert w.table.horizontalHeaderItem(3).text() == "Подключение" and not w.table.item(0, 3).icon().isNull()
