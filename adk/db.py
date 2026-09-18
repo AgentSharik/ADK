@@ -217,13 +217,13 @@ def save_search_query(query_text: str, user: str) -> None:
         )
         if row:
             db_execute_with_retry(
-                "UPDATE search_history SET timestamp = datetime('now','localtime'), query = ? WHERE id = ?",
+                "UPDATE search_history SET timestamp = strftime('%Y-%m-%d %H:%M:%f','now','localtime'), query = ? WHERE id = ?",
                 (q, row[0]),
             )
         else:
             db_execute_with_retry(
                 "INSERT INTO search_history (user_login, query, query_key, timestamp) "
-                "VALUES (?, ?, ?, datetime('now','localtime'))",
+                "VALUES (?, ?, ?, strftime('%Y-%m-%d %H:%M:%f','now','localtime'))",
                 (user, q, key),
             )
     except sqlite3.Error as exc:
@@ -234,7 +234,7 @@ def get_recent_searches(limit: int = 5) -> list[str]:
     try:
         rows = db_execute_with_retry(
             "SELECT query FROM search_history GROUP BY query_key "
-            "ORDER BY MAX(timestamp) DESC LIMIT ?",
+            "ORDER BY MAX(timestamp) DESC, MAX(id) DESC LIMIT ?",     # миллисекунды + id: порядок «недавних» стабилен
             (limit,),
             fetch="all",
         )
