@@ -19,6 +19,18 @@ log = logging.getLogger(__name__)
 _PS = r"""
 $ErrorActionPreference = 'Stop'
 $c = '__HOST__'
+
+# Дата установки обновления приходит и как DateTime, и как строка (в т.ч. DMTF '20250115120000.000000+180').
+# Прямой .ToString('формат') на строке падает «Не удается найти перегрузку для "ToString"» — и ветка обновлений
+# оставалась пустой. Здесь безопасный перевод для любого вида.
+function FmtDate($v) {
+    if ($null -eq $v -or '' + $v -eq '') { return '' }
+    if ($v -is [datetime]) { return $v.ToString('yyyy-MM-dd') }
+    $s = [string]$v
+    if ($s -match '^\d{8}') { return $s.Substring(0,4) + '-' + $s.Substring(4,2) + '-' + $s.Substring(6,2) }
+    try { return ([datetime]$s).ToString('yyyy-MM-dd') } catch { return $s }
+}
+
 $paths = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
 $soft = @()
 $how = ''
@@ -88,11 +100,11 @@ if (-not $how) { throw ("Список ПО не прочитан. " + ($errs -jo
 $hot = @()
 try {
   $hot = @(Get-CimInstance Win32_QuickFixEngineering -ComputerName $c -ErrorAction Stop | Sort-Object InstalledOn -Descending | Select-Object -First 15 |
-    ForEach-Object { [pscustomobject]@{ id = $_.HotFixID; desc = $_.Description; installed = if ($_.InstalledOn) { $_.InstalledOn.ToString('yyyy-MM-dd') } else { '' } } })
+    ForEach-Object { [pscustomobject]@{ id = $_.HotFixID; desc = $_.Description; installed = FmtDate $_.InstalledOn } })
 } catch {
   try {
     $hot = @(Get-WmiObject Win32_QuickFixEngineering -ComputerName $c -ErrorAction Stop | Sort-Object InstalledOn -Descending | Select-Object -First 15 |
-      ForEach-Object { [pscustomobject]@{ id = $_.HotFixID; desc = $_.Description; installed = if ($_.InstalledOn) { ([datetime]$_.InstalledOn).ToString('yyyy-MM-dd') } else { '' } } })
+      ForEach-Object { [pscustomobject]@{ id = $_.HotFixID; desc = $_.Description; installed = FmtDate $_.InstalledOn } })
   } catch {}
 }
 [pscustomobject]@{ software = @($soft); hotfixes = @($hot); how = $how } | ConvertTo-Json -Depth 4 -Compress

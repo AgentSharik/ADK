@@ -14,7 +14,7 @@ import subprocess
 
 import pytest
 
-from adk import health, netutils, psrun
+from adk import health, netutils, psrun, software
 
 PW = shutil.which("pwsh") or (shutil.which("powershell") if os.name == "nt" else None)
 
@@ -42,6 +42,7 @@ def test_scripts_parse_without_errors(tmp_path):
             .replace("__START__", "2026-09-01 00:00").replace("__END__", "2026-09-19 00:00").replace("__MAX__", "10"),
         "netutils_specs": netutils._PS_SPECS.replace("__HOST__", "TESTHOST"),
         "netutils_liveprinters": netutils._PS_LIVE_PRINTERS.replace("__HOST__", "TESTHOST"),
+        "software": software._PS.replace("__HOST__", "TESTHOST"),
     }
     for name, script in scripts.items():
         p = _write(tmp_path / f"{name}.ps1", script)
