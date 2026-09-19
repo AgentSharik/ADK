@@ -317,8 +317,8 @@ def test_inspector_shows_account_status_without_last_seen(qapp, fake_conn, monke
 
 
 def test_user_card_reset_password_flow(qapp, fake_conn, monkeypatch):
-    from PyQt6.QtWidgets import QApplication
-    from adk import config, db, dialogs, widgets
+    """3.6.3: без LDAPS пароль меняется через SAMR (net user /domain) — диалог открывается, ничего не блокируется."""
+    from adk import ad, config, db, dialogs, widgets
     from adk.dialogs import UserCardDialog
     calls = []
     fake_conn.extend = SimpleNamespace(microsoft=SimpleNamespace(modify_password=lambda dn, p: calls.append((dn, p))))
@@ -328,12 +328,6 @@ def test_user_card_reset_password_flow(qapp, fake_conn, monkeypatch):
     dlg = UserCardDialog(ENTRIES[0], app)
     assert hasattr(dlg, "btn_reset") and "Пароль:" in dlg.lbl_account.text() and "Пароль" in dlg.account_vals
 
-    monkeypatch.setattr(config.settings, "use_ssl", False)
-    dlg.reset_password()
-    assert calls == ["critical"]                   # без LDAPS — блокируется до диалога
-    calls.clear()
-
-    monkeypatch.setattr(config.settings, "use_ssl", True)
     captured = {}
 
     class FakeReset:
@@ -344,11 +338,11 @@ def test_user_card_reset_password_flow(qapp, fake_conn, monkeypatch):
             captured["opened"] = True
             return 1
     monkeypatch.setattr(dialogs, "ResetPasswordDialog", FakeReset)
+    monkeypatch.setattr(config.settings, "use_ssl", False)
+    monkeypatch.setattr(ad, "reset_password", lambda conn, dn, pwd, must_change=True, unlock=True, sam=None: calls.append((sam, pwd)))
     dlg.reset_password()
     assert _wait(lambda: bool(calls), qapp, 3000)
-    assert calls[0] == (ENTRIES[0].entry_dn, "N3wPass!_x")
-    assert _wait(lambda: QApplication.clipboard().text() == "N3wPass!_x", qapp, 3000)
-    assert fake_conn.modified[-1][1] == {"pwdLastSet": [(ad.MODIFY_REPLACE, [0])], "lockoutTime": [(ad.MODIFY_REPLACE, [0])]}
+    assert captured.get("opened") and calls[0][0] and calls[0][1] == "N3wPass!_x"
     assert _wait(lambda: any(r[2] == "reset_password" for r in db.audit_entries()), qapp, 3000)
     dlg.close()
 
@@ -469,7 +463,7 @@ def test_assemble_scales_linearly_with_inventory(fake_conn, monkeypatch):
 
 
 def test_printer_search_with_free_pc_and_status(qapp, fake_conn, monkeypatch):
-    """printer: по USB-принтеру на ПК без пользователя → строка свободного ПК, в AD не ходим."""
+    """3.6.3: «printer: …» — только сам принтер (владельцы — в инспекторе), по USB-принтеру в AD не ходим."""
     from adk import db
     w = _main(qapp, fake_conn, monkeypatch)
     db.batch_update_inventory([{"Hostname": "WS-201", "ActualIp": "10.0.0.21", "Status": "OFFLINE", "User": ""}], "2026-09-04 10:00:00")
@@ -477,14 +471,10 @@ def test_printer_search_with_free_pc_and_status(qapp, fake_conn, monkeypatch):
     calls_before = len(fake_conn.calls) if hasattr(fake_conn, "calls") else None
     w.search_input.setText("printer: Canon LBP6030")
     w.start_search()
-    assert _wait(lambda: w.table.rowCount() == 2, qapp, 3000)
+    assert _wait(lambda: w.table.rowCount() == 1, qapp, 3000)
     assert w.table.item(0, 0).text() == "—" and w.table.item(0, 1).text() == "Canon LBP6030"   # сам принтер
-    assert w.table.item(1, 0).text() == "—"                                                     # свободный ПК с ним
-    assert _wait(lambda: "подключено ПК — 1" in w.lbl_status.text(), qapp, 2000)
     w.select_row(0)
     assert "не сетевой" in w.pvals["ip"].text() and "USB" in w.lbl_sub.text()
-    w.select_row(1)
-    assert "WS-201" in w.lbl_fio.text() and "свободный" in w.lbl_fio.text()
     if calls_before is not None:
         assert len(fake_conn.calls) == calls_before
     w.close()

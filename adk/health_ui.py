@@ -634,6 +634,7 @@ class HealthDialog(FramelessDialog):
         for e in (self.ev_from, self.ev_to):
             e.setDisplayFormat("dd.MM.yyyy HH:mm")
             e.setCalendarPopup(True)
+            e.setMinimumWidth(168)          # 3.6.3: календарь-попап не обрезался в узкой сетке
         fl.addWidget(self.ev_from, 1, 3)
         fl.addWidget(QLabel("по"), 1, 4)
         fl.addWidget(self.ev_to, 1, 5)

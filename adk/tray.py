@@ -11,8 +11,8 @@ import logging
 import sys
 
 from PyQt6.QtCore import QAbstractNativeEventFilter, QObject, pyqtSignal
-from PyQt6.QtGui import QIcon, QKeySequence, QPixmap, QPainter, QColor, QPolygon, QShortcut
-from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtGui import QIcon, QKeySequence, QPixmap, QPainter, QColor, QShortcut
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 log = logging.getLogger(__name__)
@@ -30,26 +30,36 @@ def asset_path(name: str) -> str:
     return os.path.join(base, "assets", name)
 
 
+def _draw_brand(size: int) -> QPixmap:
+    """Белый «A» в центре, на акцентном скруглённом квадрате, прозрачные углы — читается в трее любого цвета."""
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#2563eb"))
+    r = size * 0.22
+    p.drawRoundedRect(0, 0, size, size, r, r)
+    p.setPen(QColor("#ffffff"))
+    f = p.font()
+    f.setBold(True)
+    f.setPixelSize(int(size * 0.62))
+    p.setFont(f)
+    p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "A")
+    p.end()
+    return pm
+
+
 def app_icon() -> QIcon:
-    """Иконка приложения из assets/icon.png; если файла нет — рисуется программно."""
+    """Иконка приложения: белая «A» в центре (3.6.3), рисуется программно — крупная и без фоновой подложки."""
     import os
     path = asset_path("icon.png")
     if os.path.exists(path):
         ic = QIcon(path)
         if not ic.isNull():
             return ic
-    pm = QPixmap(64, 64)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setBrush(QColor("#2563eb"))
-    p.setPen(Qt.PenStyle.NoPen)
-    p.drawEllipse(2, 2, 60, 60)
-    p.setBrush(QColor("#ffffff"))
-    k = 2
-    p.drawPolygon(QPolygon([QPoint(int(x * k), int(y * k)) for x, y in ((18, 4), (9, 17), (15, 17), (13, 28), (23, 13), (17, 13))]))
-    p.end()
-    return QIcon(pm)
+    return QIcon(_draw_brand(256))
 
 
 def parse_hotkey(text: str) -> tuple[int, int] | None:
@@ -173,3 +183,12 @@ class Tray(QObject):
 
     def hide(self) -> None:
         self.icon.hide()
+
+    def retranslate(self) -> None:
+        """Перестроить подписи меню после смены языка (3.6.3)."""
+        from .i18n import tr
+        actions = self.menu.actions()
+        texts = (tr("Показать ADK"), "🔍 " + tr("Поиск"), "🔄 " + tr("Сканировать парк"), "🚪 " + tr("Выход"))
+        for i, a in enumerate(actions):
+            if a.text() and not a.isSeparator() and i < len(texts):
+                a.setText(texts[i])

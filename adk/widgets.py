@@ -645,6 +645,12 @@ def apply_theme(design: dict) -> None:
             retheme(w, old_map, new_pal.color_map())   # 3.4.1: inline-цвета открытых окон переходят на новую тему
         for tb in w.findChildren(TitleBar):
             tb.refresh_icons()                          # 3.5.10: кнопки окна — в цвете новой темы
+        # 3.6.3: после смены шрифта/размера окна подрастают, чтобы текст не резался (только вверх, не ужимаем)
+        sh = w.sizeHint()
+        if sh.isValid():
+            nw, nh = max(w.width(), sh.width()), max(w.height(), sh.height())
+            if (nw, nh) != (w.width(), w.height()):
+                w.resize(nw, nh)
     _LAST_PALETTE["map"] = new_pal.color_map()
 
 

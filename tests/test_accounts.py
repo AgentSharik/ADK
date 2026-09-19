@@ -85,8 +85,8 @@ def test_ip_of_printer_returns_only_printer_row(qapp, fake_conn, monkeypatch):
     w.close()
 
 
-def test_printer_prefix_query_still_lists_owners(qapp, fake_conn, monkeypatch):
-    """Явный режим «printer: …» по-прежнему показывает принтер и тех, у кого он стоит (это отдельный запрос)."""
+def test_printer_prefix_query_shows_only_printer(qapp, fake_conn, monkeypatch):
+    """3.6.3: «printer: …» показывает только сам принтер — владельцы видны в его инспекторе, а не списком людей."""
     from adk import netutils
     hp = {"name": "Kyocera P2040", "port": "IP_10.0.2.60", "kind": "network", "ip": "10.0.2.60", "default": False}
     db.replace_printers("WS-101", [hp])
@@ -97,8 +97,9 @@ def test_printer_prefix_query_still_lists_owners(qapp, fake_conn, monkeypatch):
     w = _main(qapp, fake_conn, monkeypatch)
     w.search_input.setText("printer: Kyocera")
     w.start_search()
-    assert _wait(lambda: w.table.rowCount() >= 2, qapp, 3000)
-    assert w.table.item(0, 0).text() == "—" and "ivanov" in {w.table.item(r, 0).text() for r in range(w.table.rowCount())}
+    assert _wait(lambda: w.table.rowCount() == 1, qapp, 3000)
+    assert w.table.item(0, 0).text() == "—"          # строка принтера: логин пустой
+    assert "ivanov" not in {w.table.item(r, 0).text() for r in range(w.table.rowCount())}
     w.close()
 
 
@@ -399,7 +400,7 @@ def test_password_reset_updates_card_inspector_and_table(qapp, fake_conn, monkey
     monkeypatch.setattr(dialogs.MessageBox, "information", lambda *a, **k: None)
     monkeypatch.setattr(dialogs, "run_in_background", lambda owner, work, done, *a, **k: done(work()))
     written = []
-    monkeypatch.setattr(ad, "reset_password", lambda conn, dn, pwd, must_change=True, unlock=True: written.append((pwd, must_change, unlock)))
+    monkeypatch.setattr(ad, "reset_password", lambda conn, dn, pwd, must_change=True, unlock=True, sam=None: written.append((pwd, must_change, unlock)))
     plan = {"must": False, "unlock": True}
 
     def fake_exec(self):

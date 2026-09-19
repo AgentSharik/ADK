@@ -12,6 +12,7 @@ import re
 import secrets
 import ssl
 import string
+import subprocess
 from types import SimpleNamespace
 from datetime import datetime, timezone
 from typing import Any, Iterable
@@ -24,7 +25,7 @@ from ldap3.utils.conv import escape_filter_chars
 from ldap3.utils.dn import escape_rdn
 from ldap3.core.exceptions import LDAPException
 
-from .config import ACCOUNT_DISABLE_FLAG, LDAP_PAGE_SIZE, NORMAL_ACCOUNT_FLAG, settings
+from .config import ACCOUNT_DISABLE_FLAG, CREATE_NO_WINDOW, LDAP_PAGE_SIZE, NORMAL_ACCOUNT_FLAG, settings
 
 log = logging.getLogger(__name__)
 
@@ -314,18 +315,76 @@ def account_status(entry: Any, max_pwd_age_days: int, now: "datetime | None" = N
 
 
 def reset_password(conn: Connection, dn: str, new_password: str, must_change: bool = True,
-                   unlock: bool = True) -> None:
-    """Сброс пароля администратором. Требует LDAPS. ``must_change`` → pwdLastSet=0."""
-    if not settings.use_ssl:
-        raise RuntimeError("Смена пароля возможна только по LDAPS (use_ssl=true в config.ini)")
-    conn.extend.microsoft.modify_password(dn, new_password)
-    changes: dict[str, Any] = {}
-    if must_change:
-        changes["pwdLastSet"] = [(MODIFY_REPLACE, [0])]
-    if unlock:
-        changes["lockoutTime"] = [(MODIFY_REPLACE, [0])]
-    if changes:
-        conn.modify(dn, changes)
+                   unlock: bool = True, sam: str | None = None) -> str:
+    """Сброс пароля администратором. По LDAPS (``use_ssl``) — как раньше; без LDAPS — через SAMR
+    (``net user … /domain``) + при необходимости AD-модуль PowerShell для «сменить при входе»/разблокировки.
+    ``must_change`` → pwdLastSet=0. Возвращает короткую строку: какой путь использовался."""
+    if settings.use_ssl:
+        conn.extend.microsoft.modify_password(dn, new_password)
+        changes: dict[str, Any] = {}
+        if must_change:
+            changes["pwdLastSet"] = [(MODIFY_REPLACE, [0])]
+        if unlock:
+            changes["lockoutTime"] = [(MODIFY_REPLACE, [0])]
+        if changes:
+            conn.modify(dn, changes)
+        return "LDAPS"
+    return _samr_reset_password(sam or _sam_from_dn(dn), new_password, must_change, unlock)
+
+
+def _sam_from_dn(dn: str) -> str:
+    """DN → первый компонент CN (запасной sAMAccountName для SAMR, если логин не передан)."""
+    try:
+        return dn.split(",", 1)[0].split("=", 1)[1].strip()
+    except IndexError:
+        return ""
+
+
+def _samr_reset_password(sam: str, new_password: str, must_change: bool, unlock: bool) -> str:
+    """Смена пароля без LDAPS: ``net user sam пароль /domain`` (SAMR/RPC) — как это делает net user вручную.
+    «Сменить при входе» и разблокировка — через модуль AD для PowerShell (если установлен)."""
+    import shutil
+    if not sam:
+        raise RuntimeError("Смена пароля без LDAPS: не удалось определить логин (sAMAccountName)")
+    net = shutil.which("net")
+    if not net:
+        raise RuntimeError("Смена пароля без LDAPS: не найден net.exe")
+    try:
+        proc = subprocess.run([net, "user", sam, new_password, "/domain"],
+                              capture_output=True, timeout=90, creationflags=CREATE_NO_WINDOW)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"Смена пароля через net user не удалась: {exc}") from exc
+    text = " ".join((proc.stdout or b"").decode("cp866", "replace").split())
+    if proc.returncode != 0:
+        raise RuntimeError(f"net user /domain: {text or 'код ' + str(proc.returncode)}")
+    done = ["пароль задан (net user /domain)"]
+    if must_change or unlock:
+        try:
+            extra = _samr_flags(sam, must_change, unlock)
+            if extra:
+                done.append(extra)
+        except RuntimeError as exc:
+            done.append(str(exc))
+    return "; ".join(done)
+
+
+def _samr_flags(sam: str, must_change: bool, unlock: bool) -> str:
+    """«Сменить при входе» / разблокировка через модуль ActiveDirectory PowerShell (RSAT). Без модуля — пропуск."""
+    from . import psrun
+    script = (
+        "$ErrorActionPreference='Stop'; $o=@()\n"
+        "if ($null -eq (Get-Module -ListAvailable ActiveDirectory)) { 'no_module'; exit 0 }\n"
+        f"try {{ Set-ADUser -Identity '{sam}' -ChangePasswordAtLogon ${'$true' if must_change else '$false'}; $o+='change_at_logon=ok' }} catch {{ $o+=('change_at_logon=fail: '+$_.Exception.Message) }}\n"
+        f"try {{ Unlock-ADAccount -Identity '{sam}'; $o+='unlock=ok' }} catch {{ $o+=('unlock=fail: '+$_.Exception.Message) }}\n"
+        "$o -join '; '"
+    )
+    res = psrun.run(script, timeout=120)
+    out = (res.stdout or "").strip()
+    if "no_module" in out:
+        return "модуль ActiveDirectory (RSAT) не установлен: «сменить при входе»/разблокировка не выполнены"
+    if not res.ok or "fail" in out:
+        return f"частично: {out[:160]}"
+    return "смена при входе и разблокировка — готово" if must_change and unlock else ("смена при входе — готово" if must_change else "разблокировка — готово")
 
 
 def dn_to_cn(dn: str) -> str:

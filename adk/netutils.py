@@ -658,14 +658,14 @@ def parse_live_printers_json(text: str) -> list[dict]:
     return out
 
 
-def get_live_printers(computer_name: str, timeout: int = 45) -> dict:
+def get_live_printers(computer_name: str, timeout: int = 45, cancelled=None) -> dict:
     """Принтеры ПК прямо сейчас (CIM Win32_Printer по WinRM/DCOM). **Ничего не пишет** ни в БД, ни в CSV —
     это разовый взгляд «как на самом деле», инвентарный кэш остаётся снимком сканера."""
     name = clean_computer_name(computer_name)
     if not name or not is_valid_hostname(name):
         return {"error": f"Недопустимое имя узла: {computer_name!r}"}
     from . import psrun
-    res = psrun.run(_PS_LIVE_PRINTERS.replace("__HOST__", name), timeout=timeout)
+    res = psrun.run(_PS_LIVE_PRINTERS.replace("__HOST__", name), timeout=timeout, cancelled=cancelled)
     if not res.ok:
         return {"error": res.error}
     try:
@@ -676,7 +676,12 @@ def get_live_printers(computer_name: str, timeout: int = 45) -> dict:
 
 def printer_label(p: dict) -> str:
     kind = {"network": "сетевой", "shared": "общий", "usb": "USB", "local": "локальный"}.get(p.get("kind", ""), "")
-    extra = p.get("ip") or (p.get("port") if p.get("kind") == "shared" else "")
+    if p.get("ip"):
+        extra = p["ip"]
+    elif p.get("kind") in ("network", "shared") and p.get("port"):
+        extra = p["port"]            # IP не известен — показываем честно порт, а не «не сетевой»
+    else:
+        extra = ""
     tail = " · ".join(x for x in (kind, extra) if x)
     return f"{p['name']} ({tail})" if tail else p["name"]
 

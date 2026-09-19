@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
@@ -25,6 +26,8 @@ log = logging.getLogger(__name__)
 
 WORKERS = 8          # одновременных опросов: PowerShell-процесс на каждый, больше — ПК администратора начинает тормозить
 PER_HOST_TIMEOUT = 45
+
+_cancel_evt = threading.Event()   # «Стоп»: сигнал доходит до запущенных PowerShell-опросов и они убиваются
 
 
 def fleet_hosts(conn_factory: Callable | None = None, online_only: bool = True) -> list[str]:
@@ -50,33 +53,48 @@ def poll_fleet(hosts: list[str], fn: Callable[[str], dict], progress: Callable[[
                cancelled: Callable[[], bool] | None = None, workers: int = WORKERS) -> dict[str, dict]:
     """Опросить ``hosts`` функцией ``fn`` параллельно. Возвращает {ПК: результат fn} — включая ``{"error": …}``.
 
-    ``progress(i, n, host)`` — после каждого ПК; ``cancelled()`` — проверяется между ПК, начатые опросы дорабатывают.
+    ``progress(i, n, host)`` — после каждого ПК. «Стоп» возвращается сразу: новые ПК не подаются,
+    а запущенные PowerShell-опросы убиваются через :data:`_cancel_evt`.
     """
     out: dict[str, dict] = {}
     hosts = [h for h in dict.fromkeys(db.clean_computer_name(h) for h in hosts) if h]
     if not hosts:
         return out
+    _cancel_evt.clear()
     done = 0
-    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(hosts)))) as ex:
-        futs = {}
+    ex = ThreadPoolExecutor(max_workers=max(1, min(workers, len(hosts))))
+    try:
+        futs: dict = {}
         it = iter(hosts)
         # подаём задачи порциями, чтобы «Стоп» не ждал очередь из сотен ПК
         for h in it:
             futs[ex.submit(_safe, fn, h)] = h
             if len(futs) >= workers * 2:
                 break
+        stopped = False
         while futs:
+            if cancelled and cancelled():
+                _cancel_evt.set()          # убить идущие PowerShell-опросы
+                stopped = True
+                break
             for f in as_completed(list(futs)):
                 h = futs.pop(f)
-                out[h] = f.result()
+                try:
+                    out[h] = f.result()
+                except Exception as exc:  # noqa: BLE001
+                    out[h] = {"error": str(exc)}
                 done += 1
                 if progress:
                     progress(done, len(hosts), h)
-                if not (cancelled and cancelled()):
-                    nxt = next(it, None)
-                    if nxt is not None:
-                        futs[ex.submit(_safe, fn, nxt)] = nxt
+                nxt = next(it, None)
+                if nxt is not None:
+                    futs[ex.submit(_safe, fn, nxt)] = nxt
                 break
+    finally:
+        for f in list(locals().get("futs", {})):
+            f.cancel()
+        ex.shutdown(wait=False, cancel_futures=True)   # не ждём «хвост» после «Стоп»
+    _ = stopped
     return out
 
 
@@ -93,7 +111,7 @@ def printers_live(host: str) -> dict:
     ip, alive = netutils.get_computer_network_info(host)
     if not alive:
         return {"error": "не в сети", "skipped": True}
-    return netutils.get_live_printers(host, timeout=PER_HOST_TIMEOUT)
+    return netutils.get_live_printers(host, timeout=PER_HOST_TIMEOUT, cancelled=lambda: _cancel_evt.is_set())
 
 
 def software_live(host: str) -> dict:
@@ -101,7 +119,7 @@ def software_live(host: str) -> dict:
     ip, alive = netutils.get_computer_network_info(host)
     if not alive:
         return {"error": "не в сети", "skipped": True}
-    return software.get_software(host, timeout=90)
+    return software.get_software(host, timeout=90, cancelled=lambda: _cancel_evt.is_set())
 
 
 def group_printers(results: dict[str, dict]) -> list[dict]:

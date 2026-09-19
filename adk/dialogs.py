@@ -7,8 +7,8 @@ import re
 import subprocess
 from datetime import datetime, timezone
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QPixmap
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor, QKeySequence, QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFontComboBox, QFormLayout, QGridLayout,
     QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QPushButton,
@@ -107,6 +107,10 @@ class LoginDialog(FramelessDialog):
         if not store:
             self.remember.setToolTip("Защищённое хранилище недоступно — пароль сохранить не получится")
         cl.addWidget(self.remember)
+        self.remember_method = QCheckBox("Запомнить способ входа")
+        self.remember_method.setToolTip("В следующий раз ADK сам выберет тот же способ: вход по паролю или через Windows (SSO)")
+        self.remember_method.setChecked(bool(settings.login_method))
+        cl.addWidget(self.remember_method)
         self.body.addWidget(card)
 
         # --- действия: главная кнопка и SSO как альтернатива
@@ -129,6 +133,9 @@ class LoginDialog(FramelessDialog):
         self.pass_in.returnPressed.connect(self.try_login)
         self.user_in.returnPressed.connect(self.pass_in.setFocus)
         (self.pass_in if saved_user else self.user_in).setFocus()
+        if settings.login_method == "sso":
+            # сохранён способ входа «через Windows» — входим сразу, без лишнего клика
+            QTimer.singleShot(0, self.try_sso)
         if error_msg:
             # плашка ошибки переносится на несколько строк — окно подрастает, чтобы текст не обрезался
             self.layout().activate()
@@ -153,6 +160,9 @@ class LoginDialog(FramelessDialog):
 
         def ok(_):
             self.username, self.password = ad.qualify_user(u), p
+            if self.remember_method.isChecked():
+                settings.save_section("UI", {"login_method": "password"})
+                settings.login_method = "password"
             if self.remember.isChecked():
                 if not save_credentials(self.username, p):
                     from .credentials import last_error
@@ -179,6 +189,9 @@ class LoginDialog(FramelessDialog):
 
         def ok(who):
             self.username, self.password = None, None
+            if self.remember_method.isChecked():
+                settings.save_section("UI", {"login_method": "sso"})
+                settings.login_method = "sso"
             self.status.setText(f"SSO: {who}")
             self.accept()
 
@@ -805,10 +818,6 @@ class UserCardDialog(FramelessDialog):
         окно открывается с «Потребовать смену» выключенной и «Снять блокировку» включённой, обе зафиксированы."""
         if self._deny("reset_password"):
             return
-        if not settings.use_ssl:
-            MessageBox.critical(self, "Требуется LDAPS",
-                                "AD принимает пароль только по защищённому каналу. Включите use_ssl в config.ini.")
-            return
         dlg = ResetPasswordDialog(self.login, self, fio=ad.get_full_fio(self.entry, self.login), after_unlock=after_unlock)
         if not dlg.exec():
             return
@@ -819,7 +828,7 @@ class UserCardDialog(FramelessDialog):
         def work():
             c = self.app.get_conn()
             try:
-                ad.reset_password(c, self.dn, pwd, must_change=must_change, unlock=unlock)
+                ad.reset_password(c, self.dn, pwd, must_change=must_change, unlock=unlock, sam=self.login)
             finally:
                 c.unbind()
 
@@ -2140,6 +2149,51 @@ class ThemeTile(QPushButton):
         p.end()
 
 
+class HotkeyCaptureEdit(QLineEdit):
+    """Поле горячей клавиши: клик → перехват нажатия, Esc — очистить, Enter — сохранить (3.6.3)."""
+
+    def __init__(self, text: str, on_commit, parent=None):
+        super().__init__(text, parent)
+        self.on_commit = on_commit
+        self.setReadOnly(True)
+        self.setPlaceholderText("кликните сюда и нажмите сочетание…")
+        self.setToolTip("Нажмите сочетание (например Ctrl+Shift+A). Esc — очистить, Enter — сохранить.")
+
+    def focusInEvent(self, event):  # noqa: N802
+        super().focusInEvent(event)
+        self.selectAll()
+
+    def keyPressEvent(self, event):  # noqa: N802
+        key = event.key()
+        mods = event.modifiers()
+        if key in (Qt.Key.Key_Escape,):
+            self.setText("")
+            self.clearFocus()
+            self.on_commit()
+            return
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.clearFocus()
+            self.on_commit()
+            return
+        if key in (Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt, Qt.Key.Key_Meta,
+                   Qt.Key.Key_Super_L, Qt.Key.Key_Super_R):
+            return
+        parts = []
+        if mods & Qt.KeyboardModifier.ControlModifier:
+            parts.append("Ctrl")
+        if mods & Qt.KeyboardModifier.ShiftModifier:
+            parts.append("Shift")
+        if mods & Qt.KeyboardModifier.AltModifier:
+            parts.append("Alt")
+        if mods & Qt.KeyboardModifier.MetaModifier:
+            parts.append("Win")
+        name = QKeySequence(key).toString()
+        if not name:
+            return
+        parts.append(name)
+        self.setText("+".join(parts))
+
+
 class DesignSettingsDialog(FramelessDialog):
     """Оформление: вкладки «Тема» (плитки + акцент + свои цвета), «Шрифт», «Интерфейс». Всё применяется сразу."""
 
@@ -2152,7 +2206,7 @@ class DesignSettingsDialog(FramelessDialog):
                    "#F2F2F7", "#F3E9DA", "#E4F0E6", "#ECE7F7", "#FDE8E8", "#FFFFFF")
 
     def __init__(self, app, parent=None):
-        super().__init__("🎨 Оформление", parent, (760, 620))
+        super().__init__("⚙️ Настройки", parent, (780, 640))
         self.app = app
         self.design = dict(settings.design)
         self._c1, self._c2 = "#1C1C1E", "#2C2C2E"
@@ -2293,26 +2347,34 @@ class DesignSettingsDialog(FramelessDialog):
         self.lang.addItem("Русский", "ru")
         self.lang.addItem("English", "en")
         self.lang.setCurrentIndex(max(0, self.lang.findData(settings.language)))
-        self.chk_tray = QCheckBox("Сворачивать в трей при закрытии окна")
+        self.chk_tray = QCheckBox("Показывать значок ADK в трее (закрытие крестиком — всегда выход)")
         self.chk_tray.setChecked(settings.minimize_to_tray)
-        self.hotkey = QLineEdit(settings.global_hotkey)
-        self.hotkey.setPlaceholderText("Ctrl+Shift+A (пусто — выключить)")
-        self.hotkey.setToolTip("Сочетание клавиш, которое работает из любой программы Windows: разворачивает ADK "
-                               "(в том числе из трея) и ставит курсор в строку поиска")
+        self.hotkey = HotkeyCaptureEdit(settings.global_hotkey, self.save_hotkey)
+        hk_row = QWidget()
+        hr = QHBoxLayout(hk_row)
+        hr.setContentsMargins(0, 0, 0, 0)
+        hr.addWidget(self.hotkey, 1)
+        self.btn_hk_save = QPushButton("💾 Сохранить")
+        self.btn_hk_save.clicked.connect(self.save_hotkey)
+        hr.addWidget(self.btn_hk_save)
         uf.addRow("Язык:", self.lang)
         uf.addRow(self.chk_tray)
-        uf.addRow("Клавиши вызова ADK:", self.hotkey)
-        hk_hint = QLabel("Сочетание работает из любой программы: разворачивает ADK (даже из трея) и ставит курсор "
-                         "в строку поиска. Например, Ctrl+Shift+A. Пусто — выключено.")
+        uf.addRow("Клавиши вызова ADK:", hk_row)
+        hk_hint = QLabel("Кликните в поле и нажмите сочетание — оно запишется само (Enter или «Сохранить» применяет). "
+                         "Работает из любой программы: разворачивает ADK и ставит курсор в поиск. Esc — выключить.")
         hk_hint.setObjectName("subtle")
         hk_hint.setWordWrap(True)
         uf.addRow("", hk_hint)
+        btn_reset_login = QPushButton("↺ Сбросить сохранённый способ входа")
+        btn_reset_login.setToolTip("Вернуть экран входа к обычному виду: ADK снова спросит, как входить (пароль или Windows)")
+        btn_reset_login.clicked.connect(self.reset_login_method)
+        uf.addRow(btn_reset_login)
         lay.addLayout(uf)
         save_ui = QPushButton("💾 Сохранить настройки интерфейса")
         save_ui.setObjectName("btnPrimary")
         save_ui.clicked.connect(self.save_ui)
         lay.addWidget(save_ui)
-        note = QLabel("Язык, трей и горячая клавиша применяются после перезапуска ADK.")
+        note = QLabel("Язык применяется сразу; трей и горячая клавиша — тоже (без перезапуска).")
         note.setStyleSheet(f"color: {app_palette().subtext};")
         lay.addWidget(note)
         lay.addStretch()
@@ -2325,10 +2387,32 @@ class DesignSettingsDialog(FramelessDialog):
         if hk and parse_hotkey(hk) is None:
             MessageBox.warning(self, "Горячая клавиша", "Формат: Ctrl+Shift+A, Alt+F9, Win+Space…")
             return
-        settings.save_section("UI", {"language": self.lang.currentData(), "minimize_to_tray": str(self.chk_tray.isChecked()).lower(),
+        lang = self.lang.currentData()
+        settings.save_section("UI", {"language": lang, "minimize_to_tray": str(self.chk_tray.isChecked()).lower(),
                                      "global_hotkey": hk})
-        settings.language, settings.minimize_to_tray, settings.global_hotkey = self.lang.currentData(), self.chk_tray.isChecked(), hk
-        self.lbl_state.setText("✅ Настройки интерфейса сохранены — вступят в силу после перезапуска")
+        settings.language, settings.minimize_to_tray, settings.global_hotkey = lang, self.chk_tray.isChecked(), hk
+        from .i18n import set_language
+        set_language(lang)                       # 3.6.3: язык меняется сразу, без перезапуска
+        self.app.retranslate()
+        self.app.reapply_hotkey()
+        self.lbl_state.setText("✅ Настройки интерфейса сохранены")
+
+    def save_hotkey(self):
+        """Сохранить горячую клавишу немедленно (кнопка «Сохранить» / Enter)."""
+        from .tray import parse_hotkey
+        hk = self.hotkey.text().strip()
+        if hk and parse_hotkey(hk) is None:
+            MessageBox.warning(self, "Горячая клавиша", "Формат: Ctrl+Shift+A, Alt+F9, Win+Space…")
+            return
+        settings.save_section("UI", {"global_hotkey": hk})
+        settings.global_hotkey = hk
+        self.app.reapply_hotkey()
+        self.lbl_state.setText("✅ Горячая клавиша сохранена" if hk else "✅ Горячая клавиша выключена")
+
+    def reset_login_method(self):
+        settings.save_section("UI", {"login_method": ""})
+        settings.login_method = ""
+        self.lbl_state.setText("✅ Способ входа сброшен — ADK снова спросит, как входить")
 
     def _follow_toggled(self, on: bool):
         self.design["follow_system"] = on

@@ -172,7 +172,8 @@ class SoftwareDialog(FramelessDialog):
         self.tabs = QTabWidget()
         self.body.addWidget(self.tabs, 1)
         if comp:
-            self.tabs.addTab(self._build_pc_tab(), "💻 На этом ПК")
+            self.tabs.addTab(self._build_pc_tab(), "💻 ПО")
+            self.tabs.addTab(self._build_sec_tab(), "🛡️ Обновления безопасности")
             self.tabs.addTab(self._build_hotfix_tab(), "🩹 Обновления Windows")
         self.tabs.addTab(self._build_fleet_tab(), "🔎 У кого установлено")
         close = QPushButton("Закрыть")
@@ -206,7 +207,15 @@ class SoftwareDialog(FramelessDialog):
         lay = QVBoxLayout(w)
         self.hot = _table(["KB", "Описание", "Установлено"])
         lay.addWidget(self.hot, 1)
-        lay.addWidget(QLabel("Последние 15 обновлений (Win32_QuickFixEngineering). Заполняется при опросе ПК."))
+        lay.addWidget(QLabel("Все обновления за последнее время (Win32_QuickFixEngineering). Заполняется при опросе ПК."))
+        return w
+
+    def _build_sec_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        self.sec = _table(["KB", "Описание", "Установлено"])
+        lay.addWidget(self.sec, 1)
+        lay.addWidget(QLabel("Только обновления безопасности (по описанию KB). Заполняется при опросе ПК."))
         return w
 
     def _build_fleet_tab(self) -> QWidget:
@@ -247,7 +256,7 @@ class SoftwareDialog(FramelessDialog):
             self.fleet_lbl.setText("Сохранённых данных о ПО пока нет — нажмите «Опросить парк» или опросите ПК из его карточки.")
             return
         self.fleet_lbl.setText("Топ программ по числу ПК (по сохранённым данным). Введите название для точного поиска.")
-        _fill(self.fleet, [(f"{n} ПК", name, "", "") for name, n in top[:100]])
+        _fill(self.fleet, [(f"{n} ПК", name) for name, n in top[:100]])
 
     # --- данные
     def _show_cached(self):
@@ -273,9 +282,11 @@ class SoftwareDialog(FramelessDialog):
                 return
             self._items = d["software"]
             self._apply_filter()
-            _fill(self.hot, [(h["id"], h["desc"], h["installed"]) for h in d["hotfixes"]])
+            hot = d.get("hotfixes") or []
+            _fill(self.hot, [(h["id"], h["desc"], h["installed"]) for h in hot])
+            _fill(self.sec, [(h["id"], h["desc"], h["installed"]) for h in hot if h.get("kind") == "security"])
             how = {"WinRM": "по WinRM", "WMI": "по WMI/DCOM", "RemoteRegistry": "через удалённый реестр"}.get(d.get("how", ""), "")
-            self.lbl.setText(f"Опрошено {how}: программ — {len(d['software'])}, обновлений — {len(d['hotfixes'])}".replace("  ", " "))
+            self.lbl.setText(f"Опрошено {how}: программ — {len(d['software'])}, обновлений — {len(hot)}".replace("  ", " "))
             db.log_action(self.app.admin_name, "software", self.comp, f"{len(d['software'])} программ")
 
         run_in_background(self, lambda: software.get_software(self.comp), done,
@@ -317,9 +328,9 @@ class SoftwareDialog(FramelessDialog):
 
     def search_fleet(self):
         rows = software.find_software(self.q.text())
-        _fill(self.fleet, [(r["comp"], r["name"], r["version"], r["ts"][:16]) for r in rows])
+        _fill(self.fleet, [(r["comp"], r["name"]) for r in rows])
         comps = len({r["comp"] for r in rows})
-        self.fleet_lbl.setText(f"Найдено: {len(rows)} записей на {comps} ПК" if rows else "Ничего не найдено в сохранённых данных (опросите ПК или уточните запрос)")
+        self.fleet_lbl.setText(f"Найдено: {len(rows)} записей · {comps} ПК" if rows else "Ничего не найдено в сохранённых данных (опросите ПК или уточните запрос)")
 
 
 # ============================================================================ входы за сутки
@@ -339,6 +350,11 @@ class LogonsDialog(FramelessDialog):
         self.only_fail = QCheckBox("Только отказы")
         self.only_fail.toggled.connect(self._render)
         top.addWidget(self.only_fail)
+        self.show_net = QCheckBox("Сетевые входы (тип 3)")
+        self.show_net.setToolTip("Тип 3 — это не вход за этим ПК, а обращение к нему по сети с другого компьютера "
+                                 "(общие папки, службы). По умолчанию скрыты, чтобы не путали.")
+        self.show_net.toggled.connect(self._render)
+        top.addWidget(self.show_net)
         top.addStretch()
         b = QPushButton("🔄 Обновить")
         b.setObjectName("btnPrimary")
@@ -372,6 +388,8 @@ class LogonsDialog(FramelessDialog):
         evs = self._data.get("events", [])
         if self.only_fail.isChecked():
             evs = [e for e in evs if e["kind"] == "fail"]
+        if not self.show_net.isChecked():
+            evs = [e for e in evs if e.get("type") != "Сеть"]   # 3.6.3: сетевые обращения с чужих ПК — не «входы за ПК»
         self.table.setRowCount(0)
         for e in evs:
             r = self.table.rowCount()
