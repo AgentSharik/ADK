@@ -27,3 +27,4 @@ uploads/
 extras/data/uploads/
 *.db-wal
 *.db-shm
+extras/adk.zip

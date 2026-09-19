@@ -86,7 +86,6 @@ SQLite (один файл; для отдела — ADK и база на серв
 └── extras/              НЕ проект: не в zip, не в README/CHANGELOG
     ├── HANDOVER.md      этот файл
     ├── QA_ARCHITECTURE.md   приватная шпаргалка по архитектуре тестирования
-    ├── adk.zip          поставка (только проект, см. раздел И)
     ├── videos/          РОВНО ОДИН ролик: ADK_demo_29.mp4
     ├── demo/            РОВНО ОДИН сценарий make_demo29.py + make_music.py
     └── data/ADK/        рабочие config.ini, pc_mapping.db, adk.log автора
@@ -234,16 +233,13 @@ grep -rn "AnyDesk\|ADManager\|AD Manager" adk docs README.md CHANGELOG.md tests 
 - Версию менять в **четырёх** местах: `adk/__init__.py`, `pyproject.toml`, `version_info.txt` (строки и кортежи), плюс `README.md` («📜 История», число тестов) и `docs/DEVELOPMENT.md` (число тестов).
 - `CHANGELOG.md`: блок сверху `## X.Y.Z — заголовок`, подразделы **✨ Новое / 🐞 Исправлено / 🧪 Тесты**; у исправлений — причина.
 - README короткий (~75 строк), подробности в `docs/*.md`; новое окно → кадр в `docs/make_screenshots.py` + строка в `docs/SCREENSHOTS.md`.
-- Видео, zip, HANDOVER в README/CHANGELOG не упоминать.
+- Видео и HANDOVER в README/CHANGELOG не упоминать.
 
 ---
 
-## И. Поставка (zip), коммит, push
+## И. Поставка, коммит, push
 
-```bash
-cd /home/user && rm -f extras/adk.zip && zip -qr extras/adk.zip adk assets docs tests .github .run CHANGELOG.md README.md adk.spec build_exe.bat config.example.ini pyproject.toml requirements.txt requirements-dev.txt run.py version_info.txt -x "*/__pycache__/*" "*.pyc" "*/.pytest_cache/*"
-unzip -l extras/adk.zip | grep -c "extras/\|\.mp4\|make_demo\|HANDOVER\|QA_ARCH"     # 0
-```
+**Поставка = GitHub Release** (с 3.5.10): тег `vX.Y.Z` → `build-exe.yml` собирает `ADK-X.Y.Z-win64.zip` (exe + `_internal`) и `config.example.ini`. Отдельный `extras/adk.zip` **больше не ведётся** (убран в 3.6.1 — каждая пересборка добавляла 4,7 МБ в историю git). Если нужен архив исходников — `git archive --format=zip -o /tmp/adk-src.zip HEAD` или кнопка «Source code» в релизе.
 
 Коммит после **каждой** завершённой партии (GitHub — зеркало воркплейса, удаления тоже коммитить):
 ```bash
@@ -316,21 +312,21 @@ Windows-путь (`plg.lbl_dir.setText(...)`) после каждого `reload(
 
 ## Л. Ротация тяжёлых файлов и чистка истории git («удалять с корнями»)
 
-В репозитории хранятся только актуальные `extras/adk.zip`, `extras/videos/ADK_demo_NN.mp4`, `extras/demo/make_demoNN.py`.
-Старые ролики/скрипты/zip после ротации должны исчезнуть **и из истории**, иначе клон весит сотни мегабайт.
+В репозитории хранятся только актуальные `extras/videos/ADK_demo_NN.mp4`, `extras/demo/make_demoNN.py`.
+Старые ролики/скрипты после ротации должны исчезнуть **и из истории**, иначе клон весит сотни мегабайт.
 
 ```bash
 cd /home/user && pip install -q git-filter-repo
 # что тяжёлого есть в истории
 git rev-list --objects --all | git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' | awk '$1=="blob" && $3>1000000' | sort -k3 -n -r | head
 # 1) спрятать актуальные файлы (они тоже попадут под фильтр)
-mkdir -p /tmp/keep && cp extras/videos/ADK_demo_NN.mp4 extras/demo/make_demoNN.py extras/adk.zip /tmp/keep/
+mkdir -p /tmp/keep && cp extras/videos/ADK_demo_NN.mp4 extras/demo/make_demoNN.py /tmp/keep/
 # 2) вычистить ВСЕ ролики, сценарии и zip из всей истории (все ветки/теги)
 git filter-repo --force --invert-paths \
   --path-glob 'extras/videos/*.mp4' --path-glob 'extras/demo/make_demo*.py' --path extras/adk.zip \
-  --path-glob 'videos/*' --path-glob 'demo/*' --path adk.zip
+  --path-glob 'videos/*' --path-glob 'demo/*' --path adk.zip          # adk.zip — на случай, если снова всплывёт
 # 3) вернуть актуальные файлы одним коммитом
-cp /tmp/keep/ADK_demo_NN.mp4 extras/videos/ && cp /tmp/keep/make_demoNN.py extras/demo/ && cp /tmp/keep/adk.zip extras/
+cp /tmp/keep/ADK_demo_NN.mp4 extras/videos/ && cp /tmp/keep/make_demoNN.py extras/demo/
 git add -A && git commit -q -m "extras: актуальные ролик NN, сценарий и zip после чистки истории"
 # 4) добить мусор и проверить размер
 git reflog expire --expire=now --all && git gc --prune=now --aggressive -q && du -sh .git
@@ -771,8 +767,8 @@ mkdir -p /tmp/audit/t && for t in 1.5 60 200 330 470 <END-2>; do $FF -loglevel e
 rm -rf extras/demo/frames29 extras/demo/make_demo29.py extras/videos/ADK_demo_29.mp4
 # HANDOVER: раздел В (имена файлов), К (номер ролика), М («Длительность роликов»: добавить «28 — M:SS (N с)», «при следующем видео — номер 30»)
 ```
-Шаг 9 — zip (раздел И), коммит, **чистка истории (раздел Л) и force-push**; проверка: свежий `git clone` в /tmp,
-`du -sh .git` — десятки МБ, среди блобов > 1 МБ ровно один `.mp4` и один `adk.zip`.
+Шаг 9 — коммит, **чистка истории (раздел Л) и force-push**; проверка: свежий `git clone` в /tmp,
+`du -sh .git` — десятки МБ, среди блобов > 1 МБ ровно один `.mp4` и стендовая база.
 
 **Ошибки, которые уже случались (не повторять):**
 - `replace(..., 1)` при копировании скрипта заменил только докстринг — `OUT_MP4` остался старым, и прогон **перезаписал
@@ -792,9 +788,8 @@ rm -rf extras/demo/frames29 extras/demo/make_demo29.py extras/videos/ADK_demo_29
 3. `docs/FEATURES.md` — строки затронутых функций; README короткий, без видео/zip/HANDOVER.
 4. `extras/HANDOVER.md` — разделы В, Г (новые функции/атрибуты), Д (новые требования автора), М (версия, тесты, видео,
    длительности), Н (новые грабли), шапка (дата, версия, число тестов).
-5. zip (раздел И) → `unzip -l extras/adk.zip | grep -c "extras/\|mp4\|HANDOVER"` = 0.
-6. Полный прогон О.4 ещё раз.
-7. Коммит по-русски «X.Y.Z: …», push, при ротации видео — чистка истории; проверка `git ls-remote origin main` = `git rev-parse HEAD`.
+5. Полный прогон О.4 ещё раз.
+6. Коммит по-русски «X.Y.Z: …», push, при ротации видео — чистка истории; проверка `git ls-remote origin main` = `git rev-parse HEAD`.
 8. **Релиз (с 3.5.10):** тег `vX.Y.Z` на коммит версии → `git push origin vX.Y.Z` → workflow `build-exe.yml` на windows-latest
    собирает `dist\` (ADK.exe + _internal, без вложенной папки), гоняет launch-smoke и публикует GitHub Release
    `ADK vX.Y.Z` с `ADK-X.Y.Z-win64.zip` и `config.example.ini` (`softprops/action-gh-release`, `permissions: contents: write`).
