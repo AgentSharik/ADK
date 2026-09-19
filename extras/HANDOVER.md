@@ -332,7 +332,7 @@ git add -A && git commit -q -m "extras: актуальные ролик NN, сц
 git reflog expire --expire=now --all && git gc --prune=now --aggressive -q && du -sh .git
 git rev-list --objects --all | git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' | awk '$1=="blob" && $3>1000000'
 ```
-После шага 4 в истории должен остаться **ровно один** блоб `.mp4` (актуальный) и один `adk.zip`. Проверка на GitHub:
+После шага 4 в истории должен остаться **ровно один** блоб `.mp4` (актуальный) и стендовая база. Проверка на GitHub:
 `git clone --depth=1000 https://github.com/AgentSharik/ADK.git /tmp/chk && du -sh /tmp/chk/.git` — десятки мегабайт, не сотни.
 Именно так делалось в 3.5.1 (история переписана, `git push --force`; клон стал ~54 МБ вместо ~140).
 Грабли: в песочнице файл `.git/config` не сохраняется между сессиями — `git filter-repo` падает с
