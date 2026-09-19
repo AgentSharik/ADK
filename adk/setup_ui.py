@@ -18,9 +18,9 @@ from __future__ import annotations
 import logging
 import os
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QButtonGroup, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                             QRadioButton, QVBoxLayout)
+                             QRadioButton, QSizePolicy, QVBoxLayout)
 
 from . import db
 from .config import DOCS_DIR, settings
@@ -77,7 +77,8 @@ class DbSetupDialog(FramelessDialog):
     """«Где лежит база ADK?» — папка + подсказка, что в ней найдено. Результат: ``self.db_path``, ``self.is_new``."""
 
     def __init__(self, parent=None):
-        super().__init__("🗄️ База ADK — первый запуск", parent, (620, 470))
+        super().__init__("🗄️ База ADK — первый запуск", parent, (660, 600))
+        self.setMinimumSize(600, 560)
         self.db_path: str = ""
         self.is_new: bool = True
         pal = app_palette()
@@ -92,21 +93,31 @@ class DbSetupDialog(FramelessDialog):
 
         card = QFrame()
         card.setObjectName("dashCard")
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)   # карточка не ужимается под текст ниже
         cl = QVBoxLayout(card)
         cl.setSpacing(8)
+        cl.setContentsMargins(14, 12, 14, 12)
         self.grp = QButtonGroup(self)
-        self.rb_default = QRadioButton(f"В моих документах — {os.path.join(DOCS_DIR, DB_FILE)}")
-        self.rb_default.setToolTip("База только на этом ПК. Подходит, когда ADK пользуется один человек.")
-        self.rb_custom = QRadioButton("В другой папке (общая для отдела, сетевая или уже существующая):")
+        self.rb_default = QRadioButton("В моих документах (база только на этом ПК)")
+        self.rb_default.setToolTip(os.path.join(DOCS_DIR, DB_FILE))
+        self.rb_default.setMinimumHeight(26)
+        self.lbl_default_path = QLabel(os.path.join(DOCS_DIR, DB_FILE))
+        self.lbl_default_path.setObjectName("subtle")
+        self.lbl_default_path.setContentsMargins(26, 0, 0, 0)
+        self.rb_custom = QRadioButton("В другой папке — общая для отдела, сетевая или уже существующая")
+        self.rb_custom.setMinimumHeight(26)
         self.grp.addButton(self.rb_default, 0)
         self.grp.addButton(self.rb_custom, 1)
         cl.addWidget(self.rb_default)
+        cl.addWidget(self.lbl_default_path)
         cl.addWidget(self.rb_custom)
         row = QHBoxLayout()
+        row.setContentsMargins(26, 0, 0, 0)
         self.path_in = QLineEdit()
         self.path_in.setPlaceholderText(r"например D:\ADK или \\server\share\ADK")
         self.path_in.setMinimumHeight(34)
         self.btn_browse = QPushButton("📁 Обзор…")
+        self.btn_browse.setMinimumHeight(34)
         self.btn_browse.clicked.connect(self.browse)
         row.addWidget(self.path_in, 1)
         row.addWidget(self.btn_browse)
@@ -116,6 +127,8 @@ class DbSetupDialog(FramelessDialog):
         self.lbl_found = QLabel("")
         self.lbl_found.setWordWrap(True)
         self.lbl_found.setObjectName("subtle")
+        self.lbl_found.setMinimumHeight(84)
+        self.lbl_found.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.body.addWidget(self.lbl_found)
 
         hint = QLabel(
@@ -125,7 +138,7 @@ class DbSetupDialog(FramelessDialog):
         hint.setStyleSheet(f"color: {pal.text}; background: {pal.info[1]}; border: 1px solid {pal.info[2]}; "
                            f"border-radius: 8px; padding: 8px 10px;")
         self.body.addWidget(hint)
-        self.body.addStretch()
+        self.body.addStretch(1)
 
         btns = QHBoxLayout()
         btns.addStretch()
@@ -166,8 +179,8 @@ class DbSetupDialog(FramelessDialog):
         self.btn_ok.setEnabled(True)
         net = ""
         if db.is_network_path(path):
-            net = ("<br>⚠️ Это сетевая папка. Так можно, если ADK запускают <b>ярлыком с одного ПК/сервера</b> и парк сканирует "
-                   "один экземпляр; для отдела с несколькими одновременными пользователями лучше держать ADK и базу на сервере.")
+            net = ("<br>⚠️ Сетевая папка: подходит, если ADK запускают <b>ярлыком с одного сервера</b> — "
+                   "тогда база одна и парк сканирует один экземпляр.")
         if os.path.exists(path) and os.path.getsize(path) > 0:
             if db_has_inventory(path):
                 self.is_new = False

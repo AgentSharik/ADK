@@ -193,8 +193,11 @@ comps = [tg.FakeEntry(f"CN={n}", name=n) for n in ("WS-101", "ws-102", "PC-BUH1"
 config.settings.host_pattern = r"^(WS-\d+|PC-.*)$"; config.settings.host_exclude = "OLD"
 names = PCScannerWorker.workstation_names(comps)
 check("фильтр рабочих станций: pattern + exclude + регистр + $", names == ["WS-101", "WS-102", "PC-BUH1", "WS-1"], str(names))
+PCScannerWorker._probe_python = lambda self, hosts: [{"Hostname": h, "ActualIp": "10.0.0.1", "Status": "ACTIVE", "User": "", "LastLogon": "Неизвестно"} for h in hosts]
 sc = PCScannerWorker(lambda: RichConn(comps)); got = []; sc.finished_scan.connect(got.append); sc.progress.connect(got.append); sc.run()
-check("сканер вне Windows: честное сообщение и finished_scan(n)", any(isinstance(g, int) and g == 4 for g in got) and any("Windows" in str(g) for g in got), str(got[-2:]))
+check("сканер вне Windows: опрос 4 ПК средствами Python, инвентарь обновлён, finished_scan(4)",
+      any(isinstance(g, int) and g == 4 for g in got) and any("Опрос 4 ПК" in str(g) for g in got)
+      and db.db_execute_with_retry("SELECT COUNT(*) FROM pc_inventory", fetch="one")[0] == 4, str(got[-2:]))
 db.batch_update_inventory([{"Hostname": "WS-101", "ActualIp": "10.0.0.9", "Status": "ACTIVE", "User": "ivanov", "LastLogon": "01.09.2026"},
                            {"Hostname": "WS-102", "ActualIp": "10.0.0.10", "Status": "OFFLINE", "User": "", "LastLogon": "Неизвестно"}], "2026-09-04 10:00:00")
 db.batch_update_inventory([{"Hostname": "WS-101", "ActualIp": "10.0.0.9", "Status": "OFFLINE", "User": "", "LastLogon": "Неизвестно"}], "2026-09-04 11:00:00")
