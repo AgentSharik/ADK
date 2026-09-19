@@ -152,7 +152,7 @@ def test_specs_chain_live_fail_keeps_old_cache(monkeypatch):
 
 def test_save_specs_creates_row_and_roundtrip():
     db.save_specs("PC-0001", {"os": {"Название": "Windows 10"}, "cpu": {"Название": "i7"}})
-    loaded, ts = netutils._load_cached_specs("adm-0001")
+    loaded, ts = netutils._load_cached_specs("pc-0001")
     assert loaded["os"]["Название"] == "Windows 10"
     assert ts and ts.startswith("20")
     # повторное сохранение обновляет, а не дублирует
