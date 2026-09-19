@@ -56,7 +56,7 @@ python run.py
 
 ```bash
 pyflakes adk tests
-QT_QPA_PLATFORM=offscreen pytest -q          # 306 тестов
+QT_QPA_PLATFORM=offscreen pytest -q          # 310 тестов
 ```
 
 Плюс четыре сквозных сценария (215 проверок), CI на Python 3.11/3.12 и сборка exe по тегу, стенд на 1500 ПК (`tests/bench/`), короткий [отчёт о тестировании](docs/TEST_REPORT.pdf).

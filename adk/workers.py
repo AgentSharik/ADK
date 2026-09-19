@@ -442,7 +442,6 @@ class SearchWorker(BaseWorker):
 
 # --------------------------------------------------------------------------- сканер парка
 _PS_SCANNER = r"""
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $data = Get-Content -LiteralPath '__INPUT__' -Encoding UTF8 -Raw | ConvertFrom-Json
 $validPrefixes = @(__PREFIXES__)
 $compDir = '__COMP_DIR__'; $compExitDir = '__COMPEXIT_DIR__'
@@ -508,7 +507,6 @@ class PCScannerWorker(BaseWorker):
     def __init__(self, conn_factory: ConnFactory, parent=None):
         super().__init__(parent)
         self.conn_factory = conn_factory
-        self._proc: subprocess.Popen | None = None
 
     @staticmethod
     def workstation_names(entries) -> list[str]:
@@ -539,14 +537,8 @@ class PCScannerWorker(BaseWorker):
                 self.progress.emit("⚠️ Целевые ПК не найдены (проверьте host_pattern в config.ini)")
                 self.finished_scan.emit(0)
                 return
-            if os.name != "nt":
-                self.progress.emit("ℹ️ Сканер парка доступен только на Windows (PowerShell)")
-                self._index_printers(hosts)
-                self.finished_scan.emit(len(hosts))
-                return
-
-            self.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping, журналы)…")
-            results = self._run_powershell(hosts)
+            self.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping, журналы входов)…")
+            results = self.probe_hosts(hosts)
             if self.cancelled:
                 return
             self.progress.emit("💾 Обновление инвентаря…")
@@ -562,7 +554,7 @@ class PCScannerWorker(BaseWorker):
     def scan_once(cls, conn_factory: ConnFactory, progress=None) -> int:
         """Синхронный проход сканера без Qt-потока — для CLI (`adk --scan`) и серверного планировщика."""
         w = cls.__new__(cls)
-        w.conn_factory, w._proc, w._cancelled = conn_factory, None, False
+        w.conn_factory, w._cancelled = conn_factory, False
         w.progress = _Emitter(progress or (lambda m: log.info("%s", m)))
         conn = conn_factory()
         try:
@@ -572,12 +564,58 @@ class PCScannerWorker(BaseWorker):
             conn.unbind()
         hosts = w.workstation_names(entries)
         if not hosts:
-            return 0
-        if os.name == "nt":
-            results = w._run_powershell(hosts)
-            db.batch_update_inventory(results, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            raise RuntimeError(f"в AD найдено {len(entries)} компьютеров, но ни один не подходит под host_pattern "
+                               f"«{settings.host_pattern}» (config.ini → [Scanner]); исключение: «{settings.host_exclude}»")
+        w.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping, журналы входов)…")
+        results = w.probe_hosts(hosts)
+        db.batch_update_inventory(results, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         w._index_printers(hosts)
         return len(hosts)
+
+    def probe_hosts(self, hosts: list[str]) -> list[dict]:
+        """DNS + ping + журналы входов для каждого ПК. На Windows — PowerShell (RunspacePool, 50 потоков, журналы
+        logon-скрипта); если PowerShell не дал результата или мы не на Windows — запасной путь на Python
+        (DNS + TCP 445/ICMP, без журналов). Пустой ответ больше не считается успехом."""
+        if os.name == "nt":
+            try:
+                results = self._run_powershell(hosts)
+                if results:
+                    return results
+                self.progress.emit("⚠️ PowerShell не вернул данных — опрашиваю ПК средствами Python…")
+            except Exception as exc:  # noqa: BLE001
+                log.warning("scanner powershell: %s", exc)
+                self.progress.emit(f"⚠️ PowerShell: {str(exc)[:120]} — опрашиваю ПК средствами Python…")
+        return self._probe_python(hosts)
+
+    def _probe_python(self, hosts: list[str]) -> list[dict]:
+        """Запасной сканер без PowerShell: DNS → IP из valid_subnets, доступность по TCP 445 / ICMP."""
+        import socket
+        prefixes = tuple(settings.valid_subnets or ())
+
+        def one(pc: str) -> dict:
+            ip = "Не найден"
+            try:
+                for fam, _t, _p, _c, addr in socket.getaddrinfo(pc, None, socket.AF_INET):
+                    cand = addr[0]
+                    if not prefixes or cand.startswith(prefixes):
+                        ip = cand
+                        break
+            except OSError:
+                pass
+            status = "ACTIVE" if ip != "Не найден" and netutils.is_host_alive(ip, timeout=1.0) else "OFFLINE"
+            return {"Hostname": pc, "ActualIp": ip, "Status": status, "User": "", "LastLogon": "Неизвестно"}
+
+        out: list[dict] = []
+        total = len(hosts)
+        with ThreadPoolExecutor(max_workers=48) as ex:
+            futs = {ex.submit(one, h): h for h in hosts}
+            for i, f in enumerate(as_completed(futs), 1):
+                if self.cancelled:
+                    break
+                out.append(f.result())
+                if i % 25 == 0 or i == total:
+                    self.progress.emit(f"⚡ Опрос ПК: {i}/{total}")
+        return out
 
     def _index_printers(self, hosts: list[str]) -> None:
         """Индекс принтеров из инвентарных CSV — чтобы поиск «printer:» работал без открытия карточек."""
@@ -589,7 +627,10 @@ class PCScannerWorker(BaseWorker):
         self.progress.emit(f"🖨️ Принтеры проиндексированы: {n} ПК с CSV")
 
     def _run_powershell(self, hosts: list[str]) -> list[dict]:
+        """PowerShell-сканер через :mod:`psrun` (3.6.1; раньше — прямой ``powershell -Command <текст>``, который из
+        exe без консоли мог завершиться молча). Ошибка → исключение с понятной причиной, пустой ответ → []."""
         import tempfile
+        from . import psrun
 
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as tmp:
             json.dump([{"Name": h} for h in hosts], tmp, ensure_ascii=False)
@@ -600,28 +641,19 @@ class PCScannerWorker(BaseWorker):
                   .replace("__COMP_DIR__", settings.invent_comp_dir)
                   .replace("__COMPEXIT_DIR__", settings.invent_compexit_dir))
         try:
-            self._proc = subprocess.Popen(
-                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
-                creationflags=CREATE_NO_WINDOW,   # errors=replace: stderr PowerShell бывает в cp866 — не ронять скан
-            )
-            out, err = self._proc.communicate(timeout=900)
+            res = psrun.run(script, timeout=900, cancelled=lambda: self.cancelled)
         finally:
             try:
                 os.remove(input_path)
             except OSError:
                 pass
-        if err.strip():
-            log.warning("scanner stderr: %s", err.strip()[:2000])
-        if not out.strip():
-            return []
-        data = json.loads(out)
+        if not res.ok:
+            raise RuntimeError(res.error)
+        data = json.loads(res.stdout)
         return [data] if isinstance(data, dict) else list(data)
 
     def cancel(self) -> None:
-        super().cancel()
-        if self._proc and self._proc.poll() is None:
-            self._proc.kill()
+        super().cancel()          # psrun.run сам убьёт процесс по cancelled()
 
 
 # --------------------------------------------------------------------------- пинг

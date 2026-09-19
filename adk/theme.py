@@ -259,6 +259,14 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
                        f'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>')
     chev_dim = _svg_uri(f'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{p.subtext}" '
                         f'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>')
+    # 3.6.1: радиокнопка — целиком SVG (круг + точка); QSS-рамка со скруглением на индикаторе рисовалась квадратом
+    def _radio(stroke: str, fill: str, dot: str | None) -> str:
+        inner = f'<circle cx="12" cy="12" r="5" fill="{dot}"/>' if dot else ""
+        return _svg_uri(f'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">'
+                        f'<circle cx="12" cy="12" r="10" fill="{fill}" stroke="{stroke}" stroke-width="1.6"/>{inner}</svg>')
+    radio_off = _radio(p.subtext, p.input, None)
+    radio_hover = _radio(accent, p.input, None)
+    radio_on = _radio(accent, accent, p.on_accent)
     check_img = _svg_uri(f'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{p.on_accent}" '
                          'stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5 9.5-10"/></svg>')
     sel_edge = _mix(p.selection, accent, 0.55)    # обводка выделенной строки/элемента — заметная, но не кричащая
@@ -286,13 +294,13 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
         letter-spacing: 1px; padding-left: 2px; }}
     QLabel#brandLogo {{ background: transparent; }}
     QCheckBox, QRadioButton {{ color: {p.text}; spacing: 8px; background: transparent; }}
-    QCheckBox::indicator, QRadioButton::indicator {{ width: 18px; height: 18px; border: 1.5px solid {p.subtext};
+    QCheckBox::indicator {{ width: 18px; height: 18px; border: 1.5px solid {p.subtext};
         background: {relief(p.input, 104, 96)}; border-radius: 5px; }}
-    QRadioButton::indicator {{ border-radius: 9px; }}
-    QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border-color: {accent}; }}
-    QCheckBox::indicator:checked, QRadioButton::indicator:checked {{ background: {relief(accent, 112, 94)}; border-color: {acc_edge};
-        image: url({check_img}); }}
-    QRadioButton::indicator:checked {{ image: none; border: 5px solid {accent}; background-color: #ffffff; }}
+    QCheckBox::indicator:hover {{ border-color: {accent}; }}
+    QCheckBox::indicator:checked {{ background: {relief(accent, 112, 94)}; border-color: {acc_edge}; image: url({check_img}); }}
+    QRadioButton::indicator {{ width: 20px; height: 20px; border: none; background: transparent; image: url({radio_off}); }}
+    QRadioButton::indicator:hover {{ image: url({radio_hover}); }}
+    QRadioButton::indicator:checked, QRadioButton::indicator:checked:hover {{ image: url({radio_on}); }}
     QCheckBox::indicator:disabled {{ border-color: {p.border}; background-color: {p.header}; }}
     QPlainTextEdit, QTextEdit, QTextBrowser {{ background-color: {p.input}; border: 1px solid {p.border}; border-radius: {R}px; color: {p.text};
         selection-background-color: {accent}; selection-color: {p.on_accent}; padding: 6px; }}

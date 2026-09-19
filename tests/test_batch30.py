@@ -422,4 +422,75 @@ def test_setup_dialog_warns_about_network_folder(qapp, monkeypatch):
     dlg = setup_ui.DbSetupDialog()
     dlg.rb_custom.setChecked(True)
     dlg.path_in.setText(r"\\srv\share\ADK")
-    assert "сетевая папка" in dlg.lbl_found.text()
+    assert "Сетевая папка" in dlg.lbl_found.text()
+
+
+# =========================================================================== 3.6.1: сканер парка честно сообщает причину и не молчит
+def test_scan_once_explains_empty_host_pattern(monkeypatch):
+    """В AD 2 компьютера, но ни один не подходит под host_pattern → понятная ошибка, а не «0 ПК» молча."""
+    from adk import ad, config
+    from adk.workers import PCScannerWorker
+    monkeypatch.setattr(ad, "paged_search", lambda c, f, a: [{"attributes": {"name": "LAPTOP-7"}}, {"attributes": {"name": "ACC-01"}}])
+    monkeypatch.setattr(ad, "get_ad_value", lambda e, k: e["attributes"][k])
+    monkeypatch.setattr(config.settings, "host_pattern", r"^WS-\d+$")
+
+    class _C:
+        def unbind(self): pass
+    with pytest.raises(RuntimeError) as ei:
+        PCScannerWorker.scan_once(lambda: _C())
+    assert "host_pattern" in str(ei.value) and "2 компьютеров" in str(ei.value)
+
+
+def test_scan_once_fills_inventory_without_powershell(monkeypatch):
+    """Не Windows / PowerShell недоступен → запасной сканер на Python: DNS + доступность, инвентарь заполняется."""
+    import socket
+    from adk import ad, config, db, netutils
+    from adk.workers import PCScannerWorker
+    monkeypatch.setattr(ad, "paged_search", lambda c, f, a: [{"attributes": {"name": "WS-001"}}, {"attributes": {"name": "WS-002$"}}])
+    monkeypatch.setattr(ad, "get_ad_value", lambda e, k: e["attributes"][k])
+    monkeypatch.setattr(config.settings, "host_pattern", r"^WS-\d+$")
+    monkeypatch.setattr(config.settings, "valid_subnets", ["10."])
+    ips = {"WS-001": "10.0.0.11", "WS-002": "10.0.0.12"}
+    monkeypatch.setattr(socket, "getaddrinfo", lambda h, *a, **k: [(2, 1, 6, "", (ips[h], 0))] if h in ips else (_ for _ in ()).throw(OSError("no dns")))
+    monkeypatch.setattr(netutils, "is_host_alive", lambda ip, timeout=1.0: ip == "10.0.0.11")
+
+    class _C:
+        def unbind(self): pass
+    msgs = []
+    n = PCScannerWorker.scan_once(lambda: _C(), progress=msgs.append)
+    assert n == 2
+    rows = {r[0]: r for r in db.db_execute_with_retry("SELECT computer_name, ip_address, is_online FROM pc_inventory", fetch="all")}
+    assert rows["WS-001"][1:] == ("10.0.0.11", 1) and rows["WS-002"][1:] == ("10.0.0.12", 0)
+    assert any("Опрос 2 ПК" in m for m in msgs)
+    assert db.get_inventory_summary()["total"] == 2                      # дашборд увидит наполнение
+
+
+def test_run_powershell_raises_readable_error(monkeypatch):
+    """Ошибка PowerShell (или не-Windows) → RuntimeError с текстом причины, а не пустой список как «успех»."""
+    from adk import psrun
+    from adk.workers import PCScannerWorker
+    w = PCScannerWorker.__new__(PCScannerWorker)
+    w._cancelled = False
+    monkeypatch.setattr(psrun, "run", lambda script, timeout=60, cancelled=None, on_tick=None: psrun.PsResult(False, error="доступ запрещён — нужна учётная запись с правами администратора"))
+    with pytest.raises(RuntimeError) as ei:
+        w._run_powershell(["WS-001"])
+    assert "доступ запрещён" in str(ei.value)
+    monkeypatch.setattr(psrun, "run", lambda script, timeout=60, cancelled=None, on_tick=None: psrun.PsResult(True, stdout='{"Hostname":"WS-001","ActualIp":"10.0.0.1","Status":"ACTIVE","User":"ivanov","LastLogon":"01.09.2026 09:00"}'))
+    assert w._run_powershell(["WS-001"])[0]["User"] == "ivanov"
+
+
+def test_probe_hosts_falls_back_to_python_when_powershell_fails(monkeypatch):
+    """Windows: PowerShell упал → сообщение в строку состояния и запасной опрос, результат всё равно есть."""
+    import os
+    from adk import netutils
+    from adk.workers import PCScannerWorker, _Emitter
+    w = PCScannerWorker.__new__(PCScannerWorker)
+    w._cancelled = False
+    msgs = []
+    w.progress = _Emitter(msgs.append)
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(PCScannerWorker, "_run_powershell", lambda self, hosts: (_ for _ in ()).throw(RuntimeError("PowerShell не запускается")))
+    monkeypatch.setattr(PCScannerWorker, "_probe_python", lambda self, hosts: [{"Hostname": h, "ActualIp": "10.0.0.5", "Status": "ACTIVE", "User": "", "LastLogon": "Неизвестно"} for h in hosts])
+    res = w.probe_hosts(["WS-005"])
+    assert res[0]["ActualIp"] == "10.0.0.5" and any("средствами Python" in m for m in msgs)
+    _ = netutils

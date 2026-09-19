@@ -74,6 +74,11 @@ class CompConn(tg.FakeConn):
     def search(self, base, flt, scope, attributes=None, paged_size=None, paged_cookie=None):
         self.entries = [tg.FakeEntry(f"CN={n}", name=n) for n in ("WS-101", "WS-105", "WS-133", "WS-102", "WS-999", "SRV-1")]; return True
 config.settings.host_pattern = r"^WS-\d+$"
+# 3.6.2: сканер вне Windows опрашивает ПК средствами Python (DNS + доступность) — здесь подкладываем ответы,
+# совпадающие с инвентарём выше, чтобы сценарий не зависел от DNS стенда
+_inv = {r[0]: (r[1], r[2]) for r in db.db_execute_with_retry("SELECT computer_name, ip_address, is_online FROM pc_inventory", fetch="all")}
+PCScannerWorker._probe_python = lambda self, hosts: [{"Hostname": h, "ActualIp": _inv.get(h, ("Не найден", 0))[0],
+                                                      "Status": "ACTIVE" if _inv.get(h, ("", 0))[1] else "OFFLINE", "User": "", "LastLogon": "Неизвестно"} for h in hosts]
 progress = []
 sw = PCScannerWorker(lambda: CompConn([]))
 sw.progress.connect(progress.append); sw.run()
