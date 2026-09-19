@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import os
 import platform
@@ -11,6 +12,7 @@ import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from typing import Iterable
 
 from .config import CREATE_NO_WINDOW, settings
@@ -449,7 +451,7 @@ _DRIVE_LETTER_RE = re.compile(r"^([A-Za-z]):?\\?$")
 def known_volumes(computer_name: str) -> list[dict]:
     """Тома ПК по CSV инвентаризации: [{'letter': 'C', 'label': 'System', 'size': '476 ГБ'}, …].
     Пустой список — данных нет (тогда кнопка «Диск» открывает C$ без вопросов)."""
-    spec = get_computer_specs_dict(computer_name)
+    spec = get_computer_specs_dict(computer_name, live=False)
     out: list[dict] = []
     for _idx, sub in sorted(spec.get("logdisks", {}).items(), key=lambda kv: str(kv[0])):
         letter, label, size = "", "", ""
@@ -530,11 +532,248 @@ def _structure_rows(rows: Iterable[list[str]]) -> dict:
     return s
 
 
-def get_computer_specs_dict(computer_name: str) -> dict:
-    path = _hardware_csv_path(computer_name)
-    if not path:
-        return {"error": f"CSV с характеристиками для {clean_computer_name(computer_name) or '—'} не найден"}
-    return parse_hardware_csv(path)
+# Живой сбор характеристик по CIM/WMI (WinRM → DCOM). Структура ответа — та же, что у инвентарного CSV
+# (разделы os/board/bios/cpu/rams/disks/logdisks/gpu/adapters/printers, параметры по-русски), поэтому карточка
+# человека, сравнение ПК, опись Excel и поиск принтеров работают одинаково и с CSV, и без него.
+_PS_SPECS = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$c = '__HOST__'
+
+function FmtDate($v) {
+    if ($null -eq $v) { return '' }
+    if ($v -is [datetime]) { return $v.ToString('yyyy-MM-dd HH:mm:ss') }
+    $s = [string]$v
+    if ($s -match '^\d{14}') {
+        return $s.Substring(0,4) + '-' + $s.Substring(4,2) + '-' + $s.Substring(6,2) + ' ' +
+               $s.Substring(8,2) + ':' + $s.Substring(10,2) + ':' + $s.Substring(12,2)
+    }
+    return $s
+}
+
+function Q([string]$class, [string]$filter = '') {
+    try {
+        if ($filter) { return Get-CimInstance -ClassName $class -ComputerName $c -Filter $filter -ErrorAction Stop }
+        return Get-CimInstance -ClassName $class -ComputerName $c -ErrorAction Stop
+    } catch {
+        try {
+            if ($filter) { return Get-WmiObject -Class $class -ComputerName $c -Filter $filter -ErrorAction Stop }
+            return Get-WmiObject -Class $class -ComputerName $c -ErrorAction Stop
+        } catch { return $null }
+    }
+}
+
+function FmtGB($bytes) {
+    if ($null -eq $bytes) { return '' }
+    try {
+        $n = [double]$bytes
+        if ($n -ge 1TB) { return ('{0:N1} ТБ' -f ($n / 1TB)) }
+        if ($n -ge 1GB) { return ('{0:N0} ГБ' -f ($n / 1GB)) }
+        return ('{0:N0} МБ' -f ($n / 1MB))
+    } catch { return '' }
+}
+
+$os = Q 'Win32_OperatingSystem'
+$cs = Q 'Win32_ComputerSystem'
+$bb = Q 'Win32_BaseBoard'
+$bios = Q 'Win32_BIOS'
+$cpu = Q 'Win32_Processor'
+$rams = Q 'Win32_PhysicalMemory'
+$ld = Q 'Win32_LogicalDisk' 'DriveType=3'
+$gpu = Q 'Win32_VideoController'
+$nic = Q 'Win32_NetworkAdapterConfiguration' 'IPEnabled=true'
+$prn = Q 'Win32_Printer'
+$dd = Q 'Win32_DiskDrive'
+
+# физические диски: сначала Storage-классы (модель/SSD/NVMe), при недоступности — Win32_DiskDrive
+$pd = $null
+try { $pd = Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName MSFT_PhysicalDisk -ComputerName $c -ErrorAction Stop } catch { $pd = $null }
+$busNames = @{ 1 = 'SCSI'; 3 = 'ATA'; 7 = 'USB'; 8 = 'RAID'; 10 = 'SAS'; 11 = 'SATA'; 17 = 'NVMe' }
+$mediaNames = @{ 3 = 'HDD'; 4 = 'SSD'; 5 = 'SCM' }
+
+$diskList = @()
+if ($pd) {
+    foreach ($p in @($pd)) {
+        $diskList += @{ 'Наименование' = [string]$p.FriendlyName
+                        'Тип носителя' = [string]$mediaNames[[int]$p.MediaType]
+                        'Интерфейс' = [string]$busNames[[int]$p.BusType]
+                        'Размер' = FmtGB $p.Size
+                        'Серийный номер' = [string]$p.SerialNumber }
+    }
+}
+foreach ($d0 in @($dd)) {
+    if (-not $d0) { continue }
+    $m = [string]$d0.Model
+    $media = ''
+    if ($m -match 'SSD|NVMe|Solid State') { $media = 'SSD' }
+    $iface = [string]$d0.InterfaceType
+    $diskList += @{ 'Наименование' = if ($m) { $m } else { [string]$d0.Caption }
+                    'Тип носителя' = $media
+                    'Интерфейс' = $iface
+                    'Размер' = FmtGB $d0.Size
+                    'Серийный номер' = [string]$d0.SerialNumber }
+}
+
+# принтеры: порт по возможности заменяем адресом TCP-порта, плюс «Расположение» (у WSD-портов там http://IP)
+$portMap = @{}
+try { Get-CimInstance Win32_TCPIPPrinterPort -ComputerName $c -ErrorAction Stop | ForEach-Object { $portMap[$_.Name] = [string]$_.HostAddress } } catch {
+    try { Get-WmiObject Win32_TCPIPPrinterPort -ComputerName $c -ErrorAction Stop | ForEach-Object { $portMap[$_.Name] = [string]$_.HostAddress } } catch {}
+}
+
+$ramsList = @(foreach ($r in @($rams)) {
+    if (-not $r) { continue }
+    $maker = [string]$r.Manufacturer
+    if ($maker -match '^[0-9A-F]{2}([0-9A-F]{2})+$') { $maker = '' }   # у части планок «производитель» — hex-мусор
+    @{ 'Объём' = FmtGB $r.Capacity; 'Частота' = ('' + $r.Speed + ' МГц'); 'Производитель' = $maker;
+       'Форм-фактор' = [string]$r.FormFactor; 'Серийный номер' = [string]$r.SerialNumber }
+})
+
+$logList = @(foreach ($l in @($ld)) {
+    if (-not $l) { continue }
+    @{ 'Буква' = [string]$l.DeviceID; 'Метка' = [string]$l.VolumeName; 'Файловая система' = [string]$l.FileSystem
+       'Размер' = FmtGB $l.Size; 'Свободно' = FmtGB $l.FreeSpace }
+})
+
+$nicList = @(foreach ($n in @($nic)) {
+    if (-not $n) { continue }
+    @{ 'Название' = [string]$n.Description; 'MAC' = [string]$n.MACAddress
+       'IP' = (@($n.IPAddress) -join ', '); 'DHCP' = $(if ($n.DHCPEnabled) { 'да' } else { 'нет' })
+       'Шлюз' = (@($n.DefaultIPGateway) -join ', ') }
+})
+
+$prnList = @(foreach ($p in @($prn)) {
+    if (-not $p) { continue }
+    $port = [string]$p.PortName
+    if ($portMap[$port]) { $port = [string]$portMap[$port] }
+    @{ 'Наименование' = [string]$p.Name; 'Порт' = $port
+       'По умолчанию' = $(if ($p.Default) { 'да' } else { 'нет' })
+       'Расположение' = [string]$p.Location; 'Драйвер' = [string]$p.DriverName }
+})
+
+$g = @($gpu) | Select-Object -First 1
+
+[pscustomobject]@{
+    os = [ordered]@{ 'Название' = [string]$os.Caption; 'Версия' = [string]$os.Version
+                     'Сборка' = [string]$os.BuildNumber; 'Установлена' = FmtDate $os.InstallDate }
+    board = @{ 'Производитель' = [string]$bb.Manufacturer; 'Модель' = [string]$bb.Product
+               'Серийный номер' = [string]$bb.SerialNumber }
+    bios = @{ 'Производитель' = [string]$bios.Manufacturer; 'Версия' = [string]$bios.SMBIOSBIOSVersion
+              'Дата' = FmtDate $bios.ReleaseDate }
+    cpu = [ordered]@{ 'Название' = ([string]$cpu.Name).Trim(); 'Частота' = ('' + $cpu.MaxClockSpeed + ' МГц')
+                      'Ядра' = '' + $cpu.NumberOfCores; 'Потоки' = '' + $cpu.NumberOfLogicalProcessors
+                      'Разъём' = [string]$cpu.SocketDesignation }
+    rams = $ramsList
+    disks = $diskList
+    logdisks = $logList
+    gpu = @{ 'Название' = [string]$g.Name; 'Объём памяти' = FmtGB $g.AdapterRAM
+             'Версия драйвера' = [string]$g.DriverVersion }
+    adapters = $nicList
+    printers = $prnList
+    system = [ordered]@{ 'Производитель' = [string]$cs.Manufacturer; 'Модель' = [string]$cs.Model
+                         'Тип' = [string]$cs.PCSystemType; 'Пользователь' = [string]$cs.UserName }
+} | ConvertTo-Json -Compress -Depth 5
+"""
+
+
+def parse_specs_json(text: str) -> dict:
+    """JSON живого опроса → та же структура, что у :func:`parse_hardware_csv` (все значения — строки)."""
+    d = json.loads(text)
+
+    def one(name: str) -> dict:
+        v = d.get(name)
+        return {str(k): ("" if vv is None else str(vv)) for k, vv in (v or {}).items()} if isinstance(v, dict) else {}
+
+    def many(name: str) -> dict:
+        v = d.get(name)
+        if isinstance(v, dict):
+            v = [v]
+        if not isinstance(v, list):
+            v = []
+        return {str(i): {str(k): ("" if vv is None else str(vv)) for k, vv in x.items()}
+                for i, x in enumerate(v) if isinstance(x, dict)}
+
+    out = {"os": one("os"), "board": one("board"), "bios": one("bios"), "cpu": one("cpu"), "gpu": one("gpu"),
+           "system": one("system"), "rams": many("rams"), "disks": many("disks"), "logdisks": many("logdisks"),
+           "adapters": many("adapters"), "printers": many("printers")}
+    return {k: v for k, v in out.items() if v} or {"error": "ПК не вернул характеристик"}
+
+
+def collect_specs_live(computer_name: str, timeout: int = 90) -> dict:
+    """Живой сбор характеристик (CIM/WMI: WinRM → DCOM). Ничего не пишет — сохранением занимается вызывающий."""
+    name = clean_computer_name(computer_name)
+    if not name or not is_valid_hostname(name):
+        return {"error": f"Недопустимое имя узла: {computer_name!r}"}
+    from . import psrun
+    res = psrun.run(_PS_SPECS.replace("__HOST__", name), timeout=timeout)
+    if not res.ok:
+        return {"error": res.error}
+    try:
+        return parse_specs_json(res.stdout)
+    except ValueError as exc:
+        return {"error": f"Разбор ответа: {exc}"}
+
+
+# сколько дней собранные характеристики считаются свежими; потом при очередном просмотре пересобираются
+SPECS_TTL_DAYS = 14
+
+
+def _specs_stale(ts: str) -> bool:
+    if not ts:
+        return True
+    try:
+        return (datetime.now() - datetime.fromisoformat(ts)).days >= SPECS_TTL_DAYS
+    except ValueError:
+        return True
+
+
+def _load_cached_specs(computer_name: str) -> tuple[dict | None, str]:
+    """(характеристики из pc_inventory.specs, отметка времени сбора) или (None, '')."""
+    name = clean_computer_name(computer_name)
+    if not name:
+        return None, ""
+    try:
+        row = db_execute_with_retry("SELECT specs FROM pc_inventory WHERE computer_name = ?", (name,), fetch="one")
+    except Exception:  # noqa: BLE001 — кэш не критичен, база может быть недоступна
+        return None, ""
+    raw = (row[0] if row else "") or ""
+    if not raw.strip().startswith("{"):
+        return None, ""
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        return None, ""
+    if not isinstance(d, dict):
+        return None, ""
+    ts = str(d.pop("_ts", "") or "")
+    return (d or None), ts
+
+
+def get_computer_specs_dict(computer_name: str, live: bool = True, timeout: int = 90) -> dict:
+    """Характеристики ПК: инвентарный CSV → кэш в базе → живой опрос (CIM/WMI, WinRM → DCOM).
+
+    Живой опрос автоматически сохраняется в ``pc_inventory.specs`` — карточка «Характеристики ПК», опись Excel
+    и поиск принтеров работают и там, где CSV-инвентаризации нет вообще. ``live=False`` — только CSV и кэш
+    (для мест, где ждать опроса нельзя, например меню выбора диска).
+    """
+    name = clean_computer_name(computer_name)
+    path = _hardware_csv_path(name)
+    if path:
+        return parse_hardware_csv(path)
+    cached, ts = _load_cached_specs(name)
+    if cached is not None and not (live and _specs_stale(ts)):
+        return cached
+    if not live:
+        if cached is not None:
+            return cached
+        return {"error": f"Характеристики {name or '—'} не собраны: CSV не найден, в базе данных тоже ничего нет"}
+    specs = collect_specs_live(name, timeout=timeout)
+    if "error" not in specs:
+        try:
+            from . import db
+            db.save_specs(name, specs)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("save specs: %s", exc)
+        return specs
+    return specs if cached is None else cached
 
 
 # Виртуальные/стандартные принтеры Windows — шум, пользователю они не нужны.
@@ -575,9 +814,12 @@ def printers_from_specs(d: dict) -> list[dict]:
     for info in d.get("printers", {}).values():
         name = _first_match(info, "наименование", "название", "модель", "name", default="")
         port = _first_match(info, "порт", "port", default="")
+        loc = _first_match(info, "расположение", "location", "адрес", "url", default="")
         if not name or is_virtual_printer(name, port):
             continue
         kind, ip = classify_printer_port(port)
+        if kind == "network" and not ip and loc:
+            ip = ip_from_text(loc)          # WSD-порт без адреса, но в «Расположении» есть http://IP:3911/
         default_raw = _first_match(info, "по умолчанию", "default", default="").lower()
         out.append({"name": name.strip(), "port": port, "kind": kind, "ip": ip,
                     "is_default": default_raw in ("да", "yes", "true", "1", "истина")})
@@ -624,13 +866,13 @@ try { $ps = Get-CimInstance Win32_Printer -ComputerName $c -ErrorAction Stop } c
   $w = $_.Exception.Message
   try { $ps = Get-WmiObject Win32_Printer -ComputerName $c -ErrorAction Stop } catch { throw ("Принтеры $c не прочитаны. WinRM: $w | DCOM: " + $_.Exception.Message) }
 }
-$ps = @($ps | Select-Object Name, PortName, Default, PrinterStatus, WorkOffline, DriverName)
+$ps = @($ps | Select-Object Name, PortName, Default, PrinterStatus, WorkOffline, DriverName, Location)
 $ports = @{}
 try { Get-CimInstance Win32_TCPIPPrinterPort -ComputerName $c -ErrorAction Stop | ForEach-Object { $ports[$_.Name] = $_.HostAddress } } catch {
   try { Get-WmiObject Win32_TCPIPPrinterPort -ComputerName $c -ErrorAction Stop | ForEach-Object { $ports[$_.Name] = $_.HostAddress } } catch {}
 }
 ConvertTo-Json -InputObject @($ps | ForEach-Object { @{ name = $_.Name; port = $_.PortName; default = [bool]$_.Default; status = [int]$_.PrinterStatus
-                            offline = [bool]$_.WorkOffline; driver = $_.DriverName; host = $ports[$_.PortName] } }) -Compress -Depth 3
+                            offline = [bool]$_.WorkOffline; driver = $_.DriverName; host = $ports[$_.PortName]; location = [string]$_.Location } }) -Compress -Depth 3
 """
 PRINTER_STATUS = {1: "другое", 2: "неизвестно", 3: "готов", 4: "печатает", 5: "прогрев", 6: "остановлен", 7: "офлайн"}
 
@@ -650,10 +892,13 @@ def parse_live_printers_json(text: str) -> list[dict]:
         if not ip and x.get("host"):
             ip = str(x["host"]).strip()
             kind = "network"
+        loc = (x.get("location") or "").strip()
+        if not ip and loc:
+            ip = ip_from_text(loc)      # WSD-порт, но «Расположение» вида http://10.0.69.70:3911/
         st = int(x.get("status") or 0)
         out.append({"name": name, "port": port, "kind": kind, "ip": ip, "is_default": bool(x.get("default")),
                     "status": st, "status_text": "офлайн (WorkOffline)" if x.get("offline") else PRINTER_STATUS.get(st, "—"),
-                    "offline": bool(x.get("offline")), "driver": (x.get("driver") or "").strip()})
+                    "offline": bool(x.get("offline")), "driver": (x.get("driver") or "").strip(), "location": loc})
     out.sort(key=lambda p: (not p["is_default"], p["name"].lower()))
     return out
 
@@ -700,30 +945,87 @@ def _first_match(d: dict, *keys: str, default: str = "Н/Д") -> str:
 
 
 def _to_gb(raw: str) -> float | None:
-    try:
-        f = float(str(raw).replace(" ", "").replace(",", "."))
-    except ValueError:
-        return None
-    return round(f / 1024 ** 3, 1) if f > 1024 * 1024 else round(f, 1)
+    """'476,9 ГБ' | '476.9GB' | '512110190592' (байты) → гигабайты. Не разобралось → None."""
+    s = str(raw).strip().upper().replace(" ", "").replace(",", ".")
+    m = re.fullmatch(r"(\d+(?:\.\d+)?)(ГБ|GB|ТБ|TB|МБ|MB|КБ|KB)?", s)
+    if m:
+        n, u = float(m.group(1)), (m.group(2) or "")
+        if u in ("ГБ", "GB"):
+            return round(n, 1)
+        if u in ("ТБ", "TB"):
+            return round(n * 1024, 1)
+        if u in ("МБ", "MB"):
+            return round(n / 1024, 1)
+        if u in ("КБ", "KB"):
+            return round(n / 1024 ** 2, 1)
+        # «голое» число: как и раньше — байты, если очень большое, иначе уже гигабайты
+        return round(n / 1024 ** 3, 1) if n > 1024 * 1024 else round(n, 1)
+    return None
+
+
+def _to_mb(raw) -> int:
+    """'8 ГБ' | '8192 МБ' | 8589934592 (байты) → мегабайты; «голое» число < 1 ГБ считается МБ. Не разобралось → 0."""
+    s = str(raw).strip().upper().replace(" ", "").replace(",", ".")
+    m = re.fullmatch(r"(\d+(?:\.\d+)?)(ГБ|GB|ТБ|TB|МБ|MB|КБ|KB)?", s)
+    if not m:
+        return 0
+    n, u = float(m.group(1)), (m.group(2) or "")
+    if u in ("ГБ", "GB"):
+        return int(round(n * 1024))
+    if u in ("ТБ", "TB"):
+        return int(round(n * 1024 * 1024))
+    if u in ("КБ", "KB"):
+        return int(round(n / 1024))
+    if not u:
+        return int(round(n / 1024 / 1024)) if n > 1024 * 1024 else int(round(n))
+    return int(round(n))
+
+
+def _freq_mhz(raw) -> int:
+    m = re.search(r"\d{3,4}", str(raw))
+    return int(m.group(0)) if m else 0
+
+
+def ip_from_text(text: str) -> str:
+    """Первый корректный IPv4 в любой строке: 'http://10.0.69.70:3911/' → '10.0.69.70'."""
+    for m in _IP_IN_PORT_RE.finditer(text or ""):
+        if all(int(o) <= 255 for o in m.group(1).split(".")):
+            return m.group(1)
+    return ""
+
+
+def _pick_named(d: dict, *needles: str) -> str:
+    """Значение первого параметра, чьё имя содержит одну из подстрок (по приоритету подстрок);
+    если ничего не нашлось — первое непустое значение (как в CSV-сводке раньше)."""
+    for n in needles:
+        for k, v in d.items():
+            if n in k.lower() and v:
+                return v
+    for v in d.values():
+        if v:
+            return v
+    return "Н/Д"
 
 
 def summarize_specs(d: dict) -> str:
     """Краткая сводка. Неизвестное — «Н/Д», ничего не додумывается."""
     if not d or "error" in d:
         return d.get("error", "Характеристики не собраны") if d else "Характеристики не собраны"
-    os_name = next(iter(d.get("os", {}).values()), "Н/Д")
-    cpu = next(iter(d.get("cpu", {}).values()), "Н/Д")
+    os_name = _pick_named(d.get("os", {}), "название", "имя")
+    cpu = _pick_named(d.get("cpu", {}), "название", "имя", "модель")
 
     total_mb = 0
     freqs: set[int] = set()
     for m in d.get("rams", {}).values():
         for k, v in m.items():
             kl = k.lower()
-            if "размер" in kl and v.isdigit():
-                n = int(v)
-                total_mb += n // (1024 * 1024) if n > 1024 * 1024 else n  # байты или мегабайты
-            elif "частота" in kl and v.isdigit():
-                freqs.add(int(v))
+            # «Размер»/«Объём»: байты, «8192 МБ» или «8 ГБ» — и живой опрос, и CSV понимаются одинаково
+            if ("размер" in kl or "объём" in kl or "объем" in kl) and v:
+                total_mb += _to_mb(v)
+            elif ("частота" in kl or "speed" in kl) and v:
+                f = _freq_mhz(v)
+                if f:
+                    freqs.add(f)
     ram = "Н/Д"
     if total_mb:
         ram = f"{round(total_mb / 1024, 1)} ГБ"
@@ -746,12 +1048,15 @@ def summarize_specs(d: dict) -> str:
 
 
 def get_computer_specs_summary(computer_name: str) -> str:
+    """Сводка «ОС/CPU/ОЗУ/Диски» для описи Excel: CSV → кэш БД. Живой опрос здесь НЕ запускается
+    (опись строится по всем ПК организации — каждый ПК опрашивать недопустимо долго)."""
     path = _hardware_csv_path(computer_name)
     if path:
         return summarize_specs(parse_hardware_csv(path))
-    row = db_execute_with_retry("SELECT specs FROM pc_inventory WHERE computer_name = ?",
-                                (clean_computer_name(computer_name),), fetch="one")
-    return row[0] if row and row[0] else "Характеристики не собраны"
+    cached, _ = _load_cached_specs(clean_computer_name(computer_name))
+    if cached is not None:
+        return summarize_specs(cached)
+    return "Характеристики не собраны"
 
 
 def get_pc_info_from_csv(pc_name: str, login: str, fio: str) -> tuple[str, str]:

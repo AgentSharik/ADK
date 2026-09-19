@@ -1,7 +1,10 @@
 """«Здоровье ПК»: аптайм, ОЗУ/CPU, логические диски, S.M.A.R.T. физических дисков и (по запросу) карта диска.
 
 Работает только с Windows-хоста (``Get-CimInstance -ComputerName``, WinRM/DCOM, для карты диска — общий ресурс
-``\\\\host\\C$``). На других ОС и при недоступности ПК возвращает структуру с ``error``. Весь разбор вынесен
+``\\\\host\\C$``; при закрытом WinRM тот же опрос идёт по DCOM/WMI — даты в этом случае приходят строками DMTF
+и переводятся в нормальный вид функцией ``FmtDate`` внутри скрипта). Карта диска с 3.7.0 считается в 8 потоков
+(runspace pool): папки верхнего уровня и профили пользователей обходятся одновременно. На других ОС и при
+недоступности ПК возвращается структура с ``error``. Весь разбор вынесен
 в чистые функции (:func:`parse_health_json`, :func:`parse_smart_vendor`, :func:`disk_verdict`,
 :func:`parse_usage_json`, :func:`squarify`), поэтому тестируется без PowerShell.
 
@@ -28,6 +31,20 @@ log = logging.getLogger(__name__)
 _PS = r"""
 $ErrorActionPreference = 'SilentlyContinue'
 $c = '__HOST__'
+
+# Даты приходит и от CIM (DateTime), и от WMI (строка DMTF '20250101120000.500000+180').
+# Прямой вызов .ToString('формат') на строке падает «Не удается найти перегрузку для "ToString"…» —
+# именно так обнулялись «Обзор» и «S.M.A.R.T.» на ПК, где WinRM закрыт и работает только DCOM/WMI.
+function FmtDate($v) {
+    if ($null -eq $v) { return '' }
+    if ($v -is [datetime]) { return $v.ToString('yyyy-MM-dd HH:mm:ss') }
+    $s = [string]$v
+    if ($s -match '^\d{14}') {
+        return $s.Substring(0,4) + '-' + $s.Substring(4,2) + '-' + $s.Substring(6,2) + ' ' +
+               $s.Substring(8,2) + ':' + $s.Substring(10,2) + ':' + $s.Substring(12,2)
+    }
+    return $s
+}
 
 # 1. Операционная система, логические диски, процессор
 $os = $null
@@ -196,9 +213,12 @@ if ($phys.Count -eq 0 -and $drives.Count -gt 0) {
     })
 }
 
+$nowStr = FmtDate $os.LocalDateTime
+if (-not $nowStr) { $nowStr = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss') }
+
 [pscustomobject]@{
-    boot = $os.LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss')
-    now = $os.LocalDateTime.ToString('yyyy-MM-dd HH:mm:ss')
+    boot = FmtDate $os.LastBootUpTime
+    now = $nowStr
     total_mb = [int]($os.TotalVisibleMemorySize / 1024)
     free_mb = [int]($os.FreePhysicalMemory / 1024)
     cpu = $cpu
@@ -218,65 +238,129 @@ if (-not [IO.Directory]::Exists($root)) {
     $ErrorActionPreference = 'Stop'
     throw "Ресурс $root недоступен: ПК выключен, административные общие ресурсы (C$) отключены или нет прав администратора"
 }
-$dirs = @(); $files = New-Object System.Collections.Generic.List[object]; $errors = 0; $totalFiles = 0
-$hogsMap = @{}
-$userMap = @{}
 
-$hogKeys = @{
-    '$Recycle.Bin' = 'Корзина';
-    'Windows\SoftwareDistribution\Download' = 'Обновления Windows';
-    'Windows\Temp' = 'Временные файлы Windows';
-    'Windows.old' = 'Старая Windows';
-    '$WinREAgent' = 'Остатки обновления ($WinREAgent)';
-    'Windows\Installer' = 'Кэш установщика';
-    'ProgramData\Package Cache' = 'Кэш пакетов (ProgramData)';
-    'Windows\Logs\CBS' = 'Журналы CBS';
-    'Windows\Minidump' = 'Дампы памяти';
-    'Windows\LiveKernelReports' = 'Отчёты ядра';
-    'Windows\Prefetch' = 'Предзагрузка (Prefetch)';
-    'Temp' = 'Временные файлы';
-    'Tmp' = 'Временные файлы'
-}
+# 3.7.0: обход в 8 потоков (runspace pool) — папки верхнего уровня и профили Users считаются одновременно,
+# а не по очереди. «Известные пожиратели» (Temp профилей, кэш установщика, SoftwareDistribution и т.д.)
+# считаются тем же проходом: вместо второго обхода поддерево один раз суммируется и попадает и в общий
+# размер, и в список «что можно почистить».
+$rootLow = $root.ToLowerInvariant()
+$hogExact = @{}
+foreach ($k in @(
+    @{ p = 'Windows\SoftwareDistribution\Download'; l = 'Обновления Windows' },
+    @{ p = 'Windows\Temp';                            l = 'Временные файлы Windows' },
+    @{ p = 'Windows.old';                             l = 'Старая Windows' },
+    @{ p = '$WinREAgent';                             l = 'Остатки обновления ($WinREAgent)' },
+    @{ p = 'Windows\Installer';                       l = 'Кэш установщика' },
+    @{ p = 'ProgramData\Package Cache';               l = 'Кэш пакетов (ProgramData)' },
+    @{ p = 'Windows\Logs\CBS';                        l = 'Журналы CBS' },
+    @{ p = 'Windows\Minidump';                        l = 'Дампы памяти' },
+    @{ p = 'Windows\LiveKernelReports';               l = 'Отчёты ядра' },
+    @{ p = 'Windows\Prefetch';                        l = 'Предзагрузка (Prefetch)' },
+    @{ p = '$Recycle.Bin';                            l = 'Корзина' }
+)) { $hogExact[($rootLow + '\' + $k.p.ToLowerInvariant())] = $k.l }
 
-function Scan-Tree([string]$basePath) {
-    $sum = [int64]0; $count = 0
-    $stack = New-Object System.Collections.Generic.Stack[string]; $stack.Push($basePath)
+$scanBody = @'
+param($base, $rootLow, $hogExact)
+function Walk-Tree([string]$base, [string]$rootLow, $hogExact) {
+    $sum = [int64]0; $count = 0; $errors = 0
+    $big = New-Object System.Collections.Generic.List[object]
+    $hogs = New-Object System.Collections.Generic.List[object]
+    $stack = New-Object System.Collections.Generic.Stack[string]
+    $stack.Push($base)
     while ($stack.Count -gt 0) {
         $cur = $stack.Pop()
         try {
             foreach ($f in [IO.Directory]::EnumerateFiles($cur)) {
                 try {
                     $len = ([IO.FileInfo]$f).Length
-                    $sum += $len
-                    $count++
-                    if ($len -ge 50MB) {
-                        $script:files.Add(@{ path = $f; size = $len })
-                    }
-                } catch { $script:errors++ }
+                    $sum += $len; $count++
+                    if ($len -ge 50MB) { $big.Add(@{ path = $f; size = $len }) }
+                } catch { $errors++ }
             }
+        } catch { $errors++ }
+        try {
             foreach ($s in [IO.Directory]::EnumerateDirectories($cur)) {
                 try {
                     $attr = [IO.File]::GetAttributes($s)
-                    if (-not ($attr -band [IO.FileAttributes]::ReparsePoint)) {
-                        if ($s -like '*\AppData\Local\Temp') {
-                            $uName = Split-Path (Split-Path (Split-Path $s -Parent) -Parent) -Leaf
-                            $tSum = [int64]0; $tCnt = 0
-                            try {
-                                foreach ($tf in [IO.Directory]::EnumerateFiles($s, '*.*', [IO.SearchOption]::AllDirectories)) {
-                                    try { $tlen = ([IO.FileInfo]$tf).Length; $tSum += $tlen; $tCnt++ } catch {}
-                                }
-                            } catch {}
-                            if ($tSum -gt 0) {
-                                $script:hogsMap["Temp профиля $uName"] = @{ label = "Temp профиля $uName"; path = $s; size = $tSum; files = $tCnt }
-                            }
-                        }
-                        $stack.Push($s)
+                    if ($attr -band [IO.FileAttributes]::ReparsePoint) { continue }
+                    $low = $s.ToLowerInvariant()
+                    $hogLabel = $hogExact[$low]
+                    if (-not $hogLabel -and $low -like '*\appdata\local\temp') {
+                        $prof = Split-Path (Split-Path (Split-Path $s -Parent) -Parent) -Leaf
+                        $hogLabel = 'Temp профиля ' + $prof
                     }
-                } catch {}
+                    if ($hogLabel) {
+                        $r = Walk-Tree $s $rootLow $hogExact     # поддерево считается один раз: и в сумму, и в «почистить»
+                        $sum += [int64]$r.sum; $count += [int]$r.count; $errors += [int]$r.errors
+                        foreach ($b in @($r.big)) { $big.Add($b) }
+                        if ([int64]$r.sum -gt 0) { $hogs.Add(@{ label = $hogLabel; path = $s; size = [int64]$r.sum; files = [int]$r.count }) }
+                        continue
+                    }
+                    $stack.Push($s)
+                } catch { $errors++ }
             }
-        } catch { $script:errors++ }
+        } catch { $errors++ }
     }
-    return @($sum, $count)
+    @{ sum = $sum; count = $count; errors = $errors; big = $big; hogs = $hogs }
+}
+try { Walk-Tree $base $rootLow $hogExact } catch { @{ sum = [int64]0; count = 0; errors = 1; big = @(); hogs = @() } }
+'@
+
+# Задачи: папки верхнего уровня; Users разворачиваем в профили — каждый профиль отдельным потоком
+$jobs = New-Object System.Collections.Generic.List[object]
+foreach ($d in [IO.Directory]::EnumerateDirectories($root)) {
+    try {
+        $attr = [IO.File]::GetAttributes($d)
+        if ($attr -band [IO.FileAttributes]::ReparsePoint) { continue }
+    } catch { continue }
+    if ((Split-Path $d -Leaf) -ieq 'Users') {
+        foreach ($u in [IO.Directory]::EnumerateDirectories($d)) {
+            try {
+                $ua = [IO.File]::GetAttributes($u)
+                if ($ua -band [IO.FileAttributes]::ReparsePoint) { continue }
+            } catch { continue }
+            $jobs.Add(@{ path = $u; isUser = $true })
+        }
+    } else {
+        $jobs.Add(@{ path = $d; isUser = $false })
+    }
+}
+
+$iss = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+$pool = [runspacefactory]::CreateRunspacePool(1, 8, $iss, $null)
+$pool.Open()
+$runners = @()
+foreach ($j in $jobs) {
+    $ps = [powershell]::Create()
+    $ps.RunspacePool = $pool
+    [void]$ps.AddScript($scanBody).AddArgument($j.path).AddArgument($rootLow).AddArgument($hogExact)
+    $runners += @{ ps = $ps; handle = $ps.BeginInvoke(); job = $j }
+}
+
+$dirs = @(); $files = New-Object System.Collections.Generic.List[object]
+$hogsMap = @{}; $userMap = @{}
+$errors = 0; $totalFiles = 0
+foreach ($r in $runners) {
+    $o = $null
+    try { $o = @($r.ps.EndInvoke($r.handle))[0] } catch { $errors++; continue }
+    try { $r.ps.Dispose() } catch {}
+    if (-not $o) { continue }
+    $errors += [int]$o.errors
+    $totalFiles += [int]$o.count
+    if ($r.job.isUser) {
+        $userMap[$r.job.path] = @{ path = $r.job.path; size = [int64]$o.sum; files = [int]$o.count }
+    } else {
+        $dirs += @{ path = $r.job.path; size = [int64]$o.sum; files = [int]$o.count }
+    }
+    foreach ($b in @($o.big)) { try { $files.Add(@{ path = [string]$b.path; size = [int64]$b.size }) } catch {} }
+    foreach ($h in @($o.hogs)) { try { $hogsMap[[string]$h.label] = @{ label = [string]$h.label; path = [string]$h.path; size = [int64]$h.size; files = [int]$h.files } } catch {} }
+}
+try { $pool.Close() } catch {}
+
+if ($userMap.Count -gt 0) {
+    $uTotal = [int64]0; $uCount = 0
+    foreach ($u in $userMap.Values) { $uTotal += [int64]$u.size; $uCount += [int]$u.files }
+    $dirs += @{ path = ($root + '\Users'); size = $uTotal; files = $uCount }
 }
 
 # Корневые файлы (hiberfil.sys, pagefile.sys, swapfile.sys и т.д.)
@@ -296,46 +380,6 @@ try {
     }
 } catch {}
 
-# Папки верхнего уровня (включая Users с разбивкой по профилям)
-try {
-    foreach ($d in [IO.Directory]::EnumerateDirectories($root)) {
-        $leaf = Split-Path $d -Leaf
-        if ($leaf -eq 'Users') {
-            $uTotal = [int64]0; $uCount = 0
-            foreach ($u in [IO.Directory]::EnumerateDirectories($d)) {
-                $r = Scan-Tree $u
-                $userMap[$u] = @{ path = $u; size = $r[0]; files = $r[1] }
-                $uTotal += $r[0]; $uCount += $r[1]
-            }
-            $dirs += @{ path = $d; size = $uTotal; files = $uCount }
-            $totalFiles += $uCount
-        } else {
-            $r = Scan-Tree $d
-            $dirs += @{ path = $d; size = $r[0]; files = $r[1] }
-            $totalFiles += $r[1]
-        }
-    }
-} catch {}
-
-# Проверяем остальные известные папки для очистки
-foreach ($hk in $hogKeys.Keys) {
-    $hp = Join-Path $root $hk
-    if (-not $hogsMap.ContainsKey($hogKeys[$hk]) -and (Test-Path -LiteralPath $hp)) {
-        try {
-            $it = Get-Item -LiteralPath $hp -Force
-            if ($it.PSIsContainer) {
-                $hSum = [int64]0; $hCnt = 0
-                foreach ($hf in [IO.Directory]::EnumerateFiles($hp, '*.*', [IO.SearchOption]::AllDirectories)) {
-                    try { $hlen = ([IO.FileInfo]$hf).Length; $hSum += $hlen; $hCnt++ } catch {}
-                }
-                if ($hSum -gt 0) { $hogsMap[$hogKeys[$hk]] = @{ label = $hogKeys[$hk]; path = $hp; size = $hSum; files = $hCnt } }
-            } else {
-                if ($it.Length -gt 0) { $hogsMap[$hogKeys[$hk]] = @{ label = $hogKeys[$hk]; path = $hp; size = $it.Length; files = 1 } }
-            }
-        } catch {}
-    }
-}
-
 $hogs = @($hogsMap.Values)
 $users = @($userMap.Values)
 $big = @($files | Sort-Object { $_.size } -Descending | Select-Object -First $top)
@@ -345,6 +389,7 @@ $big = @($files | Sort-Object { $_.size } -Descending | Select-Object -First $to
     total_files = $totalFiles; errors = $errors
 } | ConvertTo-Json -Compress -Depth 5
 """
+
 
 LOW_DISK_GB = 10.0
 LOW_DISK_PCT = 10.0
@@ -501,8 +546,13 @@ def _phys_disk(x: dict) -> dict:
 def parse_health_json(text: str) -> dict:
     """JSON от PowerShell → {uptime_days, boot, ram_used_pct, cpu, disks:[…], phys:[…], warnings, score}."""
     d = json.loads(text)
-    boot = datetime.strptime(d["boot"], "%Y-%m-%d %H:%M:%S")
-    now = datetime.strptime(d.get("now") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "%Y-%m-%d %H:%M:%S")
+    if not d.get("boot"):
+        return {"error": "ПК не вернул дату последней загрузки (LastBootUpTime пуст) — данные «Обзора» неполные"}
+    try:
+        boot = datetime.strptime(d["boot"][:19], "%Y-%m-%d %H:%M:%S")
+        now = datetime.strptime((d.get("now") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"))[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return {"error": f"ПК вернул дату загрузки в неожиданном виде: {d['boot']!r}"}
     uptime: timedelta = now - boot
     total, free = float(d.get("total_mb") or 0), float(d.get("free_mb") or 0)
     ram_pct = round((total - free) / total * 100) if total else 0

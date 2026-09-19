@@ -410,8 +410,8 @@ def flatten_specs(d: dict) -> dict[str, str]:
     out: dict[str, str] = {}
     if not d or "error" in d:
         return out
-    titles = {"os": "ОС", "board": "Плата", "bios": "BIOS", "cpu": "CPU", "rams": "ОЗУ", "disks": "Диск", "logdisks": "Том",
-              "gpu": "Видео", "adapters": "Сеть", "printers": "Принтер"}
+    titles = {"os": "ОС", "system": "Система", "board": "Плата", "bios": "BIOS", "cpu": "CPU", "rams": "ОЗУ", "disks": "Диск",
+              "logdisks": "Том", "gpu": "Видео", "adapters": "Сеть", "printers": "Принтер"}
     for sect, val in d.items():
         t = titles.get(sect, sect)
         if not isinstance(val, dict):

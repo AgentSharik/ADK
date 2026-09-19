@@ -987,7 +987,7 @@ class UserCardDialog(FramelessDialog):
         if not d or "error" in d:
             QTreeWidgetItem(self.specs_tree, [d.get("error", "Нет данных") if d else "Нет данных", ""])
             return
-        singles = [("os", "Операционная система"), ("board", "Материнская плата"), ("bios", "BIOS"),
+        singles = [("os", "Операционная система"), ("system", "Система"), ("board", "Материнская плата"), ("bios", "BIOS"),
                    ("cpu", "Процессор"), ("gpu", "Видеоконтроллер")]
         for key, name in singles:
             if d.get(key):

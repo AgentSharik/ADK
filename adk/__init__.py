@@ -1,3 +1,3 @@
 """ADK — desktop-инструмент администратора Active Directory (PyQt6 + ldap3)."""
 
-__version__ = "3.6.3"
+__version__ = "3.7.0"

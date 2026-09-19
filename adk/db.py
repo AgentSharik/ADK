@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
 import re
@@ -31,29 +32,37 @@ _SCHEMA = (
     # кэш принтеров из инвентарных CSV: обновляется при просмотре ПК и при сканировании
     "CREATE TABLE IF NOT EXISTS pc_printers (computer_name TEXT, name TEXT, port TEXT, kind TEXT, "
     "ip_address TEXT, is_default INTEGER, updated TEXT, PRIMARY KEY (computer_name, name))",
+    # 3.0: заметки по пользователю/ПК («менял клавиатуру 03.09»)
+    "CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, subject TEXT, kind TEXT, "
+    "text TEXT, admin TEXT, ts TEXT)",
+    # 3.0: история «кто за каким ПК / какой IP» — пишется сканером при каждом изменении
+    "CREATE TABLE IF NOT EXISTS pc_history (id INTEGER PRIMARY KEY AUTOINCREMENT, computer_name TEXT, "
+    "login TEXT, ip_address TEXT, first_seen TEXT, last_seen TEXT)",
+    # 3.0: кэш подсказок для автодополнения (фамилии/логины из выдачи)
+    "CREATE TABLE IF NOT EXISTS suggest (term TEXT PRIMARY KEY, hits INTEGER DEFAULT 1, ts TEXT)",
+    # 3.1: установленное ПО (кэш опроса), MAC-адреса для Wake-on-LAN, отложенные пункты сводки «Внимание»
+    "CREATE TABLE IF NOT EXISTS pc_software (computer_name TEXT, name TEXT, version TEXT, publisher TEXT, installed TEXT, ts TEXT)",
+    "CREATE TABLE IF NOT EXISTS pc_mac (computer_name TEXT PRIMARY KEY, mac TEXT, ts TEXT)",
+    "CREATE TABLE IF NOT EXISTS attention_snooze (key TEXT PRIMARY KEY, until TEXT, admin TEXT)",
+)
+
+# Индексы — отдельным списком: создаются ПОСЛЕ таблиц и миграций столбцов, иначе на старой базе
+# (например, audit_log без столбца admin) создание индекса по этому столбцу падает раньше миграции.
+_INDEXES = (
     "CREATE INDEX IF NOT EXISTS ix_printers_name ON pc_printers (name)",
     "CREATE INDEX IF NOT EXISTS ix_printers_ip ON pc_printers (ip_address)",
     "CREATE INDEX IF NOT EXISTS ix_inventory_user ON pc_inventory (current_user)",
     "CREATE INDEX IF NOT EXISTS ix_inventory_ip ON pc_inventory (ip_address)",
     "CREATE INDEX IF NOT EXISTS ix_audit_cache_login ON audit_cache (login)",
     "CREATE INDEX IF NOT EXISTS ix_audit_log_ts ON audit_log (ts)",
-    # 3.0: заметки по пользователю/ПК («менял клавиатуру 03.09»)
-    "CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, subject TEXT, kind TEXT, "
-    "text TEXT, admin TEXT, ts TEXT)",
     "CREATE INDEX IF NOT EXISTS ix_notes_subject ON notes (subject)",
-    # 3.0: история «кто за каким ПК / какой IP» — пишется сканером при каждом изменении
-    "CREATE TABLE IF NOT EXISTS pc_history (id INTEGER PRIMARY KEY AUTOINCREMENT, computer_name TEXT, "
-    "login TEXT, ip_address TEXT, first_seen TEXT, last_seen TEXT)",
     "CREATE INDEX IF NOT EXISTS ix_pc_history_login ON pc_history (login)",
     "CREATE INDEX IF NOT EXISTS ix_pc_history_comp ON pc_history (computer_name)",
-    # 3.0: кэш подсказок для автодополнения (фамилии/логины из выдачи)
-    "CREATE TABLE IF NOT EXISTS suggest (term TEXT PRIMARY KEY, hits INTEGER DEFAULT 1, ts TEXT)",
-    # 3.1: установленное ПО (кэш опроса), MAC-адреса для Wake-on-LAN, отложенные пункты сводки «Внимание»
-    "CREATE TABLE IF NOT EXISTS pc_software (computer_name TEXT, name TEXT, version TEXT, publisher TEXT, installed TEXT, ts TEXT)",
     "CREATE INDEX IF NOT EXISTS ix_software_comp ON pc_software (computer_name)",
     "CREATE INDEX IF NOT EXISTS ix_software_name ON pc_software (name)",
-    "CREATE TABLE IF NOT EXISTS pc_mac (computer_name TEXT PRIMARY KEY, mac TEXT, ts TEXT)",
-    "CREATE TABLE IF NOT EXISTS attention_snooze (key TEXT PRIMARY KEY, until TEXT, admin TEXT)",
+    # 3.7.0: быстрые фильтры журнала действий (по админу) и «недавних» поисковых запросов
+    "CREATE INDEX IF NOT EXISTS ix_audit_log_admin ON audit_log (admin)",
+    "CREATE INDEX IF NOT EXISTS ix_search_history_key_ts ON search_history (query_key, timestamp)",
 )
 
 _MIGRATIONS = (
@@ -61,6 +70,12 @@ _MIGRATIONS = (
     "ALTER TABLE pc_inventory ADD COLUMN last_seen_online TEXT",
     "ALTER TABLE search_history ADD COLUMN query_key TEXT",
     "UPDATE search_history SET query_key = LOWER(query) WHERE query_key IS NULL",
+    # 3.7.0: базы ранних сборок, где журнал действий был без этих столбцов («no such column: admin»)
+    "ALTER TABLE audit_log ADD COLUMN ts TEXT",
+    "ALTER TABLE audit_log ADD COLUMN admin TEXT",
+    "ALTER TABLE audit_log ADD COLUMN action TEXT",
+    "ALTER TABLE audit_log ADD COLUMN target TEXT",
+    "ALTER TABLE audit_log ADD COLUMN details TEXT",
 )
 
 
@@ -176,7 +191,7 @@ def db_execute_with_retry(query: str, params: Sequence[Any] = (), fetch: str | N
     raise last_exc  # pragma: no cover
 
 
-SCHEMA_VERSION = 4   # растёт при добавлении миграций; перед их применением снимается копия файла
+SCHEMA_VERSION = 5   # растёт при добавлении миграций; перед их применением снимается копия файла
 
 
 def backup_sqlite(path: str, keep: int = 3) -> str | None:
@@ -302,6 +317,18 @@ def init_db() -> None:
                 conn.commit()
             except sqlite3.OperationalError:       # столбец уже есть
                 conn.rollback()
+        # 3.7.0: в ранних сборках журнал действий хранил одно поле event — переносим его в details
+        with contextlib.suppress(sqlite3.Error):
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(audit_log)")}
+            if "event" in cols and "details" in cols:
+                conn.execute("UPDATE audit_log SET details = COALESCE(NULLIF(details, ''), event)")
+                conn.commit()
+        for stmt in _INDEXES:
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                conn.rollback()
+        conn.commit()
         conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         conn.commit()
         # 3.6.0: WAL убран совсем. Файлы, созданные 3.5.4–3.5.11 в режиме WAL, переводятся обратно в обычный
@@ -722,6 +749,25 @@ def set_pc_online(computer_name: str, is_online: bool) -> None:
         "WHERE computer_name = ?",
         (int(is_online), int(is_online), clean_computer_name(computer_name)),
     )
+
+
+def save_specs(computer_name: str, specs: dict) -> None:
+    """Сохранить собранные характеристики (JSON + отметка времени) в ``pc_inventory.specs``.
+
+    Строка ПК создаётся, даже если сканер его ещё не видел, — характеристики не должны теряться из-за
+    порядка заполнения таблицы. Уже собранные ранее данные перезаписываются свежими.
+    """
+    name = clean_computer_name(computer_name)
+    if not name or not isinstance(specs, dict) or "error" in specs:
+        return
+    payload = json.dumps({**specs, "_ts": datetime.now().isoformat(timespec="seconds")}, ensure_ascii=False)
+    with contextlib.closing(get_db_connection()) as conn:
+        conn.execute(
+            "INSERT INTO pc_inventory (computer_name, specs) VALUES (?, ?) "
+            "ON CONFLICT(computer_name) DO UPDATE SET specs = excluded.specs",
+            (name, payload),
+        )
+        conn.commit()
 
 
 def batch_update_inventory(results: Iterable[dict], now_str: str) -> None:
