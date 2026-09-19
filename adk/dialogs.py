@@ -2287,12 +2287,45 @@ class DesignSettingsDialog(FramelessDialog):
         foot.addWidget(self.lbl_state, 1)
         reset = QPushButton("↺ Тема по умолчанию")
         reset.clicked.connect(lambda: self.preset("dark"))
+        save_close = QPushButton("💾 Сохранить и закрыть")
+        save_close.setObjectName("btnPrimary")
+        save_close.clicked.connect(self._save_and_close)
         close = QPushButton("Закрыть")
         close.clicked.connect(self.accept)
         foot.addWidget(reset)
+        foot.addWidget(save_close)
         foot.addWidget(close)
         self.body.addLayout(foot)
         self._sync_selection()
+
+    def _save_and_close(self):
+        """3.9.0: явная кнопка сохранения настроек интерфейса (язык, трей, горячая клавиша) перед закрытием."""
+        self._auto_save_ui()
+        self.accept()
+
+    def _auto_save_ui(self):
+        """3.9.0: закрыли окно крестиком/«Закрыть» — вкладка «Интерфейс» всё равно сохраняется.
+        Раньше язык и трей менялись только кнопкой «Сохранить настройки интерфейса», и выход через
+        крестик молча отбрасывал выбор — выглядело как «язык не меняется»."""
+        try:
+            from .tray import parse_hotkey
+            hk = self.hotkey.text().strip()
+            if hk and parse_hotkey(hk) is None:
+                hk = ""                       # некорректное сочетание не сохраняем
+            lang = self.lang.currentData() or "ru"
+            settings.save_section("UI", {"language": lang, "minimize_to_tray": str(self.chk_tray.isChecked()).lower(),
+                                         "global_hotkey": hk})
+            settings.language, settings.minimize_to_tray, settings.global_hotkey = lang, self.chk_tray.isChecked(), hk
+            from .i18n import set_language
+            set_language(lang)
+            self.app.retranslate()
+            self.app.reapply_hotkey()
+        except Exception:  # noqa: BLE001 — настройки не должны ронять закрытие окна
+            log.exception("auto-save UI")
+
+    def reject(self):                          # крестик окна
+        self._auto_save_ui()
+        super().reject()
 
     # ---------------------------------------------------------------- вкладки
     def _tab_theme(self) -> QWidget:

@@ -697,13 +697,15 @@ def parse_specs_json(text: str) -> dict:
     return {k: v for k, v in out.items() if v} or {"error": "ПК не вернул характеристик"}
 
 
-def collect_specs_live(computer_name: str, timeout: int = 90) -> dict:
-    """Живой сбор характеристик (CIM/WMI: WinRM → DCOM). Ничего не пишет — сохранением занимается вызывающий."""
+def collect_specs_live(computer_name: str, timeout: int = 90, cancelled=None) -> dict:
+    """Живой сбор характеристик (CIM/WMI: WinRM → DCOM). Ничего не пишет — сохранением занимается вызывающий.
+
+    ``cancelled`` (3.9.0) — проверка «пользователь нажал Стоп» для долгого полного опроса парка."""
     name = clean_computer_name(computer_name)
     if not name or not is_valid_hostname(name):
         return {"error": f"Недопустимое имя узла: {computer_name!r}"}
     from . import psrun
-    res = psrun.run(_PS_SPECS.replace("__HOST__", name), timeout=timeout)
+    res = psrun.run(_PS_SPECS.replace("__HOST__", name), timeout=timeout, cancelled=cancelled)
     if not res.ok:
         return {"error": res.error}
     try:

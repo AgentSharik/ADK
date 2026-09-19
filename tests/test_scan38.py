@@ -94,6 +94,8 @@ def test_full_scan_worker_phases(monkeypatch):
                         lambda h: {"printers": [{"name": "HP LaserJet", "port": "IP_10.0.0.5", "kind": "network", "ip": "10.0.0.5"}]})
     monkeypatch.setattr(fleetpoll, "software_live",
                         lambda h: {"software": [{"name": "1С", "version": "8.3", "publisher": "", "installed": ""}]})
+    monkeypatch.setattr(fleetpoll, "specs_live",
+                        lambda h: {"specs": {"os": {"Название": "Windows 11 Pro"}, "cpu": {"Название": "i5"}}})
 
     def fake_poll(hosts, fn, progress=None, cancelled=None, workers=None):
         out = {}
@@ -114,9 +116,10 @@ def test_full_scan_worker_phases(monkeypatch):
     assert done[0]["pcs"] == 2 and done[0]["online"] == 1
     assert done[0]["printers"] == 1 and done[0]["printers_pcs"] == 1
     assert done[0]["sw"] == 1 and done[0]["sw_pcs"] == 1
+    assert done[0]["specs_pcs"] == 1                     # 3.9.0: характеристики собраны и в базе
     # план: шаги объявлены, объём шагов 2–3 после шага 1 уточнён до фактического списка онлайн-ПК
     assert ("pcs", 2) in plans and ("printers", 1) in plans and ("software", 1) in plans
-    assert units[-3][0] == "pcs" and units[-2][0] == "printers" and units[-1][0] == "software"
+    assert units[-4][0] == "pcs" and units[-3][0] == "printers" and units[-2][0] == "software" and units[-1][0] == "specs"
     # принтеры живого опроса записаны в базу — они находятся поиском по IP
     assert any(r["ip"] == "10.0.0.5" for r in db.printer_summary())
 

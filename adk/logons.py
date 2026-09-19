@@ -14,7 +14,9 @@ from .netutils import is_valid_hostname
 log = logging.getLogger(__name__)
 
 # типы входа (LogonType) — только «человеческие»; 4/5 (batch/service) отбрасываем
-LOGON_TYPES = {"2": "Консоль", "7": "Разблокировка", "10": "RDP", "11": "Кэш (офлайн)", "3": "Сеть"}
+# 3.9.0: «Кэш (офлайн)» → «Вход по кэшу»: Windows пускает на ПК по сохранённым данным входа,
+# когда контроллер домена недоступен (кабель выдернули/сеть упала) — это нормальный вход, а не ошибка
+LOGON_TYPES = {"2": "Консоль", "7": "Разблокировка", "10": "RDP", "11": "Вход по кэшу", "3": "Сеть"}
 SKIP_ACCOUNTS_SUFFIX = ("$",)   # компьютерные учётки
 SKIP_ACCOUNTS = {"SYSTEM", "ANONYMOUS LOGON", "LOCAL SERVICE", "NETWORK SERVICE", "DWM-1", "DWM-2", "UMFD-0", "UMFD-1", "UMFD-2"}
 

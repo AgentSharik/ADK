@@ -420,6 +420,13 @@ class LogonsDialog(FramelessDialog):
         b.clicked.connect(self.load)
         top.addWidget(b)
         self.body.addLayout(top)
+        # 3.9.0: расшифровка типов входов — вопрос «что значит вход по кэшу/пустые» больше не возникает
+        legend = QLabel("<b>Типы входов:</b> Консоль — вошёл за этим ПК · Разблокировка — снял блокировку · "
+                        "RDP — удалённый рабочий стол · Вход по кэшу — пустило без сети, по сохранённым данным · "
+                        "«—» в IP — журнал не записал, откуда")
+        legend.setWordWrap(True)
+        legend.setStyleSheet("color: %s; font-size: 8.5pt;" % app_palette().subtext)
+        self.body.addWidget(legend)
         self.summary = QLabel("")
         self.summary.setWordWrap(True)
         self.body.addWidget(self.summary)
@@ -455,7 +462,9 @@ class LogonsDialog(FramelessDialog):
             self.table.insertRow(r)
             user = f"{e['domain']}\\{e['user']}" if e["domain"] else e["user"]
             res = "✅ вход" if e["kind"] == "ok" else f"⛔ {e['reason'] or 'отказ'}"
-            for c, v in enumerate((e["ts"], user, e["type"], e["ip"], res)):
+            # 3.9.0: пустых ячеек не оставляем — «—» читается как «нет данных», а не как сломанная строка
+            vals = (e["ts"] or "—", user or "—", e["type"] or "—", e["ip"] or "—", res)
+            for c, v in enumerate(vals):
                 it = QTableWidgetItem(v)
                 if e["kind"] == "fail":
                     it.setForeground(QColor(pal.danger[0]))

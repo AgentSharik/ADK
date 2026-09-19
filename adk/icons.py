@@ -17,7 +17,7 @@ import base64
 import re
 
 from PyQt6.QtCore import QByteArray, QSize, Qt
-from PyQt6.QtGui import QIcon, QPainter, QPixmap
+from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
 
 # ---------------------------------------------------------------- контуры (viewBox 0 0 24 24, только stroke)
 _S = 'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'
@@ -234,11 +234,16 @@ LABEL_PX = 19       # размер иконки в подписях (<img> в ri
 _cache: dict[tuple, QIcon] = {}
 
 
-def _render(name: str, color: str, px: int) -> QPixmap:
+def _render(name: str, color: str, px: int, dpr: float = 1.0) -> QPixmap:
+    """Пиктограмма px×px логических точек; dpr>1 — рендер в увеличенном растре для чёткости
+    на экранах 125/150% (иначе Qt растягивал 22px картинку и контуры «мылились», сливаясь с фоном)."""
     from PyQt6.QtSvg import QSvgRenderer
-    pm = QPixmap(px, px)
+    phys = max(1, round(px * dpr))
+    pm = QPixmap(phys, phys)
+    if dpr != 1.0:
+        pm.setDevicePixelRatio(dpr)
     pm.fill(Qt.GlobalColor.transparent)
-    r = QSvgRenderer(QByteArray(svg(name, color, px)))
+    r = QSvgRenderer(QByteArray(svg(name, color, phys)))
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     r.render(p)
@@ -256,13 +261,20 @@ def icon(name: str, color: str | None = None, role: str = "text", active_color: 
     key = (name, color, active_color or "")
     if key in _cache:
         return _cache[key]
+    from PyQt6.QtGui import QGuiApplication
+    dpr = float(QGuiApplication.primaryScreen().devicePixelRatio()) if QGuiApplication.primaryScreen() else 1.0
+    dpr = max(1.0, min(2.0, round(dpr * 2) / 2))      # 1.0 … 2.0 с шагом 0.5
     ic = QIcon()
     for px in (16, 18, 20, 24, 32, 48):
-        pm = _render(name, color, px)
+        pm = _render(name, color, px, dpr)
         ic.addPixmap(pm, QIcon.Mode.Normal)
-        act = _render(name, active_color, px) if active_color else pm
+        act = _render(name, active_color, px, dpr) if active_color else pm
         ic.addPixmap(act, QIcon.Mode.Active)
         ic.addPixmap(act, QIcon.Mode.Selected)
+        # 3.9.0: явный Disabled-вариант: автогенерированный Qt «серый» на тёмных темах сливался с фоном
+        dim = QColor(color) if QColor(color).isValid() else QColor("#F5F5F7")
+        dim.setAlpha(120)
+        ic.addPixmap(_render(name, dim.name(QColor.NameFormat.HexArgb), px, dpr), QIcon.Mode.Disabled)
     _cache[key] = ic
     return ic
 

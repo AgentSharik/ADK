@@ -539,7 +539,12 @@ class PCScannerWorker(BaseWorker):
         out = []
         for e in entries:
             name = ad.get_ad_value(e, "name").rstrip("$").upper()
-            if pattern.match(name) and not (exclude and exclude.search(name)) and (not mask or mask.match(name)):
+            # 3.9.0: заданная маска — главный фильтр: она определяет парк (host_pattern не действует,
+            # иначе дефолтный ^(WS-\d+|PC-.*)$ вырезал бы ПК серий, которых нет в шаблоне). exclude — всегда.
+            if mask is not None:
+                if mask.match(name) and not (exclude and exclude.search(name)):
+                    out.append(name)
+            elif pattern.match(name) and not (exclude and exclude.search(name)):
                 out.append(name)
         return out
 
@@ -995,7 +1000,10 @@ def build_inventory_rows(entries: list, cancelled=lambda: False, progress=lambda
         if i % 20 == 0:
             progress(i, len(people))
         comp = comps.get(login) or ""
-        lines = netutils.get_computer_specs_summary(comp).split("\n") if comp else []
+        summary = netutils.get_computer_specs_summary(comp) if comp else ""
+        # 3.9.0: раньше строка «Характеристики не собраны» целиком попадала в колонку «ОС» —
+        # теперь честные прочерки в колонках ОС/ЦП/ОЗУ/Диски (сами данные появляются после полного опроса)
+        lines = [] if not comp or summary.startswith("Характеристики") else summary.split("\n")
         get = lambda idx, pref: lines[idx].replace(pref, "", 1) if len(lines) > idx else "—"  # noqa: E731
         info = inv.get(db.clean_computer_name(comp), {}) if comp else {}
         rows.append({

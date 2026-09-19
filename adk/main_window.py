@@ -113,10 +113,12 @@ class BadgeDelegate(QStyledItemDelegate):
 
 
 class ADApp(FramelessMainWindow):
-    def __init__(self, username: str | None, password: str | None, initial_fill: bool = False):
+    def __init__(self, username: str | None, password: str | None, initial_fill: bool = False,
+                 startup_choice: str = ""):
         super().__init__()
         self.username, self.password = username, password
         self.initial_fill = initial_fill          # 3.5.11: база только что создана — заполнить её (сканер + принтеры)
+        self.startup_choice = startup_choice      # 3.9.0: ответ на стартовый вопрос (full · pcs · '' — не задан/пропущен)
         self.fill_worker = None
         self.admin_name = username or os.environ.get("USERNAME", "sso")
         self.scan_owner = f"{os.environ.get('COMPUTERNAME') or platform.node()}\\{self.admin_name}"
@@ -157,8 +159,13 @@ class ADApp(FramelessMainWindow):
         self.backup_timer.timeout.connect(lambda: run_in_background(self, db.backup_periodic, lambda _p: None, lambda _m: None))
         self.backup_timer.start(15 * 60_000)
         QTimer.singleShot(300, self.load_ad_count)
-        # 3.8.0: сканирование при старте — не молча, а после вопроса «всё (ПК+принтеры+ПО) / только ПК / не сейчас»
-        QTimer.singleShot(1500, self.start_initial_fill if initial_fill else self.ask_startup_scan)
+        # 3.9.0: вопрос «что собрать при старте» задаётся ДО главного окна и только при пустой базе (см. __main__);
+        # здесь лишь запускаем выбранное. Ответ «Не сейчас» ничего не запускает — вопрос больше не появляется,
+        # обновление по кнопке «Обновить статус сети ПК» и по расписанию auto_scan_interval_min.
+        if startup_choice == "full":
+            QTimer.singleShot(1500, self.start_full_scan)
+        elif startup_choice == "pcs":
+            QTimer.singleShot(1500, self.start_initial_fill)
         # 3.1: сводка «Внимание» — в фоне, по таймеру из [Attention] refresh_min
         self.attention_items: list[dict] = []
         self.attention_timer = QTimer(self)
@@ -372,7 +379,13 @@ class ADApp(FramelessMainWindow):
         content.setSpacing(10)
         root.addLayout(content)
 
-        top = QHBoxLayout()
+        # 3.9.0: панель поиска в две строки — раньше строка ввода, кнопка, два чекбокса в столбик и ещё две
+        # кнопки были в одном ряду: на узком окне всё сплющивалось. Теперь вводу — вся ширина первой строки,
+        # фильтры и кнопки — ровная вторая строка.
+        top = QVBoxLayout()
+        top.setSpacing(6)
+        row1 = QHBoxLayout()
+        row1.setSpacing(8)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(tr("Фамилия, логин, почта, отдел, кабинет, имя ПК, IP, printer:…"))
         self.search_input.setClearButtonEnabled(True)
@@ -387,23 +400,27 @@ class ADApp(FramelessMainWindow):
         self.search_input.returnPressed.connect(self.start_search)
         self.btn_search = QPushButton(tr("Найти"))
         self.btn_search.setObjectName("btnPrimary")
+        self.btn_search.setMinimumWidth(110)
         self.btn_search.clicked.connect(self.start_search)
-        chk = QVBoxLayout()
+        row1.addWidget(self.search_input, 1)
+        row1.addWidget(self.btn_search)
+        top.addLayout(row1)
+        row2 = QHBoxLayout()
+        row2.setSpacing(10)
         self.chk_archive = QCheckBox(tr("📦 Архивы (все ПК пользователя)"))
         self.chk_disabled = QCheckBox(tr("🚷 Отключённые учётки"))
         for c in (self.chk_archive, self.chk_disabled):
             c.toggled.connect(self.start_search)
-            chk.addWidget(c)
+            row2.addWidget(c)
+        row2.addStretch(1)
         self.btn_settings = QPushButton(tr("⚙️ Настройки"))
         self.btn_settings.clicked.connect(lambda: DesignSettingsDialog(self, self).exec())
         btn_plugins = QPushButton(tr("🧩 Плагины"))
         btn_plugins.setToolTip("Плагины и модули автоматизации ADK")
         btn_plugins.clicked.connect(lambda: PluginsDialog(self).exec())
-        top.addWidget(self.search_input, 1)
-        top.addWidget(self.btn_search)
-        top.addLayout(chk)
-        top.addWidget(btn_plugins)
-        top.addWidget(self.btn_settings)
+        row2.addWidget(btn_plugins)
+        row2.addWidget(self.btn_settings)
+        top.addLayout(row2)
         content.addLayout(top)
         self.lbl_update = QLabel("")
         self.lbl_update.setObjectName("updateLabel")
@@ -1898,20 +1915,7 @@ class ADApp(FramelessMainWindow):
         self.lbl_status.setText("")          # после сканера в строке состояния — «Последнее сканирование: …»
         self.refresh_dashboard()
 
-    # ------------------------------------------------------------------ 3.8.0: вопрос при старте + полный опрос
-    def ask_startup_scan(self):
-        """Спросить, что собрать при запуске: всё (ПК+принтеры+ПО) / только ПК / ничего."""
-        if os.environ.get("ADK_TESTS"):        # автотесты/e2e: стартовый вопрос не всплывает поверх сценария
-            return
-        if self.scanner and self.scanner.isRunning():
-            return
-        from .scan_ui import ask_startup_scan
-        choice = ask_startup_scan(self)
-        if choice == "full":
-            self.start_full_scan()
-        elif choice == "pcs":
-            self.start_scan()
-
+    # ------------------------------------------------------------------ 3.8.0: полный опрос (стартовый вопрос — в __main__, до окна)
     def start_full_scan(self):
         """Полный опрос парка (ПК → принтеры → программы) с окном прогресса и круговой диаграммой."""
         if getattr(self, "full_dialog", None) and self.full_dialog.worker.isRunning():

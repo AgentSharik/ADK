@@ -106,12 +106,14 @@ class StartupScanDialog(FramelessDialog):
             lay.setContentsMargins(14, 10, 14, 10)
             lay.setSpacing(2)
             t = QLabel(title)
-            t.setStyleSheet(f"font-size: 11.5pt; font-weight: bold; color: {pal.title_accent if primary else pal.text};"
+            # 3.9.0: на залитой акцентом кнопке текст — контрастным к акценту цветом (on_accent),
+            # а не title_accent: яркий акцент по акценту сливался (тёмные темы со светлым акцентом)
+            t.setStyleSheet(f"font-size: 11.5pt; font-weight: bold; color: {pal.on_accent if primary else pal.text};"
                             " background: transparent;")
             t.setAlignment(Qt.AlignmentFlag.AlignCenter)
             d = QLabel(desc)
             d.setWordWrap(True)
-            d.setStyleSheet(f"color: {pal.subtext}; font-size: 8.5pt; background: transparent;")
+            d.setStyleSheet(f"color: {pal.on_accent if primary else pal.subtext}; font-size: 8.5pt; background: transparent;")
             d.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lay.addWidget(t)
             lay.addWidget(d)
@@ -133,6 +135,7 @@ def _phase_labels() -> dict[str, tuple[str, str]]:
         "pcs": ("💻 ПК из домена", "адреса, кто за каким ПК, последние входы"),
         "printers": ("🖨️ Принтеры", "что подключено на каждом ПК в сети"),
         "software": ("📦 Программы", "что установлено на каждом ПК в сети"),
+        "specs": ("🖥 Характеристики", "процессор, память, диски, ОС — для карточки и Excel-описи"),
     }
 
 
@@ -192,7 +195,7 @@ class FullScanWorker(BaseWorker):
     def run(self) -> None:
         from . import ad, fleetpoll
         s = {"pcs": 0, "online": 0, "printers_pcs": 0, "printers": 0, "sw_pcs": 0, "sw": 0,
-             "error": "", "stopped": False, "mode": self.mode}
+             "specs_pcs": 0, "error": "", "stopped": False, "mode": self.mode}
         try:
             # ---- шаг 1: ПК из домена
             self.step_text.emit("Список рабочих станций из AD…")
@@ -265,6 +268,28 @@ class FullScanWorker(BaseWorker):
                     if "software" in r:
                         s["sw_pcs"] += 1
                         s["sw"] += len(r["software"])
+                # ---- шаг 4 (3.9.0): характеристики — процессор/память/диски/ОС — в базу.
+                # Только для ПК без свежих данных: повторные полные опросы не пересобирают всё заново.
+                if not self.cancelled:
+                    try:
+                        fresh = set(db.hosts_with_fresh_specs())
+                    except Exception:  # noqa: BLE001
+                        fresh = set()
+                    todo = [h for h in hosts_online if h not in fresh]
+                    self.plan.emit("specs", len(todo))
+                    if todo:
+                        self.step_text.emit(f"Характеристики: опрашиваю {len(todo)} ПК (остальные свежие)…")
+                        res = fleetpoll.poll_fleet(
+                            todo, fleetpoll.specs_live,
+                            progress=lambda i, n, h: self.unit.emit("specs", i, h),
+                            cancelled=lambda: self.cancelled)
+                        for comp, r in res.items():
+                            if "specs" in r:
+                                db.save_specs(comp, r["specs"])
+                                s["specs_pcs"] += 1
+                    else:
+                        self.step_text.emit("Характеристики: у всех ПК в сети данные уже свежие")
+                        self.unit.emit("specs", 0, "")
         except Exception as exc:  # noqa: BLE001
             log.exception("FullScanWorker")
             s["error"] = str(exc)
@@ -279,6 +304,8 @@ def full_summary_text(s: dict) -> str:
     if s.get("mode") == "full":
         parts.append(f"принтеры: {s.get('printers', 0)} на {s.get('printers_pcs', 0)} ПК")
         parts.append(f"программы: {s.get('sw', 0)} на {s.get('sw_pcs', 0)} ПК")
+        if s.get("specs_pcs"):
+            parts.append(f"характеристики: {s.get('specs_pcs')} ПК")
     if s.get("stopped"):
         parts.append("остановлено — начатое доработало")
     return "✅ " + " · ".join(parts) + "."

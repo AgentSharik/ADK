@@ -50,6 +50,19 @@ EN: dict[str, str] = {
     "🧬 Сравнение групп": "🧬 Group comparison", "🕓 История": "🕓 History", "Как в системе (Windows)": "Follow system (Windows)",
     "Язык / Language": "Language", "Русский": "Russian", "English": "English",
     "Атрибуты AD": "AD attributes", "Группы": "Groups", "ПК / RMS": "PC / RMS", "Характеристики ПК": "PC specs",
+    # 3.9.0: частые кнопки и подписи — чтобы переключение языка было заметно везде, а не только в главном окне
+    "Закрыть": "Close", "Сохранить и закрыть": "Save and close", "Отмена": "Cancel", "Обновить": "Refresh",
+    "Операция:": "Operation:", "Выполнить": "Run", "Подтверждение": "Confirmation", "Скопировано": "Copied",
+    "Период:": "Period:", "Только отказы": "Failures only", "Сетевые входы (тип 3)": "Network logons (type 3)",
+    "Типы входов:": "Logon types:", "Программа": "Program", "Издатель": "Publisher", "Установлена": "Installed",
+    "Результат": "Result", "Время": "Time", "Пользователь": "User", "Тип": "Type", "Откуда (IP)": "Source (IP)",
+    "Входы на ПК": "PC logons", "Характеристики": "Specifications", "Журнал": "Journal",
+    "Отправлено": "Sent", "Получено": "Received", "Потери": "Loss", "Джиттер": "Jitter",
+    "События": "Events", "Сбои и события": "Failures & events", "Все": "All",
+    "Опрошен": "Polled", "Остановить": "Stop", "Свернуть": "Minimize", "Пауза": "Pause", "Сброс": "Reset",
+    "Копировать отчёт": "Copy report", "Копировать вывод ping": "Copy ping output",
+    "Готовые темы": "Preset themes", "Акцентный цвет": "Accent colour", "Фон окна": "Window background",
+    "Семейство:": "Family:", "Размер:": "Size:", "Настройки": "Settings", "Опросить парк": "Poll the fleet",
 }
 
 

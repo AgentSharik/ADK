@@ -77,9 +77,33 @@ def is_color_dark(hex_str: str) -> bool:
     return luminance(hex_str) < 140
 
 
+def _wcag_luminance(hex_str: str) -> float:
+    """Относительная яркость по WCAG 2.0 (0..1) — для выбора контрастного текста на заливке."""
+    c = QColor(hex_str)
+    if not c.isValid():
+        return 1.0
+
+    def f(v: int) -> float:
+        v /= 255.0
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * f(c.red()) + 0.7152 * f(c.green()) + 0.0722 * f(c.blue())
+
+
 def contrast_text(bg_hex: str) -> str:
-    """Текст на заливке акцентом: белый на насыщенных цветах, тёмный — только на очень светлых."""
-    return "#ffffff" if luminance(bg_hex) < 185 else "#1D1D1F"
+    """Текст на заливке акцентом: белый или тёмный — что даёт больший контраст (WCAG).
+
+    3.9.0: раньше порог был по простой яркости, и на светло-янтарном/салатовом/розовом акценте
+    оставался белый текст с контрастом ~1.8:1. Теперь сравниваются контрасты обоих вариантов."""
+    dark = _wcag_luminance("#1D1D1F")
+    l = _wcag_luminance(bg_hex)
+    white_cr = 1.05 / (l + 0.05)
+    dark_cr = (l + 0.05) / (dark + 0.05)
+    # белый остаётся, пока его контраст не ниже 3:1 (крупный жирный текст) — синие акценты не перекрашиваем;
+    # на светло-янтарном/салатовом/розовом белый давал 1.8–2.6:1 — там тёмный текст
+    if white_cr >= 3.0:
+        return "#ffffff"
+    return "#ffffff" if white_cr >= dark_cr else "#1D1D1F"
 
 
 WARNING_FILL = "#F5B324"     # янтарь: заливка кнопок-предупреждений (смена пароля, снятие блокировки)
@@ -313,6 +337,26 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QDateTimeEdit::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 26px; border: none;
         border-left: 1px solid {p.border}; margin: 4px 0; }}
     QDateTimeEdit::down-arrow {{ image: url({chev_down}); width: 14px; height: 14px; }}
+    /* 3.9.0: календарь-попап у полей даты — название месяца/года и дни читаются на всех десяти темах
+       (нативная отрисовка на тёмных темах делала заголовок почти чёрным на тёмной панели) */
+    QCalendarWidget QWidget {{ alternate-background-color: {p.input}; }}
+    QCalendarWidget #qt_calendar_navigationbar {{ background: {relief(p.header, 108, 97)}; border: none; }}
+    QCalendarWidget #qt_calendar_prevmonth, QCalendarWidget #qt_calendar_nextmonth {{ background: transparent;
+        color: {p.text}; border: none; border-radius: 6px; }}
+    QCalendarWidget #qt_calendar_prevmonth:hover, QCalendarWidget #qt_calendar_nextmonth:hover {{ background: {p.hover}; }}
+    QCalendarWidget #qt_calendar_monthyear {{ background: {p.input}; color: {p.text}; font-weight: 700;
+        border: 1px solid {p.border}; border-radius: 6px; padding: 3px 10px; }}
+    QCalendarWidget #qt_calendar_monthyear:hover {{ border-color: {p.title_accent}; }}
+    QCalendarWidget #qt_calendar_yearedit {{ background: {p.input}; color: {p.text}; font-weight: 700;
+        border: 1px solid {p.border}; border-radius: 6px; padding: 2px 8px;
+        selection-background-color: {accent}; selection-color: {p.on_accent}; }}
+    QCalendarWidget #qt_calendar_yearedit::up-button, QCalendarWidget #qt_calendar_yearedit::down-button {{ width: 18px;
+        border: none; border-left: 1px solid {p.border}; background: {relief(p.button, 110, 95)}; }}
+    QCalendarWidget #qt_calendar_yearedit::up-arrow {{ image: url({chev_up}); width: 10px; height: 10px; }}
+    QCalendarWidget #qt_calendar_yearedit::down-arrow {{ image: url({chev_down}); width: 10px; height: 10px; }}
+    QCalendarWidget #qt_calendar_calendarview {{ background: {p.card}; color: {p.text};
+        selection-background-color: {accent}; selection-color: {p.on_accent}; outline: none; }}
+    QCalendarWidget #qt_calendar_calendarview:disabled {{ color: {p.subtext}; }}
     QSpinBox {{ padding-right: 28px; }}
     QSpinBox::up-button, QSpinBox::down-button {{ subcontrol-origin: padding; width: 24px; border: none;
         border-left: 1px solid {p.border}; background: {relief(p.button, 110, 95)}; }}

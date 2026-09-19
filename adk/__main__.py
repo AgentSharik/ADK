@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import traceback
 
@@ -22,6 +23,25 @@ def _install_notify_hook() -> None:
         notify.notify_event(admin, action, target, details, labels=db.ACTION_LABELS)
     if hook not in db.AUDIT_HOOKS:
         db.AUDIT_HOOKS.append(hook)
+
+
+def _sweep_stale_ps1() -> None:
+    """3.9.0: убрать осиротевшие ``adk_*.ps1`` из %TEMP% (остаются после жёсткого прерывания запуска —
+    например, вынули питание). Свои текущие файлы не трогаем: им меньше суток."""
+    import contextlib
+    import glob
+    import tempfile
+    import time
+    try:
+        for p in glob.glob(os.path.join(tempfile.gettempdir(), "adk_*.ps1")):
+            try:
+                if os.path.getmtime(p) < time.time() - 86400:
+                    with contextlib.suppress(OSError):
+                        os.remove(p)
+            except OSError:
+                continue
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _excepthook(exc_type, exc, tb):
@@ -77,6 +97,7 @@ def main() -> int:
         return cli_main(sys.argv[1:])
     config.setup_logging()
     config.write_default_config()
+    _sweep_stale_ps1()
     log.info("ADK %s, config: %s", __version__, config.INI_FILE)
     i18n.set_language(config.settings.language)
     plugins.write_example(config.settings.plugins_dir)
@@ -134,11 +155,38 @@ def main() -> int:
         dlg.deleteLater()
         break
 
-    window = ADApp(user, password, initial_fill=initial_fill)
+    # 3.9.0: вопрос «что собрать» — строго до главного окна и только один раз, при пустой базе
+    # (первый запуск / свежий файл). Дальше база обновляется кнопкой и по расписанию — вопрос не беспокоит.
+    startup_choice = ""
+    if not os.environ.get("ADK_TESTS"):
+        try:
+            row = db.db_execute_with_retry("SELECT COUNT(*) FROM pc_inventory", fetch="one")
+            base_empty = not (row and row[0])
+        except Exception:  # noqa: BLE001
+            base_empty = False
+        if base_empty:
+            from .scan_ui import ask_startup_scan
+            startup_choice = ask_startup_scan(None)
+
+    window = ADApp(user, password, initial_fill=initial_fill, startup_choice=startup_choice)
     window.show()
     # справка по роли показывается самим окном — после того, как роль определена по группам AD
     # (ADApp.resolve_access → show_role_welcome), а не до проверки, иначе она могла описать не ту роль
-    return app.exec()
+    code = app.exec()
+    # 3.9.0: гарантированный выход — фоновые PowerShell/пинг-процессы не должны оставаться в диспетчере задач.
+    # Через секунду после нашего выхода taskkill /T /F убивает всё дерево процесса (детей psrun/пулов),
+    # а сам ADK завершается сразу и со своим кодом выхода (важно для сторожа базы).
+    log.info("выход (%s)", code)
+    logging.shutdown()
+    if os.name == "nt":
+        try:
+            import subprocess
+            subprocess.Popen(
+                ["cmd", "/c", f"timeout /t 1 /nobreak >nul & taskkill /PID {os.getpid()} /T /F"],
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except Exception:  # noqa: BLE001
+            pass
+    os._exit(code)
 
 
 if __name__ == "__main__":

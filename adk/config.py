@@ -208,9 +208,109 @@ def _load() -> configparser.ConfigParser:
     return cp
 
 
+# Ключи, которые миграция дописывает в существующий config.ini (секция → ключ → (комментарий, значение)).
+# Это настройки, появившиеся после первых релизов: без миграции их в файле просто нет и о них не узнать.
+_MIGRATE_KEYS: dict[str, dict[str, tuple[str, str]]] = {
+    "Scanner": {
+        "host_mask": ("# ГЛАВНЫЙ ФИЛЬТР ПАРКА: маска имён ПК через запятую (? = один символ, * = любые).\n"
+                      "# Пример: PC-???, LT-* — только эти серии; host_pattern при этом не действует.\n"
+                      "# Маска определяет сканирование и (через базу) поиск/опись/«ПО парка»/принтеры.\n"
+                      "# Пусто — парк определяет host_pattern.", ""),
+        "valid_subnets": ("# Подсети, которым верим при разрешении DNS (остальные адреса считаем чужими)", "10.,192.168.,172."),
+        "dhcp_servers": ("# DHCP-серверы для сверки «Свободного IP» (через запятую); пусто — без сверки", ""),
+    },
+    "Paths": {
+        "db_ready": ("# true = вопрос «где база?» уже задан (удалите строку, чтобы задать снова)", "true"),
+        "backup_every_hours": ("# Резервная копия базы: раз в N часов (0 — не делать)", "6"),
+        "backup_keep": ("# ...и хранить K последних копий", "12"),
+    },
+    "UI": {
+        "language": ("# ru | en", "ru"),
+        "minimize_to_tray": ("# Значок ADK в трее; закрытие крестиком — всегда полный выход", "true"),
+        "global_hotkey": ("# Глобальное сочетание «показать ADK и перейти в поиск»; пусто — выключено", "Ctrl+Shift+A"),
+    },
+    "Attention": {
+        "acct_days": ("# Учётная запись истекает в ближайшие N дней", "7"),
+        "no_logon_days": ("# Учётка без входа N дней", "90"),
+        "stale_pc_days": ("# ПК не был в сети N дней", "30"),
+        "refresh_min": ("# Период обновления сводки, минут; 0 — только вручную", "30"),
+    },
+}
+
+
+def _migrate_config(path: str) -> None:
+    """Дописать в существующий config.ini ключи, которых в нём ещё нет (3.9.0).
+
+    Чисто текстовая вставка в конец каждой секции: свои значения, порядок строк и комментарии
+    пользователя не трогаем. Файл перезаписывается атомарно (сначала .tmp, потом замена)."""
+    import configparser
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            text = f.read()
+        had_bom = open(path, "rb").read(3) == b"\xef\xbb\xbf"
+        cp = configparser.ConfigParser(interpolation=None)
+        cp.read_string(text)
+        lines = text.splitlines()
+        sec_span: dict[str, tuple[int, int]] = {}       # секция → (строка заголовка, конец секции)
+        order: list[str] = []
+        for i, ln in enumerate(lines):
+            s = ln.strip()
+            if s.startswith("[") and s.endswith("]"):
+                name = s[1:-1].strip()
+                if name:
+                    if name not in sec_span:
+                        sec_span[name] = (i, len(lines))
+                        order.append(name)
+                    for prev in order[:-1]:
+                        b, e = sec_span[prev]
+                        if e == len(lines):
+                            sec_span[prev] = (b, i)
+        inserts: list[tuple[int, list[str]]] = []
+        tail_blocks: list[str] = []
+        for sec, keys in _MIGRATE_KEYS.items():
+            existing = set(cp[sec].keys()) if sec in cp else None
+            if existing is None:
+                continue                                   # секции нет — настройки ей не нужны, не навязываем
+            missing = [(k, vc) for k, vc in keys.items() if k not in existing]
+            if not missing:
+                continue
+            block = []
+            for k, (comment, value) in missing:
+                if comment:
+                    block.extend(comment.splitlines())
+                block.append(f"{k} = {value}")
+            if sec in sec_span:
+                b, e = sec_span[sec]
+                # вставляем в конец секции, пропустив пустые строки непосредственно перед следующей секцией
+                at = e
+                while at > b + 1 and not lines[at - 1].strip():
+                    at -= 1
+                inserts.append((at, block))
+            else:
+                tail_blocks.append(f"[{sec}]\n" + "\n".join(block))
+        if not inserts and not tail_blocks:
+            return
+        for at, block in sorted(inserts, key=lambda x: -x[0]):
+            lines[at:at] = block + [""]
+        out = "\n".join(lines).rstrip("\n") + "\n"
+        for tb in tail_blocks:
+            out += "\n" + tb + "\n"
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8-sig" if had_bom else "utf-8", newline="") as f:
+            f.write(out)
+        os.replace(tmp, path)
+        logging.getLogger(__name__).info("config.ini: добавлены недостающие ключи (%s)", path)
+    except Exception as exc:  # noqa: BLE001 — миграция не должна мешать запуску
+        logging.getLogger(__name__).warning("миграция config.ini: %s", exc)
+
+
 def write_default_config(path: str = INI_FILE) -> None:
-    """Создаёт config.ini со значениями по умолчанию, комментариями и автоопределением домена."""
+    """Создаёт config.ini со значениями по умолчанию, комментариями и автоопределением домена.
+
+    3.9.0: если файл уже есть — дописывает в него недостающие ключи (с комментариями), ничего не меняя
+    в настроенном: у пользователей со старыми config.ini новые настройки были просто не видны."""
     if os.path.exists(path):
+        _migrate_config(path)
         return
     _ensure_dirs()
     detected_ad = detect_ad_domain_params()
@@ -258,9 +358,11 @@ templates_file =
 auto_scan_interval_min = 30
 host_pattern = ^(WS-\\d+|PC-.*)$
 host_exclude = (VIRT|VM|VBOX|TEST|SRV|SQL|SERVER)
-# Маска имён ПК для ADK (через запятую): ? = одна цифра, * = любые символы.
-# Пример: PC-??? — только имена серии с тремя цифрами.
-# Пусто — показываются все ПК (при этом host_pattern всё равно действует).
+# ГЛАВНЫЙ ФИЛЬТР ПАРКА: маска имён ПК через запятую. ? = один символ, * = любые символы.
+# Пример: PC-???, LT-* — только эти серии. Если маска задана, ОНА определяет парк:
+# host_pattern выше не действует (не вырезает ваши серии), действует только host_exclude.
+# Маска применяется к сканированию и через базу — к поиску, описи, «ПО парка» и принтерам.
+# Пусто — как раньше: парк определяет host_pattern.
 host_mask = 
 valid_subnets = 10.,192.168.,172.
 # DHCP-серверы для проверки свободных IP

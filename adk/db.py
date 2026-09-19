@@ -770,6 +770,24 @@ def save_specs(computer_name: str, specs: dict) -> None:
         conn.commit()
 
 
+def hosts_with_fresh_specs(days: int = 30) -> list[str]:
+    """ПК, у которых характеристики собирались не раньше ``days`` назад (3.9.0).
+
+    Полный опрос пропускает их при сборе характеристик — повторные опросы парка не пересобирают
+    то, что уже свежее (первый опрос новый базы собирает всё, дальше — только новое/устаревшее)."""
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
+    rows = db_execute_with_retry("SELECT computer_name, specs FROM pc_inventory WHERE specs IS NOT NULL", fetch="all") or []
+    out = []
+    for name, raw in rows:
+        try:
+            ts = str((json.loads(raw) or {}).get("_ts") or "")
+            if ts and ts >= cutoff:
+                out.append(name)
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
 def batch_update_inventory(results: Iterable[dict], now_str: str) -> None:
     """Upsert результатов сканера; ПК, исчезнувшие из AD, удаляются через временную таблицу."""
     results = list(results)

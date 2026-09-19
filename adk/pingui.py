@@ -63,18 +63,29 @@ class LatencyGraph(QWidget):
         p.drawRect(r)
         area = QRectF(r.left() + 44, r.top() + 10, r.width() - 54, r.height() - 28)
         ok = [s for s in self.samples if s is not None]
-        top = max(10.0, (max(ok) if ok else 10.0) * 1.25)
+        # 3.9.0: шкала динамическая. Раньше минимум был 10 мс — ответы 0–1 мс в локальной сети
+        # прижимались к нулю («все в нуле»). Теперь минимум 2 мс (деления 0–1–2), дальше — «круглые»
+        # пороги: 5, 10, 25, 50, 100… Подписи дробные, пока шкала меньше 5 мс.
+        best = max(ok) if ok else 0.0
+        top = 2.0
+        for t in (2.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0):
+            top = t
+            if best * 1.15 <= t:
+                break
+        frac = top < 5.0
         # сетка + подписи
         p.setPen(QPen(QColor(pal.border), 1, Qt.PenStyle.DotLine))
         font = QFont(self.font())
         font.setPointSizeF(9.0)
         p.setFont(font)
-        for k in (0.0, 0.5, 1.0):
+        for k in (0.0, 0.25, 0.5, 0.75, 1.0):
             y = area.bottom() - area.height() * k
             p.setPen(QPen(QColor(pal.border), 1, Qt.PenStyle.DotLine))
             p.drawLine(int(area.left()), int(y), int(area.right()), int(y))
             p.setPen(QColor(pal.subtext))
-            p.drawText(QRectF(r.left() + 2, y - 8, 38, 16), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, f"{top * k:.0f}")
+            v = top * k
+            label = f"{v:.1f}".rstrip("0").rstrip(".") if frac else f"{v:.0f}"
+            p.drawText(QRectF(r.left() + 2, y - 8, 38, 16), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, label)
         p.setPen(QColor(pal.subtext))
         p.drawText(QRectF(area.left(), area.bottom() + 4, area.width(), 14), Qt.AlignmentFlag.AlignLeft, f"последние {HISTORY} замеров, мс")
         if not self.samples:

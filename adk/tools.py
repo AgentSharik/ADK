@@ -62,19 +62,32 @@ class BulkOperationsDialog(FramelessDialog):
         self.must_change.setVisible(False)
         self.body.addWidget(self.must_change)
 
-        self.table = QTableWidget(len(self.users), 3)
+        # 3.9.0: при большом выделении таблица строилась целиком (тысячи ячеек) — окно подвисало на 10–15 с
+        # с «чёрным экраном». Теперь показываем первые 400 строк, операция всё равно идёт по всему списку.
+        MAX_ROWS = 400
+        shown = self.users[:MAX_ROWS]
+        self.table = QTableWidget(len(shown), 3)
         self.table.setHorizontalHeaderLabels(["Логин", "ФИО", "Результат"])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.table.setColumnWidth(0, 120)
         self.table.setColumnWidth(1, 220)
-        for r, u in enumerate(self.users):
+        self.table.setUpdatesEnabled(False)
+        for r, u in enumerate(shown):
             self.table.setItem(r, 0, QTableWidgetItem(u.get("login", "")))
             self.table.setItem(r, 1, QTableWidgetItem(u.get("full_fio") or u.get("fio") or ""))
             self.table.setItem(r, 2, QTableWidgetItem("—"))
-        fit_columns(self.table, wrap=False)
+        self.table.setUpdatesEnabled(True)
+        if len(self.users) <= 60:
+            fit_columns(self.table, wrap=False)
         self.body.addWidget(self.table, 1)
+        self.lbl_more: QLabel = QLabel("")
+        if len(self.users) > MAX_ROWS:
+            self.lbl_more.setText(f"…в списке показаны первые {MAX_ROWS} из {len(self.users)} — операция применится ко всем")
+            self.lbl_more.setObjectName("subtle")
+            self.lbl_more.setWordWrap(True)
+            self.body.addWidget(self.lbl_more)
 
         btns = QHBoxLayout()
         self.status = QLabel("")

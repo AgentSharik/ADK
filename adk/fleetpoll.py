@@ -162,6 +162,16 @@ def software_live(host: str) -> dict:
     return software.get_software(host, timeout=90, cancelled=lambda: _cancel_evt.is_set())
 
 
+def specs_live(host: str) -> dict:
+    """Характеристики одного ПК для полного опроса (3.9.0): {"specs": {...}} или {"error": ...}.
+    В базу пишет вызывающий (шаг полного опроса) — здесь только сбор."""
+    ip, alive = netutils.get_computer_network_info(host)
+    if not alive:
+        return {"error": "не в сети", "skipped": True}
+    d = netutils.collect_specs_live(host, timeout=90, cancelled=lambda: _cancel_evt.is_set())
+    return d if "error" in d else {"specs": d}
+
+
 def group_printers(results: dict[str, dict]) -> list[dict]:
     """Ответы по ПК → строки как у :func:`adk.db.printer_summary` (принтер → сколько ПК, какие)."""
     groups: dict[tuple[str, str], dict] = {}
