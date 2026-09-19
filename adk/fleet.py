@@ -12,7 +12,7 @@ import threading
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
-    QCheckBox, QComboBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton, QTableWidget,
+    QCheckBox, QComboBox, QDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton, QTableWidget,
     QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -235,6 +235,15 @@ class SoftwareDialog(FramelessDialog):
         self.btn_fleet_poll.setToolTip("Опросить все ПК в сети (WinRM → WMI → удалённый реестр) и сохранить их ПО в базу")
         self.btn_fleet_poll.clicked.connect(self.poll_fleet)
         top.addWidget(self.btn_fleet_poll)
+        # 3.8.0: «Область» — опрос только ПК выбранной организации, с колонкой «Пользователь»
+        self.btn_fleet_org = QPushButton("🏢 Область")
+        self.btn_fleet_org.setToolTip("Опросить только ПК выбранной организации (как в Excel-описи)\\n"
+                                      "и показать, какой пользователь какое ПО использует")
+        self.btn_fleet_org.clicked.connect(self.poll_org)
+        top.addWidget(self.btn_fleet_org)
+        self._org_users: dict[str, str] | None = None
+        self._org_rows: list[tuple[str, str, str, str]] | None = None
+        self._org_name = ""
         self.btn_fleet_stop = QPushButton("⏹ Стоп")
         self.btn_fleet_stop.setEnabled(False)
         self.btn_fleet_stop.clicked.connect(lambda: (self.fleet_worker.cancel() if self.fleet_worker else None,
@@ -294,6 +303,8 @@ class SoftwareDialog(FramelessDialog):
 
     def poll_fleet(self):
         from . import fleetpoll
+        self._org_users, self._org_rows, self._org_name = None, None, ""
+        self.fleet.setHorizontalHeaderLabels(["ПК", "Программа", "Версия", "Опрошен"])
         try:
             hosts = fleetpoll.fleet_hosts(self.app.get_conn)
         except Exception as exc:  # noqa: BLE001
@@ -302,11 +313,38 @@ class SoftwareDialog(FramelessDialog):
         if not hosts:
             self.fleet_lbl.setText("⚠️ ПК для опроса не найдены: инвентарь пуст и AD не вернул рабочих станций")
             return
+        self._start_fleet_poll(hosts)
+
+    def poll_org(self):
+        """«Область»: выбрать организацию и опросить только её ПК — в таблице появится, кто какое ПО использует."""
+        from . import fleetpoll
+        from .widgets import OrgPickerDialog
+        d = OrgPickerDialog(self.app.get_conn, self)
+        if d.exec() != QDialog.DialogCode.Accepted or not d.choice:
+            return
+        try:
+            hosts, users = fleetpoll.org_computers(self.app.get_conn, d.choice)
+        except Exception as exc:  # noqa: BLE001
+            self.fleet_lbl.setText(f"⚠️ Список ПК организации не получен: {exc}")
+            return
+        if not hosts:
+            self.fleet_lbl.setText(f"⚠️ В организации «{d.choice}» не найдено ПК (нет привязок, инвентаря и userWorkstations)")
+            return
+        self._org_users, self._org_rows, self._org_name = users, None, d.choice
+        self.fleet.setHorizontalHeaderLabels(["Пользователь", "ПК", "Программа", "Версия"])
+        self.fleet_lbl.setText(f"🏢 «{d.choice}»: опрашиваю {len(hosts)} ПК организации…")
+        self._start_fleet_poll(hosts)
+
+    def _start_fleet_poll(self, hosts: list[str]):
+        from . import fleetpoll
         self.btn_fleet_poll.setEnabled(False)
+        self.btn_fleet_org.setEnabled(False)
         self.btn_fleet_stop.setEnabled(True)
-        self.fleet_lbl.setText(f"⏳ Опрашиваю {len(hosts)} ПК…")
+        if not self._org_users:
+            self.fleet_lbl.setText(f"⏳ Опрашиваю {len(hosts)} ПК…")
         self.fleet_worker = fleetpoll.FleetPollWorker(hosts, fleetpoll.software_live, parent=self)
-        self.fleet_worker.progress.connect(lambda i, n, h: self.fleet_lbl.setText(f"⏳ Опрошено {i} из {n} ПК · {h}"))
+        self.fleet_worker.progress.connect(lambda i, n, h: self.fleet_lbl.setText(
+            (f"🏢 «{self._org_name}»: " if self._org_users else "") + f"⏳ Опрошено {i} из {n} ПК · {h}"))
         self.fleet_worker.finished_poll.connect(self._fleet_done)
         self.fleet_worker.error.connect(lambda m: (self._fleet_done({}), self.fleet_lbl.setText(f"⚠️ {m}")))
         self.fleet_worker.start()
@@ -314,19 +352,40 @@ class SoftwareDialog(FramelessDialog):
     def _fleet_done(self, results: dict):
         from . import fleetpoll
         self.btn_fleet_poll.setEnabled(True)
+        self.btn_fleet_org.setEnabled(True)
         self.btn_fleet_stop.setEnabled(False)
         sm = fleetpoll.summarize(results)
+        if self._org_users:
+            # «Область»: кто какое ПО использует — строки (пользователь, ПК, программа, версия) из живого опроса
+            rows = []
+            for comp, r in sorted(results.items()):
+                for s in r.get("software") or []:
+                    rows.append((self._org_users.get(comp, "—"), comp, s["name"], s.get("version") or ""))
+            self._org_rows = rows
+            _fill(self.fleet, rows)
+            self.fleet_lbl.setText(f"🏢 «{self._org_name}»: ответили {sm['ok']} ПК, не в сети {sm['skipped']}, "
+                                   f"не удалось {sm['failed']}. ПО — {len(rows)} записей; введите название для фильтра.")
+            db.log_action(getattr(self.app, "admin_name", ""), "software_fleet", self._org_name, f"{sm['ok']} ПК (область)")
+            return
         self._fill_summary()
         if results:
             self.fleet_lbl.setText(f"Опрос парка: ответили {sm['ok']} ПК, не в сети {sm['skipped']}, не удалось {sm['failed']}. "
                                    "ПО сохранено — введите название для поиска.")
-            db.log_action(self.app.admin_name, "software_fleet", "fleet", f"{sm['ok']} ПК")
+            db.log_action(getattr(self.app, "admin_name", ""), "software_fleet", "fleet", f"{sm['ok']} ПК")
 
     def on_dialog_done(self):
         if self.fleet_worker:
             self.fleet_worker.cancel()
 
     def search_fleet(self):
+        if self._org_rows is not None:
+            # «Область»: фильтр по живому опросу организации, без базы
+            q = self.q.text().strip().casefold()
+            rows = [r for r in self._org_rows if not q or q in r[2].casefold() or q in r[0].casefold()]
+            _fill(self.fleet, rows)
+            self.fleet_lbl.setText(f"🏢 «{self._org_name}»: показано {len(rows)} из {len(self._org_rows)} записей ПО"
+                                   + (f" по фильтру «{self.q.text().strip()}»" if q else " (фильтр пуст — всё)"))
+            return
         rows = software.find_software(self.q.text())
         _fill(self.fleet, [(r["comp"], r["name"]) for r in rows])
         comps = len({r["comp"] for r in rows})

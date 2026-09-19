@@ -48,6 +48,7 @@ db.batch_update_inventory([{"Hostname":"WS-101","ActualIp":"10.0.0.9","Status":"
                            {"Hostname":"WS-102","ActualIp":"10.0.0.10","Status":"OFFLINE","User":""}],"2026-09-04 10:00:00")
 from adk.main_window import ADApp
 ADApp.start_scan=lambda s:None
+os.environ.setdefault("ADK_TESTS", "1")   # стартовый вопрос (3.8.0) не всплывает в e2e
 w=ADApp("CORP\\admin","x"); w.show()
 check("дашборд при старте", w.stack.currentIndex()==0 and w.cards.count()==3)
 conn.calls=0; orig=conn.search

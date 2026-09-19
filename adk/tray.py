@@ -52,11 +52,28 @@ def _draw_brand(size: int) -> QPixmap:
 
 
 def app_icon() -> QIcon:
-    """Иконка приложения: белая «A» в центре (3.6.3), рисуется программно — крупная и без фоновой подложки."""
+    """Иконка приложения — логотип проекта (assets/logo.png), одинаковый в трее и на панели задач (3.8.0).
+
+    Логотип кладётся в QIcon сразу в готовых размерах (16–256 px): и трей, и панель задач получают
+    близкий к своему размеру вариант вместо масштабирования крупной картинки на лету — так он крупный
+    и чёткий. Фолбэки: icon.png → программная белая «A» (если ассеты недоступны).
+    """
     import os
-    path = asset_path("icon.png")
-    if os.path.exists(path):
-        ic = QIcon(path)
+    src = None
+    for name in ("logo.png", "icon.png"):
+        path = asset_path(name)
+        if os.path.exists(path):
+            pm = QPixmap(path)
+            if not pm.isNull():
+                src = pm
+                break
+    if src is not None:
+        ic = QIcon()
+        side = max(src.width(), src.height())
+        for px in (16, 20, 24, 32, 48, 64, 128, 256):
+            if px <= side:
+                ic.addPixmap(src.scaled(px, px, Qt.AspectRatioMode.KeepAspectRatio,
+                                        Qt.TransformationMode.SmoothTransformation))
         if not ic.isNull():
             return ic
     return QIcon(_draw_brand(256))

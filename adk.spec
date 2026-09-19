@@ -10,7 +10,9 @@ from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 ROOT = os.path.dirname(os.path.abspath(SPEC))
-icon = os.path.join(ROOT, "assets", "icon.ico")
+icon = os.path.join(ROOT, "assets", "logo.ico")   # 3.8.0: логотип проекта — и в трее, и на панели задач
+if not os.path.exists(icon):
+    icon = os.path.join(ROOT, "assets", "icon.ico")
 
 hidden = (
     collect_submodules("ldap3")            # протокол/расширения подключаются динамически

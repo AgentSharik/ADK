@@ -4,6 +4,7 @@ import sys
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("ADK_TESTS", "1")   # 3.8.0: стартовый вопрос сканирования в тестах не всплывает
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:

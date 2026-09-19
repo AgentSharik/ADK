@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Callable
@@ -723,6 +724,12 @@ class PingWorker(BaseWorker):
 
 
 # --------------------------------------------------------------------------- свободный IP
+_FREEIP_TEXT = {
+    "inventory": "занят ПК парка", "lease": "аренда DHCP", "reserved": "резерв DHCP",
+    "alive": "отвечает на ping", "ptr": "есть имя в DNS", "free": "свободен",
+}
+
+
 class FreeIPWorker(BaseWorker):
     """Ищет первый адрес подсети, не отвечающий ни на ICMP, ни по DNS PTR, не известный инвентарю
     и (если настроены ``[Scanner] dhcp_servers``) не занятый по данным DHCP.
@@ -734,6 +741,7 @@ class FreeIPWorker(BaseWorker):
     finished_search = pyqtSignal(str)
     dhcp_info = pyqtSignal(dict)
     host_checked = pyqtSignal(int, str)   # (последний октет, статус) — для карты подсети в диалоге
+    checking = pyqtSignal(int)            # ячейка проверяется прямо сейчас (3.8.0: рамка на карте)
 
     # статусы host_checked: inventory · alive · ptr · lease · reserved · free
     _dhcp_cache: dict[str, dict] = {}   # prefix → данные DHCP (на время работы приложения)
@@ -772,10 +780,8 @@ class FreeIPWorker(BaseWorker):
         from . import dhcp
         return dhcp.classify(ip, self.dhcp_data)["status"] in ("lease", "reserved")
 
-    def _reason(self, ip: str) -> str:
-        """Почему адрес занят (или ``free``). Порядок — от дешёвого к дорогому: инвентарь → DHCP → ICMP → PTR."""
-        if self.cancelled or self._settled:
-            return "cancelled"
+    def _cheap(self, ip: str) -> str | None:
+        """Дешёвые источники без сети: инвентарь ADK → DHCP. None — придётся спрашивать у сети."""
         if ip in self.known:
             return "inventory"
         if self.dhcp_data and self.dhcp_data.get("scopes"):
@@ -783,6 +789,15 @@ class FreeIPWorker(BaseWorker):
             st = dhcp.classify(ip, self.dhcp_data)["status"]
             if st in ("lease", "reserved"):
                 return st
+        return None
+
+    def _reason(self, ip: str) -> str:
+        """Почему адрес занят (или ``free``). Порядок — от дешёвого к дорогому: инвентарь → DHCP → ICMP → PTR."""
+        r = self._cheap(ip)
+        if r:
+            return r
+        if self.cancelled or self._settled:
+            return "cancelled"
         if netutils.is_host_alive(ip, timeout=1.0):
             return "alive"
         if self.cancelled or self._settled:
@@ -793,10 +808,24 @@ class FreeIPWorker(BaseWorker):
         return self._reason(ip) == "free"
 
     def _check(self, ip: str) -> str:
-        r = self._reason(ip)
-        if r != "cancelled" and not self._settled:
-            self.host_checked.emit(int(ip.rsplit(".", 1)[1]), r)
-        return r
+        """Проверка одного адреса — БЕЗ эмиссии сигналов: статусы показывает только run(), строго
+        по порядку адресов (3.8.0). Ping и PTR стартуют **одновременно** — «мёртвый» адрес стоит
+        ``max(ping, PTR)`` ≈ 1,5 с вместо суммы ≈ 2,5 с, поэтому поиск идёт заметно быстрее."""
+        r = self._cheap(ip)
+        if r:
+            return r
+        if self.cancelled or self._settled:
+            return "cancelled"
+        ptr = _ptr_start(ip)                     # PTR пошёл сразу — параллельно ping
+        t0 = time.monotonic()
+        alive = netutils.is_host_alive(ip, timeout=1.0)
+        if self.cancelled or self._settled:
+            ptr.cancel()
+            return "cancelled"
+        if alive:
+            ptr.cancel()
+            return "alive"
+        return "ptr" if _ptr_wait(ptr, max(0.05, self.PTR_WAIT - (time.monotonic() - t0))) else "free"
 
     def verdict(self, ip: str) -> dict:
         """Что DHCP думает о найденном адресе (для подписи в диалоге)."""
@@ -808,6 +837,7 @@ class FreeIPWorker(BaseWorker):
         return dhcp.classify(ip, self.dhcp_data)
 
     WINDOW = 48   # одновременно проверяемых адресов
+    PTR_WAIT = 1.5   # сколько всего ждать PTR (стартует параллельно ping — см. _check)
 
     def run(self) -> None:
         if not re.match(r"^\d{1,3}(\.\d{1,3}){2}$", self.prefix):
@@ -815,48 +845,55 @@ class FreeIPWorker(BaseWorker):
             self.error.emit("Префикс подсети должен быть вида 10.0.2")
             return
         self._load_dhcp()
-        # 3.5.10: скользящее окно вместо пачек по 30 — карта закрашивается ровно по мере ответов (раньше пачка ждала
-        # самого медленного адреса, и ячейки появлялись рывками), а ответ отдаётся, как только решён первый по порядку
-        # свободный адрес, не дожидаясь остальных в пачке
+        # 3.8.0: карта закрашивается СТРОГО по порядку адресов — без «прыжков» вперемешку. Проверки
+        # внутри по-прежнему идут параллельно (окно WINDOW), но статус каждой ячейки показывается
+        # только после её собственной проверки, и только когда очередь дошла до этой ячейки:
+        # видно ровный пробег по подсети. Ответ — первый по порядку свободный адрес.
         hosts = list(range(self.start_host, 255))
         verdict: dict[int, str] = {}
-        it = iter(hosts)
-        next_report = self.start_host
-        with ThreadPoolExecutor(max_workers=self.WINDOW) as ex:
-            futs = {}
+        shown = self.start_host            # следующая ячейка, которой пора показать статус
+        found = ""
+        ex = ThreadPoolExecutor(max_workers=self.WINDOW)
+        try:
+            futs: dict = {}
+            it = iter(hosts)
             for h in it:
                 futs[ex.submit(self._check, f"{self.prefix}.{h}")] = h
                 if len(futs) >= self.WINDOW:
                     break
-            found = ""
-            while futs and not self.cancelled:
-                for f in as_completed(list(futs)):
-                    h = futs.pop(f)
-                    try:
-                        verdict[h] = f.result()
-                    except Exception:  # noqa: BLE001
-                        verdict[h] = "free"
-                    # первый по порядку адрес, о котором уже всё известно
-                    while next_report in verdict and verdict[next_report] != "free":
-                        next_report += 1
-                    if next_report in verdict:          # вердикт «free», и все адреса до него заняты
-                        found = f"{self.prefix}.{next_report}"
-                        break
-                    if len(verdict) % 8 == 0:
-                        self.progress.emit(f"⚡ Проверено {len(verdict)} адресов, заняты все до {self.prefix}.{next_report - 1}…")
-                    nxt = next(it, None)
-                    if nxt is not None:
-                        futs[ex.submit(self._check, f"{self.prefix}.{nxt}")] = nxt
-                    break
+            while futs and not self.cancelled and not self._settled:
+                f = next(as_completed(list(futs)))
+                h = futs.pop(f)
+                try:
+                    verdict[h] = f.result()
+                except Exception:  # noqa: BLE001
+                    verdict[h] = "free"
+                while shown in verdict:            # показать всё, что накопилось, по порядку
+                    r = verdict.pop(shown)
+                    if r != "cancelled":
+                        self.host_checked.emit(shown, r)
+                        self.progress.emit(f"⚡ {self.prefix}.{shown} — {_FREEIP_TEXT.get(r, r)}")
+                        if r == "free":
+                            found = f"{self.prefix}.{shown}"
+                            break
+                    shown += 1
                 if found:
                     break
-            if found:
-                self._settled = True
-                for f in futs:
-                    f.cancel()                          # ещё не начатые проверки не нужны
-                self.dhcp_info.emit(self.verdict(found))
-                self.finished_search.emit(found)
-                return                                  # выход из with дождётся начатых проверок (≤ 1–2 с)
+                if shown in futs.values():
+                    self.checking.emit(shown)      # рамка «проверяю сейчас» на текущей ячейке
+                nxt = next(it, None)
+                if nxt is not None:
+                    futs[ex.submit(self._check, f"{self.prefix}.{nxt}")] = nxt
+        finally:
+            for f in list(futs):
+                f.cancel()                          # ещё не начатые проверки не нужны
+            # wait=False: поток завершается сразу — «Следующий» не ждёт хвоста начатых проверок
+            ex.shutdown(wait=False, cancel_futures=True)
+        if found and not self.cancelled:
+            self._settled = True
+            self.dhcp_info.emit(self.verdict(found))
+            self.finished_search.emit(found)
+            return
         if not self.cancelled:
             self.finished_search.emit("")
 
@@ -864,11 +901,16 @@ class FreeIPWorker(BaseWorker):
 _ptr_pool = ThreadPoolExecutor(max_workers=64, thread_name_prefix="ptr")
 
 
-def _ptr_exists(ip: str, timeout: float = 1.5) -> bool:
-    """Есть ли у адреса PTR-запись. ``gethostbyaddr`` не умеет таймаут и на «мёртвых» адресах может думать
-    5–10 с — ждём не дольше ``timeout``; не успел — считаем, что записи нет."""
+def _ptr_start(ip: str):
+    """PTR-проверка стартует немедленно в пуле — бежит параллельно ping (3.8.0: «мёртвый» адрес
+    стоит max(ping, PTR), а не сумму). Результат забирается :func:`_ptr_wait`."""
     import socket
-    fut = _ptr_pool.submit(socket.gethostbyaddr, ip)
+    return _ptr_pool.submit(socket.gethostbyaddr, ip)
+
+
+def _ptr_wait(fut, timeout: float) -> bool:
+    """Дождаться PTR-проверки не дольше ``timeout``. ``gethostbyaddr`` не умеет таймаут и на «мёртвых»
+    адресах может думать 5–10 с — не успел, считаем, что записи нет."""
     try:
         fut.result(timeout=timeout)
         return True
@@ -876,6 +918,11 @@ def _ptr_exists(ip: str, timeout: float = 1.5) -> bool:
         return False
     except Exception:  # noqa: BLE001 — concurrent.futures.TimeoutError на старых Python не наследует TimeoutError
         return False
+
+
+def _ptr_exists(ip: str, timeout: float = 1.5) -> bool:
+    """Есть ли у адреса PTR-запись (синхронно: старт + ожидание)."""
+    return _ptr_wait(_ptr_start(ip), timeout)
 
 
 # --------------------------------------------------------------------------- опись в Excel

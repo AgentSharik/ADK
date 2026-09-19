@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor, QKeySequence, QPixmap
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileDialog, QFontComboBox, QFormLayout, QGridLayout,
+    QApplication, QCheckBox, QComboBox, QDialog, QFileDialog, QFontComboBox, QFormLayout, QGridLayout,
     QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QPushButton,
     QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QTreeWidget, QTreeWidgetItem,
     QVBoxLayout, QWidget,
@@ -50,7 +50,7 @@ class LoginDialog(FramelessDialog):
         if os.path.exists(logo_path):
             logo = QLabel()
             logo.setObjectName("brandLogo")
-            logo.setPixmap(QPixmap(logo_path).scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio,
+            logo.setPixmap(QPixmap(logo_path).scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio,
                                                      Qt.TransformationMode.SmoothTransformation))
             logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
             self.body.addWidget(logo)
@@ -1477,6 +1477,12 @@ class PrintersDialog(FramelessDialog):
                                  "Работает без инвентарных CSV; ничего не записывает, пока не нажать «Сохранить в базу».")
         self.btn_live.clicked.connect(self.poll_live)
         top.addWidget(self.btn_live)
+        # 3.8.0: «Область» — опрос только ПК выбранной организации: кто какой принтер использует
+        self.btn_org = QPushButton("🏢 Область")
+        self.btn_org.setToolTip("Опросить принтеры только у ПК выбранной организации (как в Excel-описи).\n"
+                                "Покажет, какой принтер к какому сотруднику подключён, тип подключения и адрес.")
+        self.btn_org.clicked.connect(self.poll_org)
+        top.addWidget(self.btn_org)
         self.btn_stop = QPushButton("⏹ Стоп")
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self.stop_live)
@@ -1489,6 +1495,8 @@ class PrintersDialog(FramelessDialog):
         self.body.addLayout(top)
         self.live_results: dict[str, dict] = {}
         self.live_rows: list[dict] | None = None
+        self._org_users: dict[str, str] | None = None      # режим «Область»: {ПК: ФИО}
+        self._org_name = ""
         self.worker = None
 
         self.table = QTableWidget(0, 6)
@@ -1513,17 +1521,25 @@ class PrintersDialog(FramelessDialog):
     def reload(self):
         q = self.text.text().strip().casefold()
         kind = self.kind.currentData() or ""
+        org_mode = self._org_users is not None and self.live_rows is not None
         try:
             data = self.live_rows if self.live_rows is not None else db.printer_summary()
         except Exception as exc:  # noqa: BLE001
             self.status.setText(f"⚠️ {exc}")
             return
         self.rows = [r for r in data if (not kind or r["kind"] == kind)
-                     and (not q or q in f"{r['name']} {r['ip']} {r['computers']}".casefold())]
+                     and (not q or q in f"{r['name']} {r['ip']} {r.get('computers', '')}".casefold())]
         self.table.setSortingEnabled(False)
+        self.table.setHorizontalHeaderLabels(
+            ["Принтер", "Тип", "IP", "Пользователь", "ПК", "Подключено"] if org_mode
+            else ["Принтер", "Тип", "IP", "ПК", "В сети", "Компьютеры"])
         self.table.setRowCount(len(self.rows))
         for i, r in enumerate(self.rows):
-            vals = (r["name"], self.KIND_LABELS.get(r["kind"], r["kind"]), r["ip"], r["pcs"], r["online"], r["computers"])
+            if org_mode:
+                vals = (r["name"], self.KIND_LABELS.get(r["kind"], r["kind"]), r["ip"],
+                        r.get("user", "—"), r.get("comp", ""), "сейчас")
+            else:
+                vals = (r["name"], self.KIND_LABELS.get(r["kind"], r["kind"]), r["ip"], r["pcs"], r["online"], r["computers"])
             for c, v in enumerate(vals):
                 it = QTableWidgetItem()
                 if isinstance(v, int):
@@ -1534,6 +1550,9 @@ class PrintersDialog(FramelessDialog):
         self.table.setSortingEnabled(True)
         fit_columns(self.table, max_width=420)
         total_pcs = sum(r["pcs"] for r in self.rows)
+        if org_mode:
+            self.status.setText(f"🏢 «{self._org_name}»: подключений принтеров — {len(self.rows)} (живой опрос, по каждому сотруднику)")
+            return
         src = "живой опрос" if self.live_rows is not None else "сохранённые данные"
         if not self.rows and self.live_rows is None:
             self.status.setText("В базе пока нет принтеров — нажмите «Опросить парк», чтобы собрать их с ПК прямо сейчас")
@@ -1543,6 +1562,7 @@ class PrintersDialog(FramelessDialog):
     # --- живой опрос парка (3.5.10)
     def poll_live(self):
         from . import fleetpoll
+        self._org_users, self._org_name = None, ""
         try:
             hosts = fleetpoll.fleet_hosts(self.app.get_conn)
         except Exception as exc:  # noqa: BLE001
@@ -1551,13 +1571,37 @@ class PrintersDialog(FramelessDialog):
         if not hosts:
             self.status.setText("⚠️ ПК для опроса не найдены: инвентарь пуст и AD не вернул рабочих станций (проверьте host_pattern)")
             return
+        self._start_live(hosts)
+
+    def poll_org(self):
+        """«Область»: выбрать организацию и опросить только её ПК — кто какой принтер использует, тип и адрес."""
+        from . import fleetpoll
+        from .widgets import OrgPickerDialog
+        d = OrgPickerDialog(self.app.get_conn, self)
+        if d.exec() != QDialog.DialogCode.Accepted or not d.choice:
+            return
+        try:
+            hosts, users = fleetpoll.org_computers(self.app.get_conn, d.choice)
+        except Exception as exc:  # noqa: BLE001
+            self.status.setText(f"⚠️ Список ПК организации не получен: {exc}")
+            return
+        if not hosts:
+            self.status.setText(f"⚠️ В организации «{d.choice}» не найдено ПК (нет привязок, инвентаря и userWorkstations)")
+            return
+        self._org_users, self._org_name = users, d.choice
+        self._start_live(hosts)
+
+    def _start_live(self, hosts: list[str]):
+        from . import fleetpoll
         self.btn_live.setEnabled(False)
+        self.btn_org.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self.btn_save.setEnabled(False)
         self.live_results = {}
-        self.status.setText(f"⏳ Опрашиваю {len(hosts)} ПК…")
+        pre = f"🏢 «{self._org_name}»: " if self._org_users else ""
+        self.status.setText(f"{pre}⏳ Опрашиваю {len(hosts)} ПК…")
         self.worker = fleetpoll.FleetPollWorker(hosts, fleetpoll.printers_live, parent=self)
-        self.worker.progress.connect(lambda i, n, h: self.status.setText(f"⏳ Опрошено {i} из {n} ПК · {h}"))
+        self.worker.progress.connect(lambda i, n, h: self.status.setText(f"{pre}⏳ Опрошено {i} из {n} ПК · {h}"))
         self.worker.finished_poll.connect(self._live_done)
         self.worker.error.connect(lambda m: (self._live_done({}), self.status.setText(f"⚠️ {m}")))
         self.worker.start()
@@ -1571,9 +1615,24 @@ class PrintersDialog(FramelessDialog):
     def _live_done(self, results: dict):
         from . import fleetpoll
         self.btn_live.setEnabled(True)
+        self.btn_org.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self.live_results = results
-        if results:
+        if results and self._org_users:
+            # «Область»: строка = одно подключение (принтер ↔ сотрудник), а не сводка по парку
+            rows = []
+            for comp, r in sorted(results.items()):
+                for p in r.get("printers") or []:
+                    rows.append({"name": p["name"], "kind": p.get("kind", ""), "ip": p.get("ip") or "", "pcs": 1,
+                                 "online": 1, "user": self._org_users.get(comp, "—"), "comp": comp,
+                                 "computers": f"{self._org_users.get(comp, comp)} ({comp})", "live": True})
+            rows.sort(key=lambda x: (x["name"].casefold(), x["user"].casefold()))
+            self.live_rows = rows
+            self.btn_save.setEnabled(bool(rows))
+            sm = fleetpoll.summarize(results)
+            db.log_action(getattr(self.app, "admin_name", ""), "printers_fleet", self._org_name,
+                          f"{sm['ok']} ПК (область)")
+        elif results:
             self.live_rows = fleetpoll.group_printers(results)
             self.btn_save.setEnabled(bool(self.live_rows))
         self.reload()

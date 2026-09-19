@@ -24,12 +24,23 @@ from .workers import FreeIPWorker
 CELL = {
     # подпись честно говорит, ОТКУДА взят факт: сканер ADK (данные последнего опроса парка), DHCP-сервер,
     # ответ на ping прямо сейчас, запись в DNS. «Свободен» = ни один источник адрес не знает.
-    "inventory": ("занят компьютером из парка", "info"),
+    "inventory": ("занят ПК парка (по базе ADK)", "info"),
     "lease": ("аренда DHCP (активная)", "warning"),
-    "reserved": ("резервирование DHCP", "warning"),
-    "alive": ("отвечает на ping сейчас", "danger"),
+    "reserved": ("резерв DHCP", "warning"),
+    "alive": ("отвечает на ping (живое устройство)", "danger"),
     "ptr": ("есть имя в DNS (PTR)", "ptr"),
     "free": ("свободен — нигде не числится", "success"),
+}
+# 3.8.0: развёрнутое пояснение каждого пункта легенды — разница «учёт в базе» и «живая проверка»
+LEGEND_TIPS = {
+    "inventory": "IP записан за одним из ПК парка в базе ADK — так было при последнем сканировании.\n"
+                 "Это учётные данные: ПК сейчас может быть выключен, но адрес за ним числится.",
+    "lease": "DHCP-сервер выдал этот адрес в аренду прямо сейчас — он занят.",
+    "reserved": "Адрес зарезервирован на DHCP-сервере (за конкретным устройством или «про запас»).",
+    "alive": "На ping ответил какой-то устройство прямо сейчас — не обязательно компьютер:\n"
+             "принтер, камера, IP-телефон, чужой ноутбук. Это живая проверка сети, а не учёт.",
+    "ptr": "У адреса есть обратная запись в DNS — он кем-то настроен и занят.",
+    "free": "Ни один источник адрес не знает: не в базе ADK, не в DHCP, никто не отвечает, нет записи в DNS.",
 }
 DHCP_ICON = {"free": "✅", "excluded": "✅", "outside": "ℹ️", "n/a": "⚠️", "unavailable": "⚠️"}
 
@@ -46,6 +57,7 @@ class SubnetMap(QWidget):
         super().__init__(parent)
         self.status: dict[int, str] = {}
         self.found: int | None = None
+        self.checking: int | None = None      # 3.8.0: ячейка проверяется прямо сейчас — акцентная рамка
         self.start_host = 1
         # фиксированный размер ровно под сетку: ни лишней высоты, ни наезда легенды на нижний ряд
         self.setFixedSize(self.COLS * self.MAX_CELL + 8, self.ROWS * self.MAX_CELL + 8)
@@ -55,6 +67,11 @@ class SubnetMap(QWidget):
     def reset(self):
         self.status.clear()
         self.found = None
+        self.checking = None
+        self.update()
+
+    def set_checking(self, host: int):
+        self.checking = host
         self.update()
 
     def mark(self, host: int, st: str):
@@ -125,6 +142,11 @@ class SubnetMap(QWidget):
             p.setPen(QPen(QColor(pal.border), 1) if h >= self.start_host and not st else Qt.PenStyle.NoPen)
             p.setBrush(fill)
             p.drawRoundedRect(r, 4, 4)
+            if h == self.checking and h != self.found:
+                # текущая ячейка: тонкая акцентная рамка — видно, где пробег проверки прямо сейчас
+                p.setPen(QPen(QColor(pal.title_accent), max(1.4, c * 0.08)))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawRoundedRect(r.adjusted(-1, -1, 1, 1), 4, 4)
             if h == self.found:
                 # найденный адрес остаётся ЗЕЛЁНЫМ (он свободен — цвет = смысл), а «это он» показываем
                 # толстой акцентной рамкой: цвет ячейки не должен менять значение при выборе
@@ -218,6 +240,9 @@ class FreeIPDialog(FramelessDialog):
             sw.setStyleSheet(f"background: {self.map._color(pal, CELL[key][1]).name()}; border: none; border-radius: 4px;")
             t = QLabel(CELL[key][0])
             t.setStyleSheet(f"color: {pal.text}; font-size: 9.5pt;")
+            tip = LEGEND_TIPS.get(key, "")
+            sw.setToolTip(tip)
+            t.setToolTip(tip)
             legend.addWidget(sw, i, 0)
             legend.addWidget(t, i, 1)
         legend.setRowStretch(len(keys), 1)
@@ -225,6 +250,14 @@ class FreeIPDialog(FramelessDialog):
         self.legend_box.setLayout(legend)
         row_map.addWidget(self.legend_box, 1, Qt.AlignmentFlag.AlignTop)
         ml.addLayout(row_map)
+        hint_map = QLabel(
+            "Проверка бежит по порядку: статус каждой ячейки появляется после её проверки. "
+            "<b>«Занят ПК парка»</b> — адрес записан за компьютером в базе ADK (учёт по последнему скану; "
+            "сам ПК может быть и выключен). <b>«Отвечает на ping»</b> — устройство отвечает прямо сейчас "
+            "(живая проверка; ответить может любой прибор — принтер, камера, телефон, не только ПК).")
+        hint_map.setWordWrap(True)
+        hint_map.setStyleSheet(f"color: {pal.subtext}; font-size: 8.5pt;")
+        ml.addWidget(hint_map)
         left.addWidget(map_card, 0)
 
         # ============ низ: результат слева, таблица найденных справа
@@ -349,6 +382,7 @@ class FreeIPDialog(FramelessDialog):
         self.worker.progress.connect(self.status.setText)
         self.worker.error.connect(self.on_error)
         self.worker.host_checked.connect(self.map.mark)
+        self.worker.checking.connect(self.map.set_checking)
         self.worker.dhcp_info.connect(self.on_dhcp)
         self.worker.finished_search.connect(self.on_done)
         self.worker.start()
@@ -365,6 +399,7 @@ class FreeIPDialog(FramelessDialog):
         self._dhcp = info
 
     def on_error(self, msg: str):
+        self.map.set_checking(None)
         self.lbl_ip.setText("—")
         self.status.setText(f"⚠️ {msg}")
         self.btn_start.setEnabled(True)
@@ -382,6 +417,7 @@ class FreeIPDialog(FramelessDialog):
         self.search()
 
     def on_done(self, ip: str):
+        self.map.set_checking(None)
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self.found = ip

@@ -140,16 +140,17 @@ def test_freeip_reason_order(monkeypatch):
     assert w._reason("10.0.2.72") == "free"
 
 
-def test_freeip_emits_status_for_every_host(monkeypatch):
-    """Карта подсети получает статус каждого проверенного адреса (сигнал host_checked)."""
-    monkeypatch.setattr(netutils, "is_host_alive", lambda ip, timeout=1.0: False)
+def test_freeip_emits_status_for_every_host(qapp, monkeypatch):
+    """Карта подсети получает статус каждого проверенного адреса — и строго ПО ПОРЯДКУ (3.8.0):
+    ячейка закрашивается после своей проверки, ровным пробегом от стартового адреса."""
+    monkeypatch.setattr(netutils, "is_host_alive", lambda ip, timeout=1.0: True)   # все заняты → проверится вся подсеть
     import socket
     monkeypatch.setattr(socket, "gethostbyaddr", lambda ip: (_ for _ in ()).throw(OSError()))
     w = workers.FreeIPWorker("10.0.2", 5, use_dhcp=False)
     got = []
     w.host_checked.connect(lambda h, st: got.append((h, st)))
-    assert w._check("10.0.2.5") == "free"
-    assert got == [(5, "free")]
+    w.run()
+    assert got == [(h, "alive") for h in range(5, 255)]     # каждый адрес, по возрастанию, без пропусков
 
 
 def test_subnet_map_click_sets_start(qapp):

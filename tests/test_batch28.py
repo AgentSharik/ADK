@@ -262,7 +262,8 @@ def test_printers_live_skips_offline_without_powershell(monkeypatch):
 
 # --------------------------------------------------------------------------- свободный IP: скользящее окно
 def test_freeip_worker_reports_first_free_in_order(qapp, monkeypatch):
-    """Ответ — первый по порядку свободный адрес, даже если более дальние проверились раньше (окно 48 адресов)."""
+    """Ответ — первый по порядку свободный адрес, даже если более дальние проверились раньше (окно 48 адресов).
+    3.8.0: статусы ячеек приходят СТРОГО по возрастанию — карта закрашивается ровным пробегом, без прыжков."""
     import time
     from adk import netutils, workers
     busy = set(range(1, 40)) - {20}
@@ -272,10 +273,14 @@ def test_freeip_worker_reports_first_free_in_order(qapp, monkeypatch):
         time.sleep(0.3 if h == 20 else 1.0 if h > 100 else 0.01)   # .20 отвечает медленно, «дальний» хвост — очень медленно
         return h in busy
     monkeypatch.setattr(netutils, "is_host_alive", alive)
-    monkeypatch.setattr(workers, "_ptr_exists", lambda ip, timeout=1.5: False)
+    class _NoPtr:                                     # заглушка future: PTR без DNS в тестах
+        def cancel(self):
+            pass
+    monkeypatch.setattr(workers, "_ptr_start", lambda ip: _NoPtr())
+    monkeypatch.setattr(workers, "_ptr_wait", lambda fut, timeout: False)
     w = workers.FreeIPWorker("10.0.2", 1, use_dhcp=False)
-    marks, res = {}, []
-    w.host_checked.connect(lambda h, s: marks.__setitem__(h, s))
+    marks, order, res = {}, [], []
+    w.host_checked.connect(lambda h, s: (marks.__setitem__(h, s), order.append(h)))
     w.finished_search.connect(res.append)
     w.start()
     t0 = time.time()
@@ -285,6 +290,7 @@ def test_freeip_worker_reports_first_free_in_order(qapp, monkeypatch):
     qapp.processEvents()
     assert res == ["10.0.2.20"]
     assert marks[1] == "alive" and marks[20] == "free"
+    assert order == sorted(order), "статусы должны показываться по порядку адресов"   # 3.8.0: ровный пробег
     assert len(marks) < 254                        # после ответа остаток подсети не сканировался
 
 

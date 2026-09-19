@@ -20,7 +20,7 @@ from typing import Callable
 from PyQt6.QtCore import pyqtSignal
 
 from . import db, netutils
-from .workers import BaseWorker
+from .workers import BaseWorker, pick_computer
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +47,46 @@ def fleet_hosts(conn_factory: Callable | None = None, online_only: bool = True) 
     finally:
         conn.unbind()
     return PCScannerWorker.workstation_names(entries)
+
+
+def org_computers(conn_factory: Callable, company: str) -> tuple[list[str], dict[str, str]]:
+    """ПК организации для кнопки «Область»: пользователи AD с ``company`` → их текущие ПК + {ПК: ФИО}.
+
+    ПК подбирается тем же порядком, что и в Excel-описи (:func:`adk.workers.pick_computer`): постоянная
+    привязка → pc_mapping → инвентарь (кто залогинен) → свежие связки → AD ``userWorkstations``.
+    Один ПК у нескольких сотрудников не дублируется — берётся первый по списку людей.
+    """
+    from . import ad
+    conn = conn_factory()
+    try:
+        entries = ad.paged_search(
+            conn,
+            f"(&(objectClass=user)(company={ad.escape_filter_chars(company)})"
+            "(!(userAccountControl:1.2.840.113556.1.4.803:=2)))",
+            ["displayName", "sAMAccountName"])
+    finally:
+        conn.unbind()
+    want = company.casefold().strip()
+    people = []
+    for e in entries:
+        disp = ad.get_ad_value(e, "displayName").strip()
+        login = ad.get_ad_value(e, "sAMAccountName")
+        if disp and ad.get_ad_value(e, "company").casefold().strip() == want:
+            people.append((e, disp, login))
+    inv, perm, pcm = db.load_inventory_maps()
+    inv_by_user: dict[str, list[str]] = {}
+    for comp, data in inv.items():
+        if data["user"]:
+            inv_by_user.setdefault(data["user"], []).append(comp)
+    recent = db.recent_links()
+    hosts, by_comp, seen = [], {}, set()
+    for e, disp, login in people:
+        c = db.clean_computer_name(pick_computer(e, login, disp, inv, inv_by_user, perm, pcm, recent))
+        if c and c not in seen:
+            seen.add(c)
+            hosts.append(c)
+            by_comp[c] = disp
+    return hosts, by_comp
 
 
 def poll_fleet(hosts: list[str], fn: Callable[[str], dict], progress: Callable[[int, int, str], None] | None = None,

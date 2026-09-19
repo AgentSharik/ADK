@@ -157,7 +157,8 @@ class ADApp(FramelessMainWindow):
         self.backup_timer.timeout.connect(lambda: run_in_background(self, db.backup_periodic, lambda _p: None, lambda _m: None))
         self.backup_timer.start(15 * 60_000)
         QTimer.singleShot(300, self.load_ad_count)
-        QTimer.singleShot(1500, self.start_initial_fill if initial_fill else self.start_scan)
+        # 3.8.0: сканирование при старте — не молча, а после вопроса «всё (ПК+принтеры+ПО) / только ПК / не сейчас»
+        QTimer.singleShot(1500, self.start_initial_fill if initial_fill else self.ask_startup_scan)
         # 3.1: сводка «Внимание» — в фоне, по таймеру из [Attention] refresh_min
         self.attention_items: list[dict] = []
         self.attention_timer = QTimer(self)
@@ -1869,6 +1870,8 @@ class ADApp(FramelessMainWindow):
     def start_scan(self):
         if self.scanner and self.scanner.isRunning():
             return
+        if getattr(self, "full_dialog", None) and self.full_dialog.worker.isRunning():
+            return      # идёт полный опрос (ПК+принтеры+ПО) — отдельный запуск сканера не нужен
         # 3.6.0: общую базу сканирует один ADK — остальные не пишут в неё одновременно
         try:
             ok, holder, until = db.scan_lease_acquire(self.scan_owner)
@@ -1894,6 +1897,52 @@ class ADApp(FramelessMainWindow):
             self.active_ad_total = total
         self.lbl_status.setText("")          # после сканера в строке состояния — «Последнее сканирование: …»
         self.refresh_dashboard()
+
+    # ------------------------------------------------------------------ 3.8.0: вопрос при старте + полный опрос
+    def ask_startup_scan(self):
+        """Спросить, что собрать при запуске: всё (ПК+принтеры+ПО) / только ПК / ничего."""
+        if os.environ.get("ADK_TESTS"):        # автотесты/e2e: стартовый вопрос не всплывает поверх сценария
+            return
+        if self.scanner and self.scanner.isRunning():
+            return
+        from .scan_ui import ask_startup_scan
+        choice = ask_startup_scan(self)
+        if choice == "full":
+            self.start_full_scan()
+        elif choice == "pcs":
+            self.start_scan()
+
+    def start_full_scan(self):
+        """Полный опрос парка (ПК → принтеры → программы) с окном прогресса и круговой диаграммой."""
+        if getattr(self, "full_dialog", None) and self.full_dialog.worker.isRunning():
+            return
+        if self.scanner and self.scanner.isRunning():
+            return
+        try:
+            ok, holder, until = db.scan_lease_acquire(self.scan_owner)
+        except Exception as exc:  # noqa: BLE001
+            self.lbl_status.setText(f"⚠️ База: {exc}")
+            return
+        if not ok:
+            self.lbl_status.setText(f"⏳ Парк сканирует {holder} (до {until[11:16]}) — база общая, повторный опрос не нужен")
+            self.refresh_dashboard()
+            return
+        self.btn_scan.setEnabled(False)
+        from .scan_ui import FullScanDialog
+        self.full_dialog = FullScanDialog(self.get_conn, "full", on_finished=self.on_full_scan_done, parent=self)
+
+    def on_full_scan_done(self, summary: dict):
+        self.btn_scan.setEnabled(True)
+        with contextlib.suppress(Exception):
+            db.scan_lease_release(self.scan_owner)
+        if summary.get("pcs"):
+            self.active_ad_total = summary["pcs"]
+        from .scan_ui import full_summary_text
+        self.lbl_status.setText(tr(full_summary_text(summary)))
+        self.refresh_dashboard()
+        if getattr(self, "full_dialog", None) and not self.full_dialog.isVisible():
+            self.full_dialog.deleteLater()
+            self.full_dialog = None
 
     # ------------------------------------------------------------------ 3.5.11: первичное наполнение новой базы
     def start_initial_fill(self):
@@ -1942,10 +1991,12 @@ class ADApp(FramelessMainWindow):
         self.debounce.stop()
         if hasattr(self, "attention_timer"):
             self.attention_timer.stop()
-        for w in [self.scanner, *self._threads, *getattr(self, "_bg_workers", [])]:
+        for w in [self.scanner, *self._threads, *getattr(self, "_bg_workers", []),
+                  getattr(getattr(self, "full_dialog", None), "worker", None)]:
             if w is not None and w.isRunning():
                 w.cancel()
-        for w in [self.scanner, *self._threads, *getattr(self, "_bg_workers", [])]:
+        for w in [self.scanner, *self._threads, *getattr(self, "_bg_workers", []),
+                  getattr(getattr(self, "full_dialog", None), "worker", None)]:
             if w is not None and w.isRunning():
                 w.wait(3000)
         event.accept()

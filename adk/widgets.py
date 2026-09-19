@@ -9,8 +9,8 @@ from typing import Callable
 from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QtMsgType, pyqtSignal, qInstallMessageHandler
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
-    QApplication, QDialog, QHBoxLayout, QLabel, QMenu, QLayout, QLineEdit, QMainWindow, QPushButton, QSizeGrip,
-    QVBoxLayout, QWidget,
+    QApplication, QDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QLayout, QLineEdit,
+    QMainWindow, QPushButton, QSizeGrip, QVBoxLayout, QWidget,
 )
 
 from .theme import Palette
@@ -807,3 +807,74 @@ def fit_columns(table, max_width: int = 420, min_width: int = 48, stretch_last: 
         for r in range(table.rowCount()):
             if not table.isRowHidden(r):
                 table.setRowHeight(r, max(base, min(table.rowHeight(r), base * 3)))
+
+
+# ============================================================================ выбор организации («Область»)
+class OrgPickerDialog(FramelessDialog):
+    """Выбор организации для кнопки «Область» (3.8.0): тот же список company, что в Excel-описи.
+
+    Результат — ``choice`` (пустая строка = ничего не выбрано). Список грузится из AD в фоне,
+    с фильтром; двойной клик или «Выбрать» — подтверждение.
+    """
+
+    def __init__(self, conn_factory, parent=None):
+        super().__init__("🏢 Область — опрос по организации", parent, (460, 520))
+        self.choice = ""
+        pal = app_palette()
+        hint = QLabel("Покажутся только ПК выбранной организации — как в Excel-описи.")
+        hint.setStyleSheet(f"color: {pal.subtext}; font-size: 9pt;")
+        self.body.addWidget(hint)
+        self.filter = QLineEdit()
+        self.filter.setPlaceholderText("Фильтр по названию…")
+        self.filter.textChanged.connect(self._apply)
+        self.body.addWidget(self.filter)
+        self.list = QListWidget()
+        self.list.itemDoubleClicked.connect(lambda _it: self._pick())
+        self.list.itemSelectionChanged.connect(lambda: self.btn_ok.setEnabled(self.list.currentItem() is not None))
+        self.body.addWidget(self.list, 1)
+        self.lbl = QLabel("Загрузка списка организаций из AD…")
+        self.lbl.setStyleSheet(f"color: {pal.subtext}; font-size: 9pt;")
+        self.body.addWidget(self.lbl)
+        row = QHBoxLayout()
+        row.addStretch()
+        cancel = QPushButton("Отмена")
+        cancel.clicked.connect(self.reject)
+        row.addWidget(cancel)
+        self.btn_ok = QPushButton("Выбрать")
+        self.btn_ok.setObjectName("btnPrimary")
+        self.btn_ok.setEnabled(False)
+        self.btn_ok.clicked.connect(self._pick)
+        row.addWidget(self.btn_ok)
+        self.body.addLayout(row)
+        self.companies: list[str] = []
+
+        def load():
+            from . import ad
+            conn = conn_factory()
+            try:
+                return ad.get_all_attribute_values(conn, "company")
+            finally:
+                conn.unbind()
+
+        run_in_background(self, load, self._loaded, lambda m: self.lbl.setText(f"⚠️ {m}"))
+
+    def _loaded(self, items: list[str]):
+        self.companies = sorted({c for c in items if c and c.strip()}, key=str.casefold)
+        self.lbl.setText(f"Организаций: {len(self.companies)}")
+        self._apply("")
+
+    def _apply(self, text: str):
+        q = (text or "").strip().lower()
+        self.list.clear()
+        for c in self.companies:
+            if not q or q in c.lower():
+                self.list.addItem(QListWidgetItem(c))
+        if self.list.count() == 1:
+            self.list.setCurrentRow(0)
+
+    def _pick(self):
+        it = self.list.currentItem()
+        if it is None:
+            return
+        self.choice = it.text()
+        self.accept()

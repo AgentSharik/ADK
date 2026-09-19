@@ -170,6 +170,7 @@ def run_dialog(name, factory):
 ALL: list[tuple[str, list[str]]] = []
 from adk.main_window import ADApp  # noqa: E402
 ADApp.start_scan = lambda self: None
+os.environ.setdefault("ADK_TESTS", "1")   # стартовый вопрос (3.8.0) не всплывает в e2e
 w = ADApp("CORP\\admin", "x"); w.resize(W, H); w.show(); wait(400)
 ALL.append(("главное/дашборд", check_window(w, "главное/дашборд")))
 w.search_input.setText("иванов"); w.start_search(); tg._wait(lambda: w.table.rowCount() >= 1, app, 5000); wait(500)
