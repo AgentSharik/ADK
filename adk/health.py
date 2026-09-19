@@ -263,9 +263,9 @@ $scanBody = @'
 param($base, $rootLow, $hogExact)
 function Walk-Tree([string]$base, [string]$rootLow, $hogExact) {
     $sum = [int64]0; $count = 0; $errors = 0
-    $big = New-Object System.Collections.Generic.List[object]
-    $hogs = New-Object System.Collections.Generic.List[object]
-    $stack = New-Object System.Collections.Generic.Stack[string]
+    $big = [System.Collections.Generic.List[object]]::new()
+    $hogs = [System.Collections.Generic.List[object]]::new()
+    $stack = [System.Collections.Generic.Stack[string]]::new()
     $stack.Push($base)
     while ($stack.Count -gt 0) {
         $cur = $stack.Pop()
@@ -286,7 +286,7 @@ function Walk-Tree([string]$base, [string]$rootLow, $hogExact) {
                     $low = $s.ToLowerInvariant()
                     $hogLabel = $hogExact[$low]
                     if (-not $hogLabel -and $low -like '*\appdata\local\temp') {
-                        $prof = Split-Path (Split-Path (Split-Path $s -Parent) -Parent) -Leaf
+                        $prof = Split-Path (Split-Path (Split-Path (Split-Path $s -Parent) -Parent) -Parent) -Leaf   # Temp → Local → AppData → имя профиля
                         $hogLabel = 'Temp профиля ' + $prof
                     }
                     if ($hogLabel) {
@@ -307,7 +307,7 @@ try { Walk-Tree $base $rootLow $hogExact } catch { @{ sum = [int64]0; count = 0;
 '@
 
 # Задачи: папки верхнего уровня; Users разворачиваем в профили — каждый профиль отдельным потоком
-$jobs = New-Object System.Collections.Generic.List[object]
+$jobs = [System.Collections.Generic.List[object]]::new()
 foreach ($d in [IO.Directory]::EnumerateDirectories($root)) {
     try {
         $attr = [IO.File]::GetAttributes($d)
@@ -326,8 +326,9 @@ foreach ($d in [IO.Directory]::EnumerateDirectories($root)) {
     }
 }
 
-$iss = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-$pool = [runspacefactory]::CreateRunspacePool(1, 8, $iss, $null)
+# двухаргументная форма — самая совместимая (PS 5.1 и 7): пул с обычным состоянием сессии.
+# Вариант с $null в 4-м аргументе (PSHost) падает «value of argument "host" is null».
+$pool = [runspacefactory]::CreateRunspacePool(1, 8)
 $pool.Open()
 $runners = @()
 foreach ($j in $jobs) {
@@ -337,7 +338,7 @@ foreach ($j in $jobs) {
     $runners += @{ ps = $ps; handle = $ps.BeginInvoke(); job = $j }
 }
 
-$dirs = @(); $files = New-Object System.Collections.Generic.List[object]
+$dirs = @(); $files = [System.Collections.Generic.List[object]]::new()
 $hogsMap = @{}; $userMap = @{}
 $errors = 0; $totalFiles = 0
 foreach ($r in $runners) {
