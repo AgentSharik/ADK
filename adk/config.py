@@ -41,7 +41,7 @@ _DEFAULTS: dict[str, dict[str, str]] = {
         "users_ou": "OU=Employees,DC=example,DC=local",
         "upn_suffix": "example.local",
         "use_ssl": "true",
-        "tls_validate": "true",
+        "tls_validate": "false",
         "connect_timeout": "5",
         "max_password_age_days": "90",
     },
@@ -76,8 +76,9 @@ _DEFAULTS: dict[str, dict[str, str]] = {
     },
     "UI": {
         "language": "ru",             # ru | en
-        "minimize_to_tray": "true",   # закрытие окна сворачивает в трей; выход — из меню трея
+        "minimize_to_tray": "true",   # показывать значок в трее при работающем ADK (закрытие крестиком — всегда выход)
         "global_hotkey": "Ctrl+Shift+A",  # показать окно и перейти в поиск (Windows, RegisterHotKey); пусто — выключить
+        "login_method": "",           # запомненный способ входа: sso | password | пусто — спрашивать как обычно
         "hide_role_welcome": "false", # скрывать окно со справкой по роли после входа
     },
     "Access": {
@@ -230,10 +231,11 @@ search_base = {ad_sec.get('search_base', 'DC=example,DC=local')}
 users_ou = {ad_sec.get('users_ou', 'OU=Users,DC=example,DC=local')}
 # Суффикс UPN (логин@домен)
 upn_suffix = {ad_sec.get('upn_suffix', 'example.local')}
-# LDAPS (порт 636) для смены паролей; false — стандартный порт 389 без SSL
+# LDAPS (порт 636); false — порт 389 без SSL. Без LDAPS пароль меняется через net user /domain (SAMR).
 use_ssl = {ad_sec.get('use_ssl', 'true')}
-# Проверка SSL-сертификата контроллера домена
-tls_validate = {ad_sec.get('tls_validate', 'true')}
+# Проверка SSL-сертификата контроллера домена. false по умолчанию: у большинства доменов
+# сертификат ДК самоподписанный, и строгая проверка даёт «контроллер домена недоступен».
+tls_validate = {ad_sec.get('tls_validate', 'false')}
 connect_timeout = 5
 # Срок действия пароля по доменной политике
 max_password_age_days = 90
@@ -256,6 +258,10 @@ templates_file =
 auto_scan_interval_min = 30
 host_pattern = ^(WS-\\d+|PC-.*)$
 host_exclude = (VIRT|VM|VBOX|TEST|SRV|SQL|SERVER)
+# Маска имён ПК для ADK (через запятую): ? = одна цифра, * = любые символы.
+# Пример: ADM-???, ZHD-???, KSP-??? — только эти серии имён (по 3 цифры).
+# Пусто — показываются все ПК (при этом host_pattern всё равно действует).
+host_mask = 
 valid_subnets = 10.,192.168.,172.
 # DHCP-серверы для проверки свободных IP
 dhcp_servers = 
@@ -275,6 +281,7 @@ follow_system = false
 language = ru
 minimize_to_tray = true
 global_hotkey = Ctrl+Shift+A
+login_method = 
 hide_role_welcome = false
 
 [Access]
@@ -351,6 +358,7 @@ class Settings:
         self.dhcp_servers: tuple[str, ...] = tuple(
             x.strip() for x in s.get("dhcp_servers", fallback="").replace(";", ",").split(",") if x.strip()
         )
+        self.host_mask: str = (s.get("host_mask", fallback="") or "").strip()
 
         d = cp["Design"]
         self.design: dict = {
@@ -369,6 +377,7 @@ class Settings:
         self.language: str = (ui.get("language", "ru") or "ru").lower()[:2]
         self.minimize_to_tray: bool = str(ui.get("minimize_to_tray", "true")).lower() in ("1", "true", "yes", "да")
         self.global_hotkey: str = ui.get("global_hotkey", "Ctrl+Shift+A") or ""
+        self.login_method: str = (ui.get("login_method", "") or "").strip().lower()
         self.hide_role_welcome: bool = str(ui.get("hide_role_welcome", "false")).lower() in ("1", "true", "yes", "да")
 
         acc = cp["Access"] if "Access" in cp else {}

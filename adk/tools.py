@@ -140,9 +140,6 @@ class BulkOperationsDialog(FramelessDialog):
                 return
             cn = items[0].text()
             gdn = self.all_groups[cn]
-        if code == "reset_password" and not ad.settings.use_ssl:
-            MessageBox.critical(self, "LDAPS", "Сброс пароля возможен только по LDAPS (use_ssl=true).")
-            return
         label = dict(self.OPS)[code]
         if not MessageBox.question(self, "Подтверждение",
                                    f"{label}{f' «{cn}»' if cn else ''}\nдля {len(self.users)} учётных записей?"):
@@ -170,7 +167,7 @@ class BulkOperationsDialog(FramelessDialog):
                             ad.unlock_account(c, dn)
                         elif code == "reset_password":
                             pwd = ad.generate_secure_password()
-                            ad.reset_password(c, dn, pwd, must_change=must_change)
+                            ad.reset_password(c, dn, pwd, must_change=must_change, sam=login)
                             pwds[login] = pwd
                         ok, msg = True, "✅ выполнено"
                         if hasattr(c, "result") and isinstance(c.result, dict) and c.result.get("description") not in (None, "success"):

@@ -365,13 +365,13 @@ def build_stylesheet(bg_style: str, is_dark: bool, font_family: str, font_size: 
     QListView::item:hover, QListView::item:selected {{ background-color: {p.selection}; color: {p.text}; }}
     QTableWidget, QTableView {{ background-color: {p.card}; alternate-background-color: {p.header}; border: 1px solid {p.border}; border-radius: 8px;
         gridline-color: {p.border}; selection-background-color: {p.selection}; selection-color: {p.text}; outline: none; }}
-    QTableWidget::item, QTableView::item {{ padding: 4px; border-bottom: 1px solid {p.border}; border-right: 1px solid {p.border}; }}
+    QTableWidget::item, QTableView::item {{ padding: 5px 8px; border-bottom: 1px solid {p.border}; border-right: 1px solid {p.border}; }}
     QTableWidget::item:selected, QTableView::item:selected {{ background-color: {p.selection}; color: {p.text};
         border-top: 1px solid {sel_edge}; border-bottom: 1px solid {sel_edge}; border-right: 1px solid {sel_line}; padding-top: 3px; }}
     QTableWidget::item:selected:first, QTableView::item:selected:first {{ border-left: 4px solid {accent}; padding-left: 2px; }}
     QTableWidget::item:selected:last, QTableView::item:selected:last {{ border-right: 1px solid {sel_edge}; }}
     QAbstractScrollArea::viewport {{ background-color: {p.card}; }}
-    QHeaderView::section {{ background: {relief(p.header, 105, 98)}; color: {p.subtext}; padding: 9px 12px; border: none;
+    QHeaderView::section {{ background: {relief(p.header, 105, 98)}; color: {p.subtext}; padding: 5px 8px; border: none;
         border-right: 1px solid {p.border}; border-bottom: 1px solid {p.border}; font-weight: 600; }}
     QTableCornerButton::section {{ background-color: {p.header}; border: none; }}
     QHeaderView {{ background-color: {p.header}; }}

@@ -115,16 +115,25 @@ def parse_software_json(text: str) -> dict:
             inst = f"{inst[:4]}-{inst[4:6]}-{inst[6:]}"
         soft.append({"name": name, "version": ver, "publisher": (x.get("publisher") or "").strip(), "installed": inst})
     soft.sort(key=lambda s: s["name"].casefold())
-    hot = [{"id": h.get("id", ""), "desc": h.get("desc", ""), "installed": h.get("installed", "")} for h in d.get("hotfixes") or [] if h.get("id")]
+    _SEC = ("security", "безопасн", "security update", "критическое", "critical")
+    hot = []
+    for h in d.get("hotfixes") or []:
+        if not h.get("id"):
+            continue
+        desc = (h.get("desc") or "").strip()
+        low = desc.casefold()
+        hot.append({"id": h.get("id", ""), "desc": desc, "installed": h.get("installed", ""),
+                    "kind": "security" if any(k in low for k in _SEC) else "other"})
+    hot.sort(key=lambda h: (h["kind"] != "security", h["installed"]), reverse=False)
     hot.sort(key=lambda h: h["installed"], reverse=True)
     return {"software": soft, "hotfixes": hot, "how": str(d.get("how") or "")}
 
 
-def get_software(host: str, timeout: int = 90) -> dict:
+def get_software(host: str, timeout: int = 90, cancelled=None) -> dict:
     if not is_valid_hostname(host):
         return {"error": f"Недопустимое имя узла: {host!r}"}
     from . import psrun
-    res = psrun.run(_PS.replace("__HOST__", host), timeout=timeout)
+    res = psrun.run(_PS.replace("__HOST__", host), timeout=timeout, cancelled=cancelled)
     if not res.ok:
         return {"error": res.error}
     try:

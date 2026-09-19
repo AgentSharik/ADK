@@ -119,6 +119,14 @@ class SearchWorker(BaseWorker):
             return
         flt = self._build_filter()
         printer_rows = self._printer_rows()
+        if self.printer_query is not None:
+            # 3.6.3: запрос «printer:…» (или клик по бейджу принтера) — только сам принтер,
+            # кто подключён — в его инспекторе, а не списком людей рядом
+            if self.cancelled:
+                return
+            self.results_ready.emit(printer_rows, self.raw_query, False)
+            self._emit_net()
+            return
         if flt is None:
             # запрос — просто IP принтера: показываем только сам принтер (кто подключён — в его инспекторе),
             # иначе рядом появлялись «пустые» строки ПК без ФИО
@@ -509,13 +517,28 @@ class PCScannerWorker(BaseWorker):
         self.conn_factory = conn_factory
 
     @staticmethod
+    @staticmethod
+    def _mask_regex(mask: str) -> re.Pattern | None:
+        """Маска имён ПК → regex: ? = одна цифра, * = любые символы, остальное буквально. '' → None (все ПК)."""
+        if not mask or not mask.strip():
+            return None
+        parts = []
+        for m in (x.strip() for x in mask.split(",")):
+            if not m:
+                continue
+            rx = "".join(r"\d" if c == "?" else ".*" if c == "*" else re.escape(c) for c in m.upper())
+            parts.append(f"(?:{rx})")
+        return re.compile("^(?:" + "|".join(parts) + ")$", re.IGNORECASE) if parts else None
+
+    @staticmethod
     def workstation_names(entries) -> list[str]:
         pattern = re.compile(settings.host_pattern, re.IGNORECASE)
         exclude = re.compile(settings.host_exclude, re.IGNORECASE) if settings.host_exclude else None
+        mask = PCScannerWorker._mask_regex(settings.host_mask)
         out = []
         for e in entries:
             name = ad.get_ad_value(e, "name").rstrip("$").upper()
-            if pattern.match(name) and not (exclude and exclude.search(name)):
+            if pattern.match(name) and not (exclude and exclude.search(name)) and (not mask or mask.match(name)):
                 out.append(name)
         return out
 

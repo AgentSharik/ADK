@@ -191,8 +191,17 @@ class ADApp(FramelessMainWindow):
 
     # ------------------------------------------------------------------ трей / хоткей / роли / обновления
     def _build_tray(self):
-        if settings.minimize_to_tray:
+        if settings.minimize_to_tray:   # 3.6.3: теперь это «показывать значок в трее», а не «сворачивать по крестику»
             self.tray = Tray(self, self.show_from_tray, self.show_and_search, self.start_scan, self.quit_app)
+        if settings.global_hotkey:
+            self.hotkey = GlobalHotkey(self, settings.global_hotkey)
+            self.hotkey.activated.connect(self.show_and_search)
+
+    def reapply_hotkey(self):
+        """Перерегистрировать глобальную горячую клавишу после смены в настройках (3.6.3)."""
+        if self.hotkey:
+            self.hotkey.unregister()
+            self.hotkey = None
         if settings.global_hotkey:
             self.hotkey = GlobalHotkey(self, settings.global_hotkey)
             self.hotkey.activated.connect(self.show_and_search)
@@ -206,9 +215,32 @@ class ADApp(FramelessMainWindow):
         self.show_from_tray()
         self.focus_search()
 
+    def retranslate(self):
+        """Применить выбранный язык к главному окну без перезапуска (3.6.3)."""
+        self.search_input.setPlaceholderText(tr("Фамилия, логин, почта, отдел, кабинет, имя ПК, IP, printer:…"))
+        self.btn_search.setText(tr("Найти"))
+        self.btn_settings.setText(tr("⚙️ Настройки"))
+        self.btn_plugins.setText(tr("🧩 Плагины"))
+        self.btn_scan.setText(tr("🔄 Обновить статус сети ПК"))
+        self.btn_fill_stop.setText(tr("⏹ Остановить наполнение"))
+        self.chk_archive.setText(tr("📦 Архивы (все ПК пользователя)"))
+        self.chk_disabled.setText(tr("🚷 Отключённые учётки"))
+        self.lbl_role_status.setText(tr(access.role_title_short()))
+        for lbl, src in self._ru_labels:
+            lbl.setText(tr(src))
+        for b, src in self.quick_buttons:
+            b.setText(tr(src))
+        self.table.setHorizontalHeaderLabels([tr(c) for c in COLUMNS])
+        if self.tray:
+            self.tray.retranslate()
+
     def quit_app(self):
         self._quitting = True
         self.close()
+        # страховка: если фоновые потоки/опрашиваемые ПК не дают циклу событий завершиться — через 3 с выходим принудительно
+        # (в тестах не срабатывает — иначе os._exit убивает сам pytest)
+        if not os.environ.get("PYTEST_CURRENT_TEST"):
+            QTimer.singleShot(3000, lambda: os._exit(0))
 
     def apply_access(self):
         """Скрывает кнопки запрещённых действий (ПК / AD); роль показывается одним местом — в строке состояния
@@ -352,25 +384,25 @@ class ADApp(FramelessMainWindow):
         self._style_completer()
         self.search_input.textChanged.connect(self.on_text_changed)
         self.search_input.returnPressed.connect(self.start_search)
-        btn_search = QPushButton(tr("Найти"))
-        btn_search.setObjectName("btnPrimary")
-        btn_search.clicked.connect(self.start_search)
+        self.btn_search = QPushButton(tr("Найти"))
+        self.btn_search.setObjectName("btnPrimary")
+        self.btn_search.clicked.connect(self.start_search)
         chk = QVBoxLayout()
         self.chk_archive = QCheckBox(tr("📦 Архивы (все ПК пользователя)"))
         self.chk_disabled = QCheckBox(tr("🚷 Отключённые учётки"))
         for c in (self.chk_archive, self.chk_disabled):
             c.toggled.connect(self.start_search)
             chk.addWidget(c)
-        btn_design = QPushButton(tr("🎨 Дизайн"))
-        btn_design.clicked.connect(lambda: DesignSettingsDialog(self, self).exec())
+        self.btn_settings = QPushButton(tr("⚙️ Настройки"))
+        self.btn_settings.clicked.connect(lambda: DesignSettingsDialog(self, self).exec())
         btn_plugins = QPushButton(tr("🧩 Плагины"))
         btn_plugins.setToolTip("Плагины и модули автоматизации ADK")
         btn_plugins.clicked.connect(lambda: PluginsDialog(self).exec())
         top.addWidget(self.search_input, 1)
-        top.addWidget(btn_search)
+        top.addWidget(self.btn_search)
         top.addLayout(chk)
         top.addWidget(btn_plugins)
-        top.addWidget(btn_design)
+        top.addWidget(self.btn_settings)
         content.addLayout(top)
         self.lbl_update = QLabel("")
         self.lbl_update.setObjectName("updateLabel")
@@ -410,7 +442,10 @@ class ADApp(FramelessMainWindow):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setSpacing(14)
-        lay.addWidget(QLabel(tr("<b>📊 Состояние компьютеров домена</b> (клик по карточке — список):")))
+        self._ru_labels: list[tuple[object, str]] = []
+        lbl = QLabel(tr("<b>📊 Состояние компьютеров домена</b> (клик по карточке — список):"))
+        self._ru_labels.append((lbl, "<b>📊 Состояние компьютеров домена</b> (клик по карточке — список):"))
+        lay.addWidget(lbl)
         self.cards = QHBoxLayout()
         lay.addLayout(self.cards)
         self.attention_card = QFrame()
@@ -427,15 +462,20 @@ class ADApp(FramelessMainWindow):
         b_att.clicked.connect(self.show_attention)
         arow.addWidget(b_att)
         lay.addWidget(self.attention_card)
-        lay.addWidget(QLabel(tr("<b>🕒 Недавние поиски:</b>")))
+        lbl = QLabel(tr("<b>🕒 Недавние поиски:</b>"))
+        self._ru_labels.append((lbl, "<b>🕒 Недавние поиски:</b>"))
+        lay.addWidget(lbl)
         frame = QFrame()
         frame.setObjectName("dashCard")
         self.history = QHBoxLayout(frame)
         lay.addWidget(frame)
-        lay.addWidget(QLabel(tr("<b>⚡ Быстрый доступ:</b>")))
+        lbl = QLabel(tr("<b>⚡ Быстрый доступ:</b>"))
+        self._ru_labels.append((lbl, "<b>⚡ Быстрый доступ:</b>"))
+        lay.addWidget(lbl)
         quick_box = QWidget()
         quick = FlowLayout(quick_box, spacing=8)          # переносится на новую строку, если окно узкое — подписи не режутся
         self._modifying_buttons: list = []  # (кнопка, действие) — скрываются, если access.can(действие) == False
+        self.quick_buttons: list[tuple[QPushButton, str]] = []
         for text, fn, action in (("🔍 Свободный IP-адрес", lambda: FreeIPDialog(self).exec(), ""),
                                  ("📊 Excel-опись ПК", lambda: InventoryDialog(self, self).exec(), ""),
                                  ("🖨️ Принтеры парка", self.printers_overview, ""),
@@ -446,6 +486,7 @@ class ADApp(FramelessMainWindow):
             b.clicked.connect(fn)
             if action:
                 self._modifying_buttons.append((b, action))
+            self.quick_buttons.append((b, text))
             quick.addWidget(b)
         lay.addWidget(quick_box)
         lay.addStretch()
@@ -1137,7 +1178,12 @@ class ADApp(FramelessMainWindow):
         kind = {"network": "сетевой", "shared": "общий (через сервер)", "usb": "USB", "local": "локальный"}.get(g.get("kind", ""), "—")
         self.lbl_sub.setText(f"Принтер · {kind}")
         ip = g.get("ip") or ""
-        self.pvals["ip"].setText(ip or "— (не сетевой)")
+        if ip:
+            self.pvals["ip"].setText(ip)
+        elif g.get("kind") in ("usb", "local"):
+            self.pvals["ip"].setText("— (не сетевой)")
+        else:
+            self.pvals["ip"].setText("IP не указан в инвентаре")
         on = bool(u.get("is_online"))
         if ip and u.get("net_pending"):
             self.pvals["status"].setText("● Проверка…")
@@ -1883,13 +1929,7 @@ class ADApp(FramelessMainWindow):
 
     # ------------------------------------------------------------------ закрытие
     def closeEvent(self, event):  # noqa: N802
-        if self.tray and self.tray.available and not self._quitting and settings.minimize_to_tray:
-            event.ignore()
-            self.hide()
-            if not self.qsettings.value("tray_hint_shown", False, type=bool):
-                self.tray.notify("ADK", tr("ADK свёрнут в трей. Выход — через меню трея."))
-                self.qsettings.setValue("tray_hint_shown", True)
-            return
+        # 3.6.3: крестик полностью закрывает приложение (раньше уходил в трей и «висел» в диспетчере задач)
         self.qsettings.setValue("geometry", self.saveGeometry())
         if self.hotkey:
             self.hotkey.unregister()

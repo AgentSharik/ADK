@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from . import db
+from . import config, db
 from .widgets import FramelessDialog, app_palette, make_badge, run_in_background
 from .workers import PingWorker
 
@@ -151,6 +151,9 @@ class PingDialog(FramelessDialog):
         self._paused = False
         self._started = datetime.now()
         pal = app_palette()
+        # 3.6.3: цифры следуют глобальному размеру шрифта, а не фиксированным 30/24 pt
+        _fs = int(config.settings.design.get("font_size") or 10)
+        _k = max(0, _fs - 10)
 
         # --- шапка: состояние + цель
         head = QFrame()
@@ -158,12 +161,12 @@ class PingDialog(FramelessDialog):
         hl = QHBoxLayout(head)
         hl.setContentsMargins(16, 12, 16, 12)
         self.dot = QLabel("●")
-        self.dot.setStyleSheet(f"font-size: 30pt; color: {pal.subtext};")
+        self.dot.setStyleSheet(f"font-size: {20 + _k}pt; color: {pal.subtext};")
         hl.addWidget(self.dot)
         tl = QVBoxLayout()
         tl.setSpacing(0)
         self.lbl_state = QLabel("Запуск…")
-        self.lbl_state.setStyleSheet("font-size: 15pt; font-weight: bold;")
+        self.lbl_state.setStyleSheet(f"font-size: {12 + _k // 2}pt; font-weight: bold;")
         self.lbl_target = QLabel(f"{computer_name} · {target}" if target != computer_name else computer_name)
         self.lbl_target.setStyleSheet(f"color: {pal.subtext};")
         self.lbl_target.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -171,11 +174,11 @@ class PingDialog(FramelessDialog):
         tl.addWidget(self.lbl_target)
         hl.addLayout(tl, 1)
         self.lbl_now = QLabel("—")
-        self.lbl_now.setStyleSheet(f"font-size: 24pt; font-weight: bold; color: {pal.title_accent};")
+        self.lbl_now.setStyleSheet(f"font-size: {18 + _k}pt; font-weight: bold; color: {pal.title_accent};")
         self.lbl_now.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         hl.addWidget(self.lbl_now)
         unit = QLabel("мс\nсейчас")
-        unit.setStyleSheet(f"color: {pal.subtext}; font-size: 10pt;")
+        unit.setStyleSheet(f"color: {pal.subtext}; font-size: {9 + _k // 2}pt;")
         hl.addWidget(unit)
         self.body.addWidget(head)
 
@@ -195,10 +198,10 @@ class PingDialog(FramelessDialog):
         for i, (key, title, unit) in enumerate((("sent", "Отправлено", ""), ("recv", "Получено", ""), ("loss", "Потери", ""),
                                                 ("min", "Мин", "мс"), ("avg", "Сред", "мс"), ("max", "Макс", "мс"), ("jit", "Джиттер", "мс"))):
             t = QLabel(title.upper() + (f" · {unit}" if unit else ""))
-            t.setStyleSheet(f"color: {pal.subtext}; font-size: 9.5pt; font-weight: bold; letter-spacing: 0.5px;")
+            t.setStyleSheet(f"color: {pal.subtext}; font-size: {8.5 + _k / 2:.1f}pt; font-weight: bold; letter-spacing: 0.5px;")
             t.setAlignment(Qt.AlignmentFlag.AlignCenter)
             v = QLabel("—")
-            v.setStyleSheet("font-size: 13pt; font-weight: bold;")
+            v.setStyleSheet(f"font-size: {11 + _k}pt; font-weight: bold;")
             v.setAlignment(Qt.AlignmentFlag.AlignCenter)
             v.setMinimumWidth(84)
             sg.addWidget(t, 0, i)
@@ -422,7 +425,7 @@ class PingDialog(FramelessDialog):
 
     def _set_state(self, ok: bool):
         pal = app_palette()
-        self.dot.setStyleSheet(f"font-size: 30pt; color: {pal.solid('success' if ok else 'danger')};")
+        self.dot.setStyleSheet(f"font-size: {20 + max(0, int(config.settings.design.get('font_size') or 10) - 10)}pt; color: {pal.solid('success' if ok else 'danger')};")
         self.lbl_state.setText("Узел отвечает" if ok else "Узел не отвечает")
         while self.badge_box.count():
             w = self.badge_box.takeAt(0).widget()
@@ -441,7 +444,8 @@ class PingDialog(FramelessDialog):
         self.stat["sent"].setText(str(self.sent))
         self.stat["recv"].setText(str(self.recv))
         self.stat["loss"].setText(f"{loss:.0f}%")
-        self.stat["loss"].setStyleSheet(f"font-size: 12pt; font-weight: bold; color: {pal.danger[0] if loss >= 10 else pal.warning[0] if loss > 0 else pal.text};")
+        _fs2 = max(0, int(config.settings.design.get("font_size") or 10) - 10)
+        self.stat["loss"].setStyleSheet(f"font-size: {11 + _fs2}pt; font-weight: bold; color: {pal.danger[0] if loss >= 10 else pal.warning[0] if loss > 0 else pal.text};")
         if self.times:
             self.stat["min"].setText("<1" if min(self.times) < 1 else f"{min(self.times):.0f}")   # 0,5 = «меньше мс», а не 0
             self.stat["avg"].setText(f"{statistics.fmean(self.times):.1f}")
