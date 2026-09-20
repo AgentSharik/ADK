@@ -1125,7 +1125,15 @@ class ADApp(FramelessMainWindow):
         if comp and on and u.get("ip") and u["ip"] != "Не найден" and not db.get_mac(comp):
             run_in_background(self, lambda: nettools.learn_mac(comp, u["ip"]), lambda m: None, lambda m: None)
         if u.get("specs_custom"):
-            self.lbl_specs.setText(u["specs_custom"])
+            txt = u["specs_custom"]
+            if txt.strip().startswith("{"):
+                # 3.9.1: полный опрос хранит характеристики как JSON — показывать человеческую сводку
+                # («ОС · CPU · ОЗУ · Диски»), как выглядело в 3.8, а не сырой текст базы
+                try:
+                    txt = netutils.summarize_specs(netutils.parse_specs_json(txt)) or txt
+                except Exception:  # noqa: BLE001
+                    pass
+            self.lbl_specs.setText(txt)
         elif comp:
             self.lbl_specs.setText("…")
             run_in_background(self, lambda: netutils.get_computer_specs_summary(comp),
@@ -1901,7 +1909,7 @@ class ADApp(FramelessMainWindow):
             self.refresh_dashboard()
             return
         self.btn_scan.setEnabled(False)
-        self.scanner = PCScannerWorker(self.get_conn, parent=self)
+        self.scanner = PCScannerWorker(self.get_conn, parent=self, deep=False)   # 3.9.1: фон — лёгкий, как в 3.8
         self.scanner.progress.connect(self.lbl_status.setText)
         self.scanner.error.connect(lambda m: self.lbl_status.setText(f"⚠️ {m}"))
         self.scanner.finished_scan.connect(self.on_scan_done)

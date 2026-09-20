@@ -349,3 +349,63 @@ def test_close_event_total_wait_budget(qapp, monkeypatch):
     assert all(0 <= ms <= 2000 for ms in waits), waits  # и каждый — в пределах общего бюджета
     assert released.wait(2)                             # аренда отпущена (в фоне)
     w.deleteLater()
+
+
+# ------------------------------------------------------------------ 3.9.1: цвета кнопок как в 3.8
+def test_contrast_text_white_on_accents():
+    """3.9.1: возврат к 3.8 — на акцентных заливках БЕЛЫЙ текст/значки (янтарь, салатовый, синий)."""
+    from adk.theme import contrast_text
+    for accent in ("#F5B324", "#FFB020", "#3DD68C", "#0A84FF", "#F472B6"):
+        assert contrast_text(accent) == "#ffffff", accent
+    assert contrast_text("#FFF7E0") == "#1D1D1F"        # очень светлый — тёмный
+
+
+# ------------------------------------------------------------------ 3.9.1: лёгкий фоновый скан + WMI
+def test_ps_scanner_asks_pc_for_user_and_ping_param():
+    """Сканер спрашивает у онлайн-ПК «кто за ним» (WMI) и пингует с настраиваемым таймаутом."""
+    from adk.workers import _PS_SCANNER
+    assert "Win32_ComputerSystem" in _PS_SCANNER          # прямой источник «кто за ПК»
+    assert "Send($actualIp, $pingMs)" in _PS_SCANNER      # таймаут пинга — параметром
+
+
+def test_scanner_deep_flag(monkeypatch):
+    from adk.workers import PCScannerWorker
+    w = PCScannerWorker(lambda: None, deep=False)          # фоновый — лёгкий
+    assert w.deep is False
+    w2 = PCScannerWorker(lambda: None)                     # полный/первичный — глубокий
+    assert w2.deep is True
+
+
+# ------------------------------------------------------------------ 3.9.1: сводка вместо сырого JSON
+def test_specs_json_shown_as_summary():
+    import json
+    from adk import netutils
+    payload = json.dumps({"os": {"Название": "Windows 11 Pro"}, "cpu": {"Название": "i5-12400"},
+                          "rams": {"0": {"Объём": "16384 МБ"}},
+                          "disks": {"0": {"Размер": "512105932800 байт"}},
+                          "_ts": "2026-09-20T10:00:00"}, ensure_ascii=False)
+    d = netutils.parse_specs_json(payload)
+    s = netutils.summarize_specs(d)
+    assert "Windows 11 Pro" in s and "i5-12400" in s       # человекочитаемая сводка
+    assert "{" not in s                                     # сырой JSON не показываем
+
+
+# ------------------------------------------------------------------ 3.9.1: «Прочитать всё» в Внимании
+def test_attention_read_all(qapp, monkeypatch):
+    from adk.attention_ui import AttentionDialog
+    snoozed, logged = [], []
+
+    class _App:
+        admin_name = "admin"
+        get_conn = staticmethod(lambda: None)
+
+    monkeypatch.setattr("adk.db.snooze", lambda key, days, who: snoozed.append(key))
+    monkeypatch.setattr("adk.db.log_action", lambda *a, **k: logged.append(a))
+    items = [{"key": f"k{i}", "severity": "high" if i % 2 else "low", "icon": "⚠️",
+              "title": f"t{i}", "subject": f"s{i}", "text": "x"} for i in range(4)]
+    d = AttentionDialog(_App(), None, items=items)
+    d.read_all()
+    assert set(snoozed) == {"k0", "k1", "k2", "k3"}         # все показанные скрыты
+    assert d.items == [] and d.table.rowCount() == 0
+    assert logged and logged[0][1] == "attention_read_all"  # одна запись в журнал, не построчно
+    d.deleteLater()

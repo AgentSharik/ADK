@@ -18,6 +18,11 @@ class AttentionDialog(FramelessDialog):
     def __init__(self, app, parent=None, items: list[dict] | None = None):
         super().__init__("🔔 Внимание: что требует реакции", parent, (900, 560))
         self.app = app
+        # 3.9.1: пояснение для первого запуска — сводка появляется сама, это анализ домена, а не чужие действия
+        intro = QLabel("Сводка строится автоматически по данным AD и базы: ADK сам находит то, что требует "
+                       "внимания (истекающие учётки, ПК давно не в сети и т.п.). Это не список ваших действий.")
+        intro.setWordWrap(True)
+        self.body.addWidget(intro)
         top = QHBoxLayout()
         self.summary = QLabel("")
         self.summary.setWordWrap(True)
@@ -42,11 +47,14 @@ class AttentionDialog(FramelessDialog):
         btns = QHBoxLayout()
         self.btn_open = QPushButton("🔍 Найти в главном окне")
         self.btn_open.clicked.connect(self.open_selected)
+        # 3.9.1: «Прочитать всё» — скрыть всё показанное разом (до новых событий), не выбирая строки
+        self.btn_read_all = QPushButton("✅ Прочитать всё")
+        self.btn_read_all.clicked.connect(self.read_all)
         self.btn_snooze = QPushButton("💤 Отложить на 7 дней")
         self.btn_snooze.clicked.connect(lambda: self.snooze(7))
         self.btn_snooze30 = QPushButton("💤 На 30 дней")
         self.btn_snooze30.clicked.connect(lambda: self.snooze(30))
-        for b in (self.btn_open, self.btn_snooze, self.btn_snooze30):
+        for b in (self.btn_open, self.btn_read_all, self.btn_snooze, self.btn_snooze30):
             btns.addWidget(b)
         btns.addStretch()
         close = QPushButton("Закрыть")
@@ -56,6 +64,7 @@ class AttentionDialog(FramelessDialog):
         if not access.can("attention_snooze"):
             self.btn_snooze.setEnabled(False)
             self.btn_snooze30.setEnabled(False)
+            self.btn_read_all.setEnabled(False)
         self.items: list[dict] = items or []
         if items is None:
             self.load()
@@ -102,6 +111,22 @@ class AttentionDialog(FramelessDialog):
         if i and hasattr(self.app, "search_text"):
             self.app.search_text(i["subject"])
             self.accept()
+
+    def read_all(self):
+        """3.9.1: скрыть все показанные сообщения (появятся снова, когда условие сработает заново)."""
+        visible = [i for i in self.items if self.chk_low.isChecked() or i["severity"] != "low"]
+        if not visible:
+            MessageBox.information(self, "Внимание", "Показывать нечего — список пуст.")
+            return
+        keys = {i["key"] for i in visible}
+        for k in keys:
+            db.snooze(k, 7, self.app.admin_name)
+        db.log_action(self.app.admin_name, "attention_read_all", f"{len(keys)} сообщ.",
+                      "прочитаны все показанные сообщения сводки")
+        self.items = [x for x in self.items if x["key"] not in keys]
+        self.render()
+        if hasattr(self.app, "set_attention_items"):
+            self.app.set_attention_items(self.items)
 
     def snooze(self, days: int):
         i = self._current()

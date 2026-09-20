@@ -116,10 +116,13 @@ def test_bulk_dialog_caps_table_rows(qapp, monkeypatch):
 
 # ---------------------------------------------------------------- контраст текста на акценте
 def test_contrast_text_light_accents_get_dark_text():
+    """3.9.1: поведение 3.8 возвращено — на акцентных заливках текст и значки белые
+    (тёмный — только на очень светлых), пользователь не принял WCAG-вариант."""
     from adk.theme import contrast_text
-    assert contrast_text("#FFB020") == "#1D1D1F"          # янтарь — тёмный текст
-    assert contrast_text("#3DD68C") == "#1D1D1F"          # салатовый — тёмный текст
-    assert contrast_text("#0A84FF") == "#ffffff"          # синий — белый, как и было
+    assert contrast_text("#FFB020") == "#ffffff"          # янтарь — белый, как в 3.8
+    assert contrast_text("#3DD68C") == "#ffffff"          # салатовый — белый
+    assert contrast_text("#0A84FF") == "#ffffff"          # синий — белый
+    assert contrast_text("#FFF3D0") == "#1D1D1F"          # очень светлый — тёмный
 
 
 # ---------------------------------------------------------------- вход по кэшу: подпись и пустые

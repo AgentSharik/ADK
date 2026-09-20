@@ -2,7 +2,7 @@
 
 Работает только с Windows-хоста (``Get-CimInstance -ComputerName``, WinRM/DCOM, для карты диска — общий ресурс
 ``\\\\host\\C$``; при закрытом WinRM тот же опрос идёт по DCOM/WMI — даты в этом случае приходят строками DMTF
-и переводятся в нормальный вид функцией ``FmtDate`` внутри скрипта). Карта диска с 3.7.0 считается в 8 потоков
+и переводятся в нормальный вид функцией ``FmtDate`` внутри скрипта). Карта диска с 3.7.0 считается параллельно (runspace pool; с 3.9.1 — до 16 потоков)
 (runspace pool): папки верхнего уровня и профили пользователей обходятся одновременно. На других ОС и при
 недоступности ПК возвращается структура с ``error``. Весь разбор вынесен
 в чистые функции (:func:`parse_health_json`, :func:`parse_smart_vendor`, :func:`disk_verdict`,
@@ -328,7 +328,7 @@ foreach ($d in [IO.Directory]::EnumerateDirectories($root)) {
 
 # двухаргументная форма — самая совместимая (PS 5.1 и 7): пул с обычным состоянием сессии.
 # Вариант с $null в 4-м аргументе (PSHost) падает «value of argument "host" is null».
-$pool = [runspacefactory]::CreateRunspacePool(1, 8)
+$pool = [runspacefactory]::CreateRunspacePool(1, 16)   # 3.9.1: 8 → 16 — SMB-метаданные узкое место, шире конвейер = быстрее обход
 $pool.Open()
 $runners = @()
 foreach ($j in $jobs) {

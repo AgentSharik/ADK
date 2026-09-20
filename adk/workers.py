@@ -459,7 +459,7 @@ $jobs = @()
 foreach ($item in $data) {
   $ps = [powershell]::Create(); $ps.RunspacePool = $pool
   [void]$ps.AddScript({
-    param($pc, $validPrefixes, $compDir, $compExitDir)
+    param($pc, $validPrefixes, $compDir, $compExitDir, $pingMs)
     $actualIp = "Не найден"; $status = "OFFLINE"; $user = ""; $latest = [datetime]::MinValue
     foreach ($dir in @($compDir, $compExitDir)) {
       if (-not $dir) { continue }
@@ -485,11 +485,19 @@ foreach ($item in $data) {
       }
     } catch {}
     if ($actualIp -ne "Не найден") {
-      try { $r = (New-Object System.Net.NetworkInformation.Ping).Send($actualIp, 300)
+      try { $r = (New-Object System.Net.NetworkInformation.Ping).Send($actualIp, $pingMs)
             if ($r.Status -eq 'Success') { $status = "ACTIVE" } } catch {}
     }
+    # 3.9.1: кто за ПК — спросить напрямую у машины (WMI), если инвентарный CSV не дал ответа;
+    # работает для онлайн-ПК и не зависит ни от обратного DNS, ни от прав на журнал контроллера домена
+    if ($status -eq 'ACTIVE' -and -not $user) {
+      try {
+        $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $pc -OperationTimeoutSec 3
+        if ($cs -and $cs.UserName) { $user = $cs.UserName }
+      } catch {}
+    }
     [PSCustomObject]@{ Hostname = $pc; ActualIp = $actualIp; Status = $status; User = $user; LastLogon = $lastLogon }
-  }).AddArgument($item.Name).AddArgument($validPrefixes).AddArgument($compDir).AddArgument($compExitDir)
+  }).AddArgument($item.Name).AddArgument($validPrefixes).AddArgument($compDir).AddArgument($compExitDir).AddArgument($pingMs)
   $jobs += [PSCustomObject]@{ PS = $ps; H = $ps.BeginInvoke(); Name = $item.Name }
 }
 $results = foreach ($j in $jobs) {
@@ -657,9 +665,13 @@ class PCScannerWorker(BaseWorker):
     progress = pyqtSignal(str)
     finished_scan = pyqtSignal(int)
 
-    def __init__(self, conn_factory: ConnFactory, parent=None):
+    def __init__(self, conn_factory: ConnFactory, parent=None, deep: bool = True):
+        """``deep=True`` — полный/первичный опрос: пинг 300 мс + чтение журнала контроллера домена (события 4768).
+        ``deep=False`` — фоновый по расписанию (3.9.1): лёгкий, как в 3.8 — DNS + сверка с базой + пинг 100 мс;
+        «кто за ПК» при этом всё равно узнаётся (WMI у онлайн-машин), без тяжёлого шага по журналу."""
         super().__init__(parent)
         self.conn_factory = conn_factory
+        self.deep = deep
 
     @staticmethod
     def _mask_regex(mask: str) -> re.Pattern | None:
@@ -711,11 +723,12 @@ class PCScannerWorker(BaseWorker):
                                        f"список ПК брался через {via.upper()}")
                 self.finished_scan.emit(0)
                 return
-            self.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping, журналы входов)…")
-            results = self.probe_hosts(hosts)
+            self.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping{' , журнал КД' if self.deep else ''})…")
+            results = self.probe_hosts(hosts, ping_ms=300 if self.deep else 100)
             if self.cancelled:
                 return
-            results = enrich_with_dc_logons(results, lambda m: self.progress.emit(m))
+            if self.deep:
+                results = enrich_with_dc_logons(results, lambda m: self.progress.emit(m))
             self.progress.emit("💾 Обновление инвентаря…")
             db.batch_update_inventory(results, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             self._index_printers(hosts)
@@ -746,13 +759,13 @@ class PCScannerWorker(BaseWorker):
         w._index_printers(hosts)
         return len(hosts)
 
-    def probe_hosts(self, hosts: list[str]) -> list[dict]:
+    def probe_hosts(self, hosts: list[str], ping_ms: int = 300) -> list[dict]:
         """DNS + ping + журналы входов для каждого ПК. На Windows — PowerShell (RunspacePool, 50 потоков, журналы
         logon-скрипта); если PowerShell не дал результата или мы не на Windows — запасной путь на Python
         (DNS + TCP 445/ICMP, без журналов). Пустой ответ больше не считается успехом."""
         if os.name == "nt":
             try:
-                results = self._run_powershell(hosts)
+                results = self._run_powershell(hosts, ping_ms)
                 if results:
                     return results
                 self.progress.emit("⚠️ PowerShell не вернул данных — опрашиваю ПК средствами Python…")
@@ -800,7 +813,7 @@ class PCScannerWorker(BaseWorker):
                                     lambda: self.cancelled)
         self.progress.emit(f"🖨️ Принтеры проиндексированы: {n} ПК с CSV")
 
-    def _run_powershell(self, hosts: list[str]) -> list[dict]:
+    def _run_powershell(self, hosts: list[str], ping_ms: int = 300) -> list[dict]:
         """PowerShell-сканер через :mod:`psrun` (3.6.1; раньше — прямой ``powershell -Command <текст>``, который из
         exe без консоли мог завершиться молча). Ошибка → исключение с понятной причиной, пустой ответ → []."""
         import tempfile
