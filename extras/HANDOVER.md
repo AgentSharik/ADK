@@ -556,7 +556,7 @@ Kyocera, 10.0.9.93, Шевченко+архивы, набор по буквам.
 - `config.normalize_search_base()`: срезает GC:// LDAP:// LDAPS:// (ldар3 ждёт чистый DN).
 - ask_startup_scan: условие `base_empty or db_setup_ran` (после выбора базы вопрос всегда).
 - DonutWidget.set_segments([(total, done, color)]) — сектора шагов ∝ объёму, заполнение ∝ прогрессу, центр — общий %, пункты — со своим %; цвета `_phase_colors()` = info/success/warning/accent темы.
-- Скраб орг-префиксов: в публичных файлах примеры серий только нейтральные (PC-/LT-/FS-), PC- убран из setup_ui/config/CHANGELOG/HANDOVER/тестов; тест партии 30 переписан (слово «portable» теперь легально, запрещены только старые глобалы IS_PORTABLE/ADK_PORTABLE/ADK_HOME).
+- Скраб орг-префиксов: во всех публичных файлах (код, тесты, CHANGELOG, HANDOVER) примеры серий только нейтральные (PC-/LT-/FS-); сам organizational-префикс нигде не называется. Тест партии 30 переписан (слово «portable» теперь легально, запрещены только старые глобалы IS_PORTABLE/ADK_PORTABLE/ADK_HOME).
 - Из 3.10.0 убран пункт «Исправлено: подсказка сканера…» (юсер читал как «скан починен») — реальный фикс в 3.11.0.
 - Грабли: `QLineEdit(text)` не эмитит textChanged (add_row зовёт recount); `_E`-фейк: dict {"name": [...]} НЕ подходит под ad.get_ad_value — нужен объект с .values.
 - Тесты: +12 (383). Видео 32: ≥709 с.
