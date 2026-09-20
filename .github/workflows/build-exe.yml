@@ -37,7 +37,7 @@ jobs:
           Start-Sleep -Seconds 8
           if ($p.HasExited) { throw "exe exited early with $($p.ExitCode)" }
           Stop-Process -Id $p.Id -Force
-          if (-not (Test-Path "$env:USERPROFILE\Documents\ADK\config.ini")) { throw "config.ini not created" }
+          if (-not (Test-Path "$pwd\dist\ADK\config.ini")) { throw "portable config.ini not created next to exe" }   # 3.10.0: папка ADK рядом с exe (Документы — только запасной вариант без прав на запись)
       - name: Zip
         shell: pwsh
         run: |
