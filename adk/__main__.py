@@ -187,8 +187,9 @@ def main() -> int:
         except Exception:  # noqa: BLE001
             log.exception("окно выбора парка")
 
-    # 3.9.0: вопрос «что собрать» — строго до главного окна и только один раз, при пустой базе
-    # (первый запуск / свежий файл). Дальше база обновляется кнопкой и по расписанию — вопрос не беспокоит.
+    # 3.9.0: вопрос «что собрать» — строго до главного окна: при первом запуске (после выбора базы —
+    # 3.11.0: в любом случае, даже если выбранная база не пуста) или при пустой базе.
+    # Дальше база обновляется кнопкой и по расписанию — вопрос не беспокоит.
     startup_choice = ""
     if not os.environ.get("ADK_TESTS"):
         try:
@@ -196,7 +197,7 @@ def main() -> int:
             base_empty = not (row and row[0])
         except Exception:  # noqa: BLE001
             base_empty = False
-        if base_empty:
+        if base_empty or db_setup_ran:
             from .scan_ui import ask_startup_scan
             startup_choice = ask_startup_scan(None)
 

@@ -13,14 +13,14 @@ from adk.config import _migrate_old_data, _try_portable_dir, park_pattern
 
 # ------------------------------------------------------------------ park_pattern: человеческий ввод → маска
 @pytest.mark.parametrize("src, expected", [
-    ("PC-", "PC-*"),          # «ищет все адм»
-    ("adm-", "PC-*"),          # регистр не важен
-    ("PC-0000", "PC-????"),   # 4 цифры → 4 «?»
+    ("PC-", "PC-*"),
+    ("pc-", "PC-*"),            # регистр не важен
+    ("PC-0000", "PC-????"),     # 4 цифры → 4 «?»
     ("PC-12", "PC-??"),
-    ("adm-0099", "PC-????"),
+    ("pc-0099", "PC-????"),
     ("PC", "PC"),               # без дефиса — точное имя
-    ("LT_10", "LT_??"),       # каждая цифра — «?»
-    ("LT-10 ", "LT-??"),      # пробелы по краям срезаются
+    ("LT_10", "LT-??".replace("-", "_")),   # каждая цифра — «?»
+    ("LT-10 ", "LT-??"),       # пробелы по краям срезаются
     ("", ""),
     ("   ", ""),
     ("FS.", "FS.*"),
@@ -89,7 +89,7 @@ def test_default_config_writes_ssl_false(tmp_path):
 def test_park_mask_dialog_counts_and_saves(qapp, monkeypatch):
     from PyQt6.QtWidgets import QLineEdit
     from adk.setup_ui import ParkMaskDialog
-    names = ["PC-0001", "PC-0002", "PC-100", "LT-0001", "PC-01"]
+    names = ["PC-0001", "PC-0002", "PC-100", "LT-0001", "WS-01"]
     saved = {}
     monkeypatch.setattr(config.settings, "host_mask", "")
     monkeypatch.setattr(config.settings, "save_section", lambda s, v: saved.update(v))
@@ -144,7 +144,7 @@ def test_scan_hint_mentions_mask():
     try:
         # маска задана → ПК, не подходящий под неё, отбрасывается (это и было причиной «скан не начался»)
         rx = PCScannerWorker._mask_regex(monkey_mask)
-        assert rx.match("PC-0001") and rx.match("adm-0099")
+        assert rx.match("PC-0001") and rx.match("pc-0099")
         assert not rx.match("PC-001")
         assert not rx.match("WS-0001")
     finally:
@@ -163,3 +163,92 @@ def test_migrate_rewrites_config_paths(tmp_path):
     assert str(new / "pc_mapping.db") in txt
     assert str(old) not in txt
     assert (new / "pc_mapping.db").exists()
+
+
+# ------------------------------------------------------------------ 3.11.0: нормализация search_base
+@pytest.mark.parametrize("src, expected", [
+    ("GC://DC=city,DC=local", "DC=city,DC=local"),
+    ("LDAP://DC=city,DC=local", "DC=city,DC=local"),
+    ("ldaps://DC=city,DC=local", "DC=city,DC=local"),
+    ("  DC=city,DC=local  ", "DC=city,DC=local"),
+    ("DC=city,DC=local", "DC=city,DC=local"),
+    ("", ""),
+])
+def test_normalize_search_base(src, expected):
+    from adk.config import normalize_search_base
+    assert normalize_search_base(src) == expected
+
+
+# ------------------------------------------------------------------ 3.11.0: ADSI-запасной путь
+def test_adsi_computer_names_parses(monkeypatch):
+    from adk import netutils
+
+    class R:
+        returncode, stdout, stderr = 0, "PC-0001\nPC-0002\nsrv-hidden\n", ""
+    monkeypatch.setattr(netutils.subprocess, "run", lambda *a, **k: R())
+    assert netutils.adsi_computer_names() == ["PC-0001", "PC-0002", "SRV-HIDDEN"]
+
+
+def test_adsi_computer_names_error(monkeypatch):
+    from adk import netutils
+
+    class R:
+        returncode, stdout, stderr = 1, "ADSI_ERROR: нет доступа", ""
+    monkeypatch.setattr(netutils.subprocess, "run", lambda *a, **k: R())
+    with pytest.raises(RuntimeError):
+        netutils.adsi_computer_names()
+
+
+class _Attr:
+    def __init__(self, values):
+        self.values = values
+
+
+class _E:                                            # минимальная «запись AD» с атрибутом name
+    def __init__(self, name):
+        self._a = {"name": _Attr([name])}
+
+    def __getitem__(self, key):
+        return self._a[key]
+
+
+def _fake_conn():
+    class C:
+        def unbind(self):
+            pass
+    return C()
+
+
+def test_host_list_ldap_wins(monkeypatch):
+    from adk import workers
+    from adk.workers import host_list_from_ad
+    monkeypatch.setattr(config.settings, "host_mask", "PC-*")
+    monkeypatch.setattr(workers.ad, "paged_search",
+                        lambda conn, flt, attrs: [_E("PC-0001"), _E("LT-0002")])
+    called = []
+    monkeypatch.setattr(workers.netutils, "adsi_computer_names", lambda: called.append(1) or [])
+    hosts, via = host_list_from_ad(_fake_conn)
+    assert hosts == ["PC-0001"] and via == "ldap" and not called
+
+
+def test_host_list_falls_back_to_adsi(monkeypatch):
+    """LDAP упал или пуст — список берётся через ADSI, как в старой программе."""
+    from adk import workers
+    from adk.workers import host_list_from_ad
+    monkeypatch.setattr(config.settings, "host_mask", "PC-????")
+    monkeypatch.setattr(workers.ad, "paged_search", lambda conn, flt, attrs: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(workers.netutils, "adsi_computer_names",
+                        lambda: ["PC-0001", "PC-002", "LT-0001", "PC-0002"])
+    hosts, via = host_list_from_ad(_fake_conn)
+    assert hosts == ["PC-0001", "PC-0002"] and via == "adsi"   # PC-002 (3 цифры) под PC-???? не подходит, LT-0001 вне маски
+
+
+# ------------------------------------------------------------------ 3.11.0: сектора диаграммы
+def test_donut_segments_math(qapp):
+    from adk.scan_ui import DonutWidget
+    d = DonutWidget(150)
+    d.set_segments([(10, 10, "#111111"), (30, 15, "#222222")])
+    assert d._total == 40 and d._done == 25          # общий процент = 25/40 = 63%, из реальных чисел
+    d.set_segments([])
+    assert d._total == 0 and d._done == 0
+    d.deleteLater()

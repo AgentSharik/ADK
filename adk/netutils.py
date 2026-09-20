@@ -1088,3 +1088,39 @@ def get_pc_info_from_csv(pc_name: str, login: str, fio: str) -> tuple[str, str]:
         except OSError:
             continue
     return ip, date
+
+
+# ---------------------------------------------------------------- список ПК домена через ADSI (запасной путь)
+_ADSI_COMPUTERS_PS = r"""
+$ErrorActionPreference = 'Stop'
+try {
+  $s = [adsisearcher]'(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))'
+  $s.PageSize = 1000
+  $s.PropertiesToLoad.AddRange(@('name','operatingSystem')) | Out-Null
+  $out = New-Object System.Collections.Generic.List[string]
+  foreach ($r in $s.FindAll()) {
+    $os = [string]$r.Properties['operatingsystem']
+    if ($os -like '*Server*') { continue }
+    $n = ([string]$r.Properties['name']).Trim()
+    if ($n) { $out.Add($n.ToUpper()) }
+  }
+  $out -join "`n"
+} catch { Write-Output ("ADSI_ERROR: " + $_.Exception.Message); exit 1 }
+"""
+
+
+def adsi_computer_names(timeout: float = 120.0) -> list[str]:
+    """Имена рабочих станций домена через ADSI (PowerShell ``[adsisearcher]``), без LDAP-библиотек.
+
+    Запасной путь, если ldap3 не смог (3.11.0): именно так получала список ПК старая программа
+    (ADODB + GC://), т.е. способ проверен в тех же сетях. Работает от учётки вошедшего пользователя,
+    фильтры те же: компьютеры, не отключённые, не серверы.
+    """
+    cmd = ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", _ADSI_COMPUTERS_PS]
+    try:
+        cp = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, creationflags=CREATE_NO_WINDOW)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"ADSI-запрос не выполнился: {exc}") from exc
+    if cp.returncode != 0 or cp.stdout.startswith("ADSI_ERROR"):
+        raise RuntimeError(f"ADSI-запрос вернул ошибку: {(cp.stdout or cp.stderr or '').strip()[:300]}")
+    return [n for n in (x.strip().upper() for x in cp.stdout.splitlines()) if n]

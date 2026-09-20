@@ -22,7 +22,7 @@ from PyQt6.QtCore import QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from . import db
+from . import config, db
 from .widgets import FramelessDialog, app_palette
 from .workers import BaseWorker, PCScannerWorker, _Emitter
 
@@ -35,15 +35,27 @@ class DonutWidget(QWidget):
 
     ``set_progress(done, total)`` — выполнено ``done`` проверок из ``total``; ``total=0`` — «не начато»
     (пустое кольцо без цифры).
+    ``set_segments(segments)`` (3.11.0) — диаграмма-«пончик» по шагам сканирования: каждый шаг —
+    сектор, чья доля кольца пропорциональна его объёму, заполненная часть — реальному прогрессу.
+    ``segments`` — список ``(total, done, цвет)``; суммарный процент — в центре.
     """
 
     def __init__(self, diameter: int = 150, parent=None):
         super().__init__(parent)
         self._done, self._total = 0, 0
+        self._segments: list[tuple[int, int, str]] = []
         self.setFixedSize(diameter, diameter)
 
     def set_progress(self, done: int, total: int):
         self._done, self._total = max(0, done), max(0, total)
+        self._segments = []
+        self.update()
+
+    def set_segments(self, segments: list[tuple[int, int, str]]):
+        """``[(total, done, hex-цвет), …]`` — доли шагов; общий процент считается из реальных чисел."""
+        self._segments = [(max(0, t), max(0, d), c) for t, d, c in segments]
+        self._total = sum(t for t, _d, _c in self._segments)
+        self._done = sum(min(d, t) for t, d, _c in self._segments)
         self.update()
 
     def paintEvent(self, _e):  # noqa: N802
@@ -54,12 +66,32 @@ class DonutWidget(QWidget):
         r = QRectF(w / 2 + 2, w / 2 + 2, self.width() - w - 4, self.height() - w - 4)
         pen = QPen(QColor(pal.input), w, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         p.setPen(pen)
-        p.drawArc(r, 0, 360 * 16)                    # кольцо-фон
+        if not self._segments:
+            p.drawArc(r, 0, 360 * 16)                # кольцо-фон (одношаговый режим)
+        else:
+            # сектора шагов: доля кольца ∝ объём шага, заполнение ∝ прогрессу шага; между секторами зазор
+            gap = 3 * 16
+            spans: list[int] = []
+            for t, _d, _c in self._segments:
+                spans.append(int(360 * 16 * t / self._total) if self._total else 0)
+            for i, (t, d, color) in enumerate(self._segments):
+                span = spans[i] - (gap if len(self._segments) > 1 else 0)
+                if span <= 0:
+                    continue
+                start = 90 * 16 - sum(spans[:i + 1])          # от 12 часов, по часовой
+                pen.setColor(QColor(pal.input))
+                p.setPen(pen)
+                p.drawArc(r, start, -span)                    # фон сектора
+                if t > 0 and d > 0:
+                    pen.setColor(QColor(color))
+                    p.setPen(pen)
+                    p.drawArc(r, start, -int(span * min(1.0, d / t)))
         if self._total > 0:
             pct = min(1.0, self._done / self._total)
-            pen.setColor(QColor(pal.title_accent))
-            p.setPen(pen)
-            p.drawArc(r, 90 * 16, int(-360 * 16 * pct))   # от 12 часов, по часовой
+            if not self._segments:
+                pen.setColor(QColor(pal.title_accent))
+                p.setPen(pen)
+                p.drawArc(r, 90 * 16, int(-360 * 16 * pct))   # от 12 часов, по часовой
             big = QFont(self.font())
             big.setPointSizeF(max(14.0, self.width() * 0.16))
             big.setBold(True)
@@ -129,6 +161,13 @@ class StartupScanDialog(FramelessDialog):
 
 
 # ============================================================================ рабочий поток полного опроса
+def _phase_colors() -> dict[str, str]:
+    """Цвет сектора каждого шага на диаграмме (3.11.0) — из семантики темы, различимы на всех 10 темах."""
+    pal = app_palette()
+    return {"pcs": pal.info[0], "printers": pal.success[0],
+            "software": pal.warning[0], "specs": pal.title_accent}
+
+
 def _phase_labels() -> dict[str, tuple[str, str]]:
     """Ключ шага → (заголовок, подпись) для окна прогресса."""
     return {
@@ -193,23 +232,19 @@ class FullScanWorker(BaseWorker):
         self.mode = mode                       # "full" — три шага; "pcs" — только первый
 
     def run(self) -> None:
-        from . import ad, fleetpoll
+        from . import fleetpoll
         s = {"pcs": 0, "online": 0, "printers_pcs": 0, "printers": 0, "sw_pcs": 0, "sw": 0,
              "specs_pcs": 0, "error": "", "stopped": False, "mode": self.mode}
         try:
-            # ---- шаг 1: ПК из домена
-            self.step_text.emit("Список рабочих станций из AD…")
-            conn = self.conn_factory()
-            try:
-                entries = ad.paged_search(
-                    conn,
-                    "(&(objectClass=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))"
-                    "(!(operatingSystem=*Server*)))", ["name"])
-            finally:
-                conn.unbind()
-            hosts = PCScannerWorker.workstation_names(entries)
+            # ---- шаг 1: ПК из домена (LDAP, при пустом результате — ADSI, как в старой программе)
+            from .workers import host_list_from_ad
+            hosts, via = host_list_from_ad(self.conn_factory, lambda m: self.step_text.emit(m))
             if not hosts:
-                s["error"] = "в AD не найдено ни одного ПК под host_pattern (config.ini → [Scanner])"
+                what = (f"маска парка «{config.settings.host_mask}» ([Scanner] host_mask)"
+                        if config.settings.host_mask.strip()
+                        else f"host_pattern «{config.settings.host_pattern}»")
+                s["error"] = (f"ни один ПК домена не подошёл под {what}; список ПК брался через {via.upper()}")
+                self.step_text.emit(f"⚠️ {s['error']}")
                 self.finished_full.emit(s)
                 return
             est = _online_estimate(len(hosts))
@@ -379,7 +414,9 @@ class FullScanDialog(FramelessDialog):
 
     # ---- прогресс
     def _refresh_donut(self):
-        self.donut.set_progress(sum(self._done.values()), sum(self._planned.values()))
+        colors = _phase_colors()
+        self.donut.set_segments([(self._planned.get(k, 0), self._done.get(k, 0), colors.get(k, "#0A84FF"))
+                                 for k in self._rows])
 
     def _on_plan(self, phase: str, total: int):
         self._planned[phase] = total
@@ -395,10 +432,11 @@ class FullScanDialog(FramelessDialog):
         head, val = self._rows.get(phase, (None, None))
         if val is not None:
             total = self._planned.get(phase, 0)
-            val.setText(f"✓ {done}/{total}" + (f" · {host}" if host else ""))
+            pct = f"{round(100 * done / total)}%" if total else "0%"
+            val.setText(f"✓ {done}/{total} ({pct})" + (f" · {host}" if host else ""))
             if done >= total > 0:
                 pal = app_palette()
-                val.setText(f"✅ готово: {done} ПК")
+                val.setText(f"✅ готово: {done} из {total} (100%)")
                 val.setStyleSheet(f"color: {pal.title_accent}; font-size: 9pt; background: transparent;")
         self.lbl_host.setText(host if host and "/" not in host else "")
         self._refresh_donut()

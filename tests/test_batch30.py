@@ -441,7 +441,7 @@ def test_scan_once_explains_empty_host_pattern(monkeypatch):
         def unbind(self): pass
     with pytest.raises(RuntimeError) as ei:
         PCScannerWorker.scan_once(lambda: _C())
-    assert "host_pattern" in str(ei.value) and "2 компьютеров" in str(ei.value)
+    assert "host_pattern" in str(ei.value) and "ADSI" in str(ei.value)   # 3.11.0: показывает и фильтр, и какой путь списка пробовался
 
 
 def test_scan_once_fills_inventory_without_powershell(monkeypatch):

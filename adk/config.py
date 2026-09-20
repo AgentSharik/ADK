@@ -89,6 +89,18 @@ LOG_FILE = os.path.join(DOCS_DIR, "adk.log")
 PLUGINS_DIR = os.path.join(DOCS_DIR, "plugins")
 
 
+def normalize_search_base(base: str) -> str:
+    """Убрать ADSI-префикс, если он попал в config из старой программы («GC://DC=…», «LDAP://DC=…»).
+
+    ldap3 ждёт чистый DN: с префиксом любой поиск по домену молча возвращает пустоту (3.11.0).
+    """
+    b = (base or "").strip()
+    for p in ("GC://", "LDAP://", "LDAPS://"):
+        if b.upper().startswith(p):
+            return b[len(p):].strip()
+    return b
+
+
 def park_pattern(text: str) -> str:
     """Превратить то, что ввёл пользователь, в элемент маски парка (host_mask).
 
@@ -517,7 +529,7 @@ class Settings:
         ad = cp["AD"]
         self.domain_netbios: str = ad.get("domain_netbios")
         self.dc_host: str = ad.get("dc_host")
-        self.search_base: str = ad.get("search_base")
+        self.search_base: str = normalize_search_base(ad.get("search_base"))
         self.users_ou: str = ad.get("users_ou")
         self.upn_suffix: str = ad.get("upn_suffix")
         self.use_ssl: bool = ad.getboolean("use_ssl")

@@ -31,8 +31,8 @@ def test_host_mask_overrides_pattern(monkeypatch):
     monkeypatch.setattr(config.settings, "host_pattern", r"^(WS-\d+|PC-.*)$")
     monkeypatch.setattr(config.settings, "host_exclude", "")
     monkeypatch.setattr(config.settings, "host_mask", "PC-???, LT-*")
-    names = PCScannerWorker.workstation_names([_E("PC-101"), _E("LT-North"), _E("WS-5"), _E("PC-77"), _E("PC-10")])
-    assert names == ["PC-101", "LT-NORTH"]          # pattern не действует, маска решает
+    names = PCScannerWorker.workstation_names([_E("PC-101"), _E("LT-North"), _E("XW-5"), _E("WS-77"), _E("PC-10")])
+    assert names == ["PC-101", "LT-NORTH"]            # pattern не действует, маска решает
 
 
 def test_host_mask_empty_pattern_rules(monkeypatch):
@@ -40,16 +40,16 @@ def test_host_mask_empty_pattern_rules(monkeypatch):
     monkeypatch.setattr(config.settings, "host_pattern", r"^(WS-\d+|PC-.*)$")
     monkeypatch.setattr(config.settings, "host_exclude", "")
     monkeypatch.setattr(config.settings, "host_mask", "")
-    names = PCScannerWorker.workstation_names([_E("PC-101"), _E("WS-5"), _E("PC-77")])
+    names = PCScannerWorker.workstation_names([_E("XW-101"), _E("WS-5"), _E("PC-77")])
     assert names == ["WS-5", "PC-77"]
 
 
 def test_host_mask_exclude_still_applies(monkeypatch):
     monkeypatch.setattr(config.settings, "host_pattern", r"^(WS-\d+)$")
     monkeypatch.setattr(config.settings, "host_exclude", "(TEST)")
-    monkeypatch.setattr(config.settings, "host_mask", "PC-*")
-    names = PCScannerWorker.workstation_names([_E("PC-1"), _E("PC-TEST")])
-    assert names == ["PC-1"]
+    monkeypatch.setattr(config.settings, "host_mask", "LT-*")
+    names = PCScannerWorker.workstation_names([_E("LT-1"), _E("LT-TEST")])
+    assert names == ["LT-1"]
 
 
 # ---------------------------------------------------------------- свежие характеристики

@@ -508,6 +508,46 @@ class _Emitter:
         self.emit = fn
 
 
+_COMPUTERS_FILTER = ("(&(objectClass=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))"
+                     "(!(operatingSystem=*Server*)))")
+
+
+def host_list_from_ad(conn_factory: ConnFactory, progress=None) -> tuple[list[str], str]:
+    """Список рабочих станций парка (3.11.0): сначала LDAP (ldap3), при пустом результате или ошибке —
+    ADSI через PowerShell (так получала список старая программа — путь проверен в тех же сетях).
+
+    Возвращает ``(hosts, путь)``: путь — ``'ldap'`` или ``'adsi'``, чтобы показать пользователю,
+    откуда взяли список, если что-то пойдёт не так.
+    """
+    def say(msg: str):
+        if progress:
+            progress(msg)
+
+    entries: list = []
+    err = ""
+    try:
+        say("🔍 Запрос списка рабочих станций из AD (LDAP)…")
+        conn = conn_factory()
+        try:
+            entries = ad.paged_search(conn, _COMPUTERS_FILTER, ["name"])
+        finally:
+            conn.unbind()
+    except Exception as exc:  # noqa: BLE001
+        err = str(exc)
+    hosts = PCScannerWorker.workstation_names(entries)
+    if hosts:
+        return hosts, "ldap"
+
+    say("⚠️ LDAP не дал ни одного ПК" + (f": {err}" if err else "")
+        + " — пробую запасной путь ADSI (так получала список старая программа)…")
+    try:
+        names = netutils.adsi_computer_names()
+    except Exception as exc:  # noqa: BLE001
+        say(f"⚠️ ADSI тоже не смог: {exc}")
+        names = []
+    return PCScannerWorker.filter_host_names(names), "adsi"
+
+
 class PCScannerWorker(BaseWorker):
     """Список рабочих станций из AD → DNS/ping/журналы (PowerShell RunspacePool) → pc_inventory."""
     progress = pyqtSignal(str)
@@ -517,7 +557,6 @@ class PCScannerWorker(BaseWorker):
         super().__init__(parent)
         self.conn_factory = conn_factory
 
-    @staticmethod
     @staticmethod
     def _mask_regex(mask: str) -> re.Pattern | None:
         """Маска имён ПК → regex: ? = одна цифра, * = любые символы, остальное буквально. '' → None (все ПК)."""
@@ -533,12 +572,18 @@ class PCScannerWorker(BaseWorker):
 
     @staticmethod
     def workstation_names(entries) -> list[str]:
+        return PCScannerWorker.filter_host_names(
+            [ad.get_ad_value(e, "name").rstrip("$").upper() for e in entries])
+
+    @staticmethod
+    def filter_host_names(names: list[str]) -> list[str]:
+        """Применить к списку имён главное: маску парка (если задана) или host_pattern + exclude."""
         pattern = re.compile(settings.host_pattern, re.IGNORECASE)
         exclude = re.compile(settings.host_exclude, re.IGNORECASE) if settings.host_exclude else None
         mask = PCScannerWorker._mask_regex(settings.host_mask)
         out = []
-        for e in entries:
-            name = ad.get_ad_value(e, "name").rstrip("$").upper()
+        for raw in names:
+            name = raw.rstrip("$").upper()
             # 3.9.0: заданная маска — главный фильтр: она определяет парк (host_pattern не действует,
             # иначе дефолтный ^(WS-\d+|PC-.*)$ вырезал бы ПК серий, которых нет в шаблоне). exclude — всегда.
             if mask is not None:
@@ -550,25 +595,16 @@ class PCScannerWorker(BaseWorker):
 
     def run(self) -> None:
         try:
-            self.progress.emit("🔍 Запрос списка рабочих станций из AD…")
-            conn = self.conn_factory()
-            try:
-                entries = ad.paged_search(
-                    conn,
-                    "(&(objectClass=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))"
-                    "(!(operatingSystem=*Server*)))",
-                    ["name"],
-                )
-            finally:
-                conn.unbind()
-            hosts = self.workstation_names(entries)
+            hosts, via = host_list_from_ad(self.conn_factory,
+                                           lambda m: self.progress.emit(m))
             if not hosts:
-                # 3.10.0: подсказка зависит от того, что фильтрует — заданная маска парка или host_pattern
+                # 3.11.0: честная причина — какой фильтр отсек всех и какой путь списка пробовался
                 if settings.host_mask.strip():
-                    self.progress.emit(f"⚠️ По маске парка «{settings.host_mask}» не нашлось ни одного ПК — "
-                                       f"проверьте [Scanner] host_mask в config.ini")
+                    self.progress.emit(f"⚠️ Не найдено ни одного ПК парка: маска «{settings.host_mask}» "
+                                       f"([Scanner] host_mask); список ПК брался через {via.upper()}")
                 else:
-                    self.progress.emit("⚠️ Целевые ПК не найдены (проверьте host_pattern в config.ini)")
+                    self.progress.emit(f"⚠️ Целевые ПК не найдены (host_pattern = {settings.host_pattern}); "
+                                       f"список ПК брался через {via.upper()}")
                 self.finished_scan.emit(0)
                 return
             self.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping, журналы входов)…")
@@ -590,19 +626,14 @@ class PCScannerWorker(BaseWorker):
         w = cls.__new__(cls)
         w.conn_factory, w._cancelled = conn_factory, False
         w.progress = _Emitter(progress or (lambda m: log.info("%s", m)))
-        conn = conn_factory()
-        try:
-            entries = ad.paged_search(conn, "(&(objectClass=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))"
-                                            "(!(operatingSystem=*Server*)))", ["name"])
-        finally:
-            conn.unbind()
-        hosts = w.workstation_names(entries)
+        hosts, via = host_list_from_ad(conn_factory, w.progress.emit)
         if not hosts:
             if settings.host_mask.strip():
-                raise RuntimeError(f"в AD найдено {len(entries)} компьютеров, но ни один не подходит под маску парка "
-                                   f"«{settings.host_mask}» ([Scanner] host_mask в config.ini)")
-            raise RuntimeError(f"в AD найдено {len(entries)} компьютеров, но ни один не подходит под host_pattern "
-                               f"«{settings.host_pattern}» (config.ini → [Scanner]); исключение: «{settings.host_exclude}»")
+                raise RuntimeError(f"ни один ПК домена не подходит под маску парка «{settings.host_mask}» "
+                                   f"([Scanner] host_mask в config.ini); список ПК брался через {via.upper()}")
+            raise RuntimeError(f"ни один ПК домена не подходит под host_pattern "
+                               f"«{settings.host_pattern}» (config.ini → [Scanner]); исключение: «{settings.host_exclude}»; "
+                               f"список ПК брался через {via.upper()}")
         w.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping, журналы входов)…")
         results = w.probe_hosts(hosts)
         db.batch_update_inventory(results, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
