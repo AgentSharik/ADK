@@ -2004,6 +2004,14 @@ class ADApp(FramelessMainWindow):
             if w is not None and w.isRunning():
                 w.wait(3000)
         event.accept()
+        # 3.9.1: главное. При включённом трее setQuitOnLastWindowClosed(False) — окно закрывалось,
+        # а цикл событий продолжал жить: процесс оставался в диспетчере задач без окна. По правилу
+        # «крестик — всегда полный выход» явно завершаем приложение (+ та же страховка, что у quit_app).
+        if not getattr(self, "_quitting", False):
+            self._quitting = True
+            QApplication.quit()
+            if not os.environ.get("PYTEST_CURRENT_TEST"):
+                QTimer.singleShot(3000, lambda: os._exit(0))
 
 
 def escape(text: str) -> str:

@@ -150,3 +150,26 @@ def test_logons_skip_net_builds_script(monkeypatch):
     assert "$skipNet = $true" in seen["script"] and "-ne '3'" in seen["script"]
     logons.get_logons("WS-101", 24, include_net=True)
     assert "$skipNet = $false" in seen["script"]
+
+
+# ---------------------------------------------------------------- выход: крестик завершает приложение и с треем
+def test_close_event_quits_with_tray_enabled(qapp, monkeypatch):
+    """3.9.1: при включённом трее окно закрывалось, а цикл событий жил — процесс оставался
+    в диспетчере задач. Теперь closeEvent явно завершает приложение."""
+    monkeypatch.setattr(config.settings, "minimize_to_tray", True)
+    from PyQt6.QtWidgets import QApplication as QApp
+    from adk.main_window import ADApp
+    calls = []
+    monkeypatch.setattr(QApp, "quit", lambda: calls.append(1))
+    w = ADApp("admin", "x")
+    w.close()
+    assert calls == [1] and getattr(w, "_quitting", False)
+    w.deleteLater()
+
+
+def test_quit_app_marks_quitting_before_close(qapp, monkeypatch):
+    from adk.main_window import ADApp
+    w = ADApp("admin", "x")
+    w.quit_app()                       # не должен зациклиться и не должен вызвать os._exit в тестах
+    assert w._quitting is True
+    w.deleteLater()
