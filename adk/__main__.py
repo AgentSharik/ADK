@@ -187,9 +187,9 @@ def main() -> int:
         except Exception:  # noqa: BLE001
             log.exception("окно выбора парка")
 
-    # 3.9.0: вопрос «что собрать» — строго до главного окна: при первом запуске (после выбора базы —
-    # 3.11.0: в любом случае, даже если выбранная база не пуста) или при пустой базе.
-    # Дальше база обновляется кнопкой и по расписанию — вопрос не беспокоит.
+    # 3.12.0: окно-вопрос «что собрать» убрано — сразу на дашборд. При пустой базе полный опрос
+    # (ПК → принтеры → программы) запускается сам и показывает прогресс в строке статуса у кнопки
+    # «Обновить парк» (сколько просканировано), без отдельных окон.
     startup_choice = ""
     if not os.environ.get("ADK_TESTS"):
         try:
@@ -197,9 +197,8 @@ def main() -> int:
             base_empty = not (row and row[0])
         except Exception:  # noqa: BLE001
             base_empty = False
-        if base_empty or db_setup_ran:
-            from .scan_ui import ask_startup_scan
-            startup_choice = ask_startup_scan(None)
+        if base_empty:
+            startup_choice = "full"
 
     window = ADApp(user, password, initial_fill=initial_fill, startup_choice=startup_choice)
     window.show()

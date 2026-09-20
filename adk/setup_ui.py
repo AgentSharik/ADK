@@ -402,12 +402,13 @@ class ParkMaskDialog(FramelessDialog):
                     if PCScannerWorker._mask_regex(p) and PCScannerWorker._mask_regex(p).match(n)}
             self.total_lbl.setText(f"В парк попадает ПК: {len(uniq)} из {len(self.computer_names)} в домене."
                                    if uniq else ("Ничего не найдено — проверьте написание." if any(pats) else ""))
-        self.btn_ok.setEnabled(any(pats))
 
     def save(self, *_):
         pats = self._patterns()
         if not pats:
-            self.reject()
+            # 3.12.0: кнопка всегда доступна; пустой ввод — понятная подсказка вместо серой кнопки
+            self.total_lbl.setText("Введите серию (например PC- или PC-0000) — или нажмите «Пропустить», "
+                                   "чтобы работать со всеми ПК домена.")
             return
         mask = ", ".join(pats)
         settings.host_mask = mask

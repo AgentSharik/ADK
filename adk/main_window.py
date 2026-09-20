@@ -120,6 +120,7 @@ class ADApp(FramelessMainWindow):
         self.initial_fill = initial_fill          # 3.5.11: база только что создана — заполнить её (сканер + принтеры)
         self.startup_choice = startup_choice      # 3.9.0: ответ на стартовый вопрос (full · pcs · '' — не задан/пропущен)
         self.fill_worker = None
+        self.full_worker = None          # 3.12.0: полный опрос без окна — прогресс в строке статуса
         self.admin_name = username or os.environ.get("USERNAME", "sso")
         self.scan_owner = f"{os.environ.get('COMPUTERNAME') or platform.node()}\\{self.admin_name}"
         self.results: list[dict] = []
@@ -1917,8 +1918,9 @@ class ADApp(FramelessMainWindow):
 
     # ------------------------------------------------------------------ 3.8.0: полный опрос (стартовый вопрос — в __main__, до окна)
     def start_full_scan(self):
-        """Полный опрос парка (ПК → принтеры → программы) с окном прогресса и круговой диаграммой."""
-        if getattr(self, "full_dialog", None) and self.full_dialog.worker.isRunning():
+        """Полный опрос парка (ПК → принтеры → программы) — 3.12.0: без отдельного окна, прогресс в строке
+        статуса рядом с кнопкой «Обновить парк»: сколько просканировано на каждом шаге + кнопка «Стоп»."""
+        if self.full_worker and self.full_worker.isRunning():
             return
         if self.scanner and self.scanner.isRunning():
             return
@@ -1932,11 +1934,44 @@ class ADApp(FramelessMainWindow):
             self.refresh_dashboard()
             return
         self.btn_scan.setEnabled(False)
-        from .scan_ui import FullScanDialog
-        self.full_dialog = FullScanDialog(self.get_conn, "full", on_finished=self.on_full_scan_done, parent=self)
+        self.btn_fill_stop.show()
+        self.lbl_status.setText(tr("🔄 Полный опрос парка: подготовка…"))
+        self._planned, self._full_done = {}, {}
+        from .scan_ui import FullScanWorker
+        self.full_worker = FullScanWorker(self.get_conn, "full", parent=self)
+        self._planned: dict[str, int] = {}
+        self.full_worker.plan.connect(self._full_on_plan)
+        self.full_worker.unit.connect(self._full_on_unit)
+        self.full_worker.step_text.connect(self._full_on_step)
+        self.full_worker.finished_full.connect(self.on_full_scan_done)
+        self.full_worker.error.connect(lambda m: self.lbl_status.setText(f"⚠️ {m}"))
+        self._threads.append(self.full_worker)
+        self.full_worker.start()
+
+    # ---- прогресс полного опроса в строке статуса
+    def _full_step_names(self) -> dict[str, str]:
+        return {"pcs": "ПК", "printers": "принтеры", "software": "программы", "specs": "характеристики"}
+
+    def _full_on_plan(self, phase: str, total: int):
+        self._planned[phase] = total
+        self._full_done.setdefault(phase, 0)
+
+    def _full_on_unit(self, phase: str, done: int, host: str):
+        self._full_done[phase] = done
+        names = self._full_step_names()
+        bits = [f"{names.get(k, k)} {self._full_done.get(k, 0)}/{self._planned.get(k, 0)}"
+                for k in self._planned]
+        extra = f" · {host}" if host and "/" not in host else ""
+        self.lbl_status.setText(tr("🔄 Полный опрос: ") + ", ".join(bits) + extra)
+
+    def _full_on_step(self, text: str):
+        self.lbl_status.setText(tr("🔄 ") + text if not text.startswith(("⚠️", "👥", "🔄")) else text)
 
     def on_full_scan_done(self, summary: dict):
         self.btn_scan.setEnabled(True)
+        self.btn_fill_stop.hide()
+        self.btn_fill_stop.setEnabled(True)
+        self.full_worker = None
         with contextlib.suppress(Exception):
             db.scan_lease_release(self.scan_owner)
         if summary.get("pcs"):
@@ -1944,9 +1979,6 @@ class ADApp(FramelessMainWindow):
         from .scan_ui import full_summary_text
         self.lbl_status.setText(tr(full_summary_text(summary)))
         self.refresh_dashboard()
-        if getattr(self, "full_dialog", None) and not self.full_dialog.isVisible():
-            self.full_dialog.deleteLater()
-            self.full_dialog = None
 
     # ------------------------------------------------------------------ 3.5.11: первичное наполнение новой базы
     def start_initial_fill(self):
@@ -1968,6 +2000,10 @@ class ADApp(FramelessMainWindow):
             self.fill_worker.cancel()
             self.btn_fill_stop.setEnabled(False)
             self.lbl_status.setText(tr("⏹ Останавливаю наполнение — начатые ПК дорабатывают…"))
+        if self.full_worker and self.full_worker.isRunning():   # 3.12.0: «Стоп» останавливает и полный опрос
+            self.full_worker.cancel()
+            self.btn_fill_stop.setEnabled(False)
+            self.lbl_status.setText(tr("⏹ Останавливаю опрос — начатые ПК дорабатывают…"))
 
     def on_initial_fill_done(self, summary: dict):
         from .setup_ui import fill_summary_text
@@ -1996,7 +2032,8 @@ class ADApp(FramelessMainWindow):
         if hasattr(self, "attention_timer"):
             self.attention_timer.stop()
         for w in [self.scanner, *self._threads, *getattr(self, "_bg_workers", []),
-                  getattr(getattr(self, "full_dialog", None), "worker", None)]:
+                  getattr(getattr(self, "full_dialog", None), "worker", None),
+                  getattr(self, "full_worker", None)]:
             if w is not None and w.isRunning():
                 w.cancel()
         for w in [self.scanner, *self._threads, *getattr(self, "_bg_workers", []),

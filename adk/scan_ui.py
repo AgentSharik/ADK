@@ -262,6 +262,8 @@ class FullScanWorker(BaseWorker):
                 results += scanner.probe_hosts(hosts[k:k + self.CHUNK])
                 done = min(k + self.CHUNK, len(hosts))
                 self.unit.emit("pcs", done, f"опрошено {done} из {len(hosts)}")
+            from .workers import enrich_with_dc_logons
+            results = enrich_with_dc_logons(results, lambda m: self.step_text.emit(m))
             if self.cancelled:
                 s["stopped"] = True
             if results:

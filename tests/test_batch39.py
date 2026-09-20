@@ -95,7 +95,9 @@ def test_park_mask_dialog_counts_and_saves(qapp, monkeypatch):
     monkeypatch.setattr(config.settings, "save_section", lambda s, v: saved.update(v))
 
     d = ParkMaskDialog(None, names)
-    assert not d.btn_ok.isEnabled()                               # пустое поле — сохранить нельзя
+    # 3.12.0: кнопка всегда активна; пустой ввод обрабатывается подсказкой, а не серой кнопкой
+    d.save()
+    assert d.mask_saved is False and "Пропустить" in d.total_lbl.text()
     for i in range(d.rows_lay.count()):                           # в первом поле вводим серию
         lay = d.rows_lay.itemAt(i)
         if lay and lay.count():
@@ -252,3 +254,62 @@ def test_donut_segments_math(qapp):
     d.set_segments([])
     assert d._total == 0 and d._done == 0
     d.deleteLater()
+
+
+# ------------------------------------------------------------------ 3.12.0: журнал КД (4768) — «кто за ПК»
+class _PsOk:
+    ok, error = True, ""
+    def __init__(self, stdout):
+        self.stdout = stdout
+
+
+def test_dc_logon_events_parses(monkeypatch):
+    from adk import psrun, workers
+    seen = {}
+
+    def fake_run(script, timeout=240):
+        seen["script"] = script
+        return _PsOk('[{"u":"Ivanov","ip":"10.1.1.5"},{"u":"Petrova","ip":"10.1.1.6"}]')
+    monkeypatch.setattr(psrun, "run", fake_run)
+    pairs = workers.dc_logon_events("dc01.corp.local")
+    assert pairs == [("Ivanov", "10.1.1.5"), ("Petrova", "10.1.1.6")]
+    assert "dc01.corp.local" in seen["script"]            # адрес КД подставлен в Get-WinEvent
+
+
+def test_dc_logon_events_single_object_and_empty(monkeypatch):
+    from adk import psrun, workers
+    monkeypatch.setattr(psrun, "run", lambda script, timeout=240: _PsOk('{"u":"Sidorov","ip":"10.2.0.9"}'))
+    assert workers.dc_logon_events("dc") == [("Sidorov", "10.2.0.9")]
+    monkeypatch.setattr(psrun, "run", lambda script, timeout=240: _PsOk(""))
+    assert workers.dc_logon_events("dc") == []
+
+
+def test_dc_logon_events_error(monkeypatch):
+    from adk import psrun, workers
+
+    class _Bad:
+        ok, error, stdout = False, "нет доступа к журналу", ""
+    monkeypatch.setattr(psrun, "run", lambda script, timeout=240: _Bad())
+    with pytest.raises(RuntimeError):
+        workers.dc_logon_events("dc")
+
+
+def test_merge_dc_logons_fills_empty_users(monkeypatch):
+    from adk import workers
+    results = [{"Hostname": "PC-0001", "User": "", "LastLogon": "Неизвестно"},
+               {"Hostname": "PC-0002", "User": "Old", "LastLogon": "x"}]
+    pairs = [("Ivanov", "10.1.1.5"), ("Petrova", "10.1.1.7"), ("Ivanov", "10.1.1.5")]
+    monkeypatch.setattr("socket.gethostbyaddr",
+                        lambda ip: ({"10.1.1.5": "PC-0001.corp.local", "10.1.1.7": "PC-0003.corp.local"}[ip],))
+    out = workers.merge_dc_logons(results, pairs)
+    assert out[0]["User"] == "Ivanov"                       # пустой пользователь заполнен событием КД
+    assert "контроллера" in out[0]["LastLogon"]
+    assert out[1]["User"] == "Old"                          # уже известный не перезаписывается
+
+
+def test_enrich_with_dc_logons_swallows_errors(monkeypatch):
+    from adk import workers
+    monkeypatch.setattr(workers, "dc_logon_events",
+                        lambda dc: (_ for _ in ()).throw(RuntimeError("журнал закрыт")))
+    res = workers.enrich_with_dc_logons([{"Hostname": "PC-1", "User": ""}])
+    assert res[0]["User"] == ""                             # ошибка чтения — шаг пропущен, не упал скан

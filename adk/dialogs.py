@@ -2332,16 +2332,25 @@ class DesignSettingsDialog(FramelessDialog):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setSpacing(12)
-        lay.addWidget(QLabel("<b>Готовые темы</b>"))
-        holder = QWidget()
-        flow = FlowLayout(holder, spacing=8)
+        # 3.12.0: темы разложены по двум строкам — сначала тёмные, затем светлые (раньше шли одной
+        # чередой, читать было неудобно)
         self.tiles: dict[str, ThemeTile] = {}
-        for key, t in PRESET_THEMES.items():
-            tile = ThemeTile(key, t)
-            tile.clicked.connect(lambda _, k=key: self.preset(k))
-            flow.addWidget(tile)
-            self.tiles[key] = tile
-        lay.addWidget(holder)
+        for group, title in ((True, "Тёмные"), (False, "Светлые")):
+            lay.addWidget(QLabel(f"<b>{title}</b>"))
+            holder = QWidget()
+            flow = FlowLayout(holder, spacing=8)
+            for key, t in PRESET_THEMES.items():
+                if t.get("is_dark") != group:
+                    continue
+                tile = ThemeTile(key, t)
+                tile.clicked.connect(lambda _, k=key: self.preset(k))
+                flow.addWidget(tile)
+                self.tiles[key] = tile
+            lay.addWidget(holder)
+        btn_default = QPushButton("↩ Сбросить к теме по умолчанию (Графит)")
+        btn_default.setToolTip("Вернуть встроенную тёмную тему «Графит» — как при первой установке")
+        btn_default.clicked.connect(lambda: self.preset("dark"))
+        lay.addWidget(btn_default)
 
         lay.addWidget(QLabel("<b>Акцентный цвет</b> — кнопки, заголовки, выделение"))
         arow = QHBoxLayout()

@@ -548,6 +548,110 @@ def host_list_from_ad(conn_factory: ConnFactory, progress=None) -> tuple[list[st
     return PCScannerWorker.filter_host_names(names), "adsi"
 
 
+_DC_LOGON_PS = r"""
+$ErrorActionPreference = 'Stop'
+try {
+  $ev = Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4768} -ComputerName '__DC__' -MaxEvents __MAX__
+  $out = New-Object System.Collections.Generic.List[object]
+  foreach ($e in $ev) {
+    try {
+      $x = [xml]$e.ToXml()
+      $d = @{}
+      foreach ($n in $x.Event.EventData.Data) { $d[$n.Name] = [string]$n.'#text' }
+      if ($d['ResultCode'] -notin @('0x0','0')) { continue }
+      $u = $d['TargetUserName']; $ip = $d['IpAddress']
+      if (-not $u -or $u.EndsWith('$')) { continue }
+      if (-not $ip -or $ip -in @('-','::1','127.0.0.1','0.0.0.0')) { continue }
+      $out.Add(@{u=$u; ip=$ip.Replace('::ffff:','')})
+    } catch {}
+  }
+  $out | ConvertTo-Json -Compress
+} catch { Write-Output ('DCLOGON_ERROR: ' + $_.Exception.Message); exit 1 }
+"""
+
+
+def dc_logon_events(dc_host: str, max_events: int = 20000, timeout: int = 240) -> list[tuple[str, str]]:
+    """Пары (логин, ip) из журнала Security контроллера домена — события 4768, запрос билета Kerberos.
+
+    Именно так определяла «кто за каким ПК» старая программа (win32evtlog → журнал КД) — путь,
+    проверенный в тех же сетях, где инвентарных CSV может не быть. У нас — PowerShell Get-WinEvent,
+    без pywin32. События идут от свежих к старым. Ошибка — исключение с понятной причиной.
+    """
+    from . import psrun
+    if not dc_host:
+        raise RuntimeError("dc_host не задан (config.ini → [AD])")
+    script = _DC_LOGON_PS.replace("__DC__", dc_host).replace("__MAX__", str(max_events))
+    res = psrun.run(script, timeout=timeout)
+    if not res.ok or (res.stdout or "").startswith("DCLOGON_ERROR"):
+        raise RuntimeError((res.error or res.stdout or "пустой ответ").strip()[:200])
+    txt = (res.stdout or "").strip()
+    if not txt:
+        return []
+    data = json.loads(txt)
+    if isinstance(data, dict):
+        data = [data]
+    out = []
+    for it in data:
+        u, ip = str(it.get("u", "")).strip(), str(it.get("ip", "")).strip()
+        if u and ip:
+            out.append((u, ip))
+    return out
+
+
+def merge_dc_logons(results: list[dict], pairs: list[tuple[str, str]], progress=None) -> list[dict]:
+    """Вписать пользователей из событий контроллера домена тем ПК, где опрос не нашёл «кто за ПК».
+
+    ip → имя ПК обратным DNS (как в старой программе); если на ПК видели несколько входов —
+    берётся самый свежий (события отсортированы от новых к старым).
+    """
+    import socket
+    if not pairs or not results:
+        return results
+
+    def say(msg: str):
+        if progress:
+            progress(msg)
+
+    say(f"👥 Входы с контроллера домена: {len(pairs)} — сопоставляю с ПК…")
+
+    def resolve(ip: str) -> str:
+        try:
+            return socket.gethostbyaddr(ip)[0].split(".")[0].upper()
+        except OSError:
+            return ""
+
+    with ThreadPoolExecutor(max_workers=32) as ex:
+        names = list(ex.map(resolve, [ip for _u, ip in pairs]))
+    pc_user: dict[str, str] = {}
+    for (u, _ip), host in zip(pairs, names):
+        if host and host not in pc_user:
+            pc_user[host] = u
+    for r in results:
+        h = (r.get("Hostname") or "").upper()
+        if h and not (r.get("User") or "").strip() and h in pc_user:
+            r["User"] = pc_user[h]
+            r["LastLogon"] = "по журналу контроллера домена"
+    filled = sum(1 for r in results if (r.get("User") or "").strip())
+    say(f"👥 За ПК видны пользователи: {filled} из {len(results)}")
+    return results
+
+
+def enrich_with_dc_logons(results: list[dict], progress=None) -> list[dict]:
+    """Дозаполнить «кто за ПК» из журнала контроллера домена. Ошибка чтения — не критична (шаг пропускается)."""
+    if not results:
+        return results
+
+    def say(msg: str):
+        if progress:
+            progress(msg)
+    try:
+        pairs = dc_logon_events(settings.dc_host)
+    except Exception as exc:  # noqa: BLE001
+        say(f"👥 Журнал контроллера домена недоступен ({str(exc)[:100]}) — «кто за ПК» по инвентарю/опросу")
+        return results
+    return merge_dc_logons(results, pairs, progress)
+
+
 class PCScannerWorker(BaseWorker):
     """Список рабочих станций из AD → DNS/ping/журналы (PowerShell RunspacePool) → pc_inventory."""
     progress = pyqtSignal(str)
@@ -611,6 +715,7 @@ class PCScannerWorker(BaseWorker):
             results = self.probe_hosts(hosts)
             if self.cancelled:
                 return
+            results = enrich_with_dc_logons(results, lambda m: self.progress.emit(m))
             self.progress.emit("💾 Обновление инвентаря…")
             db.batch_update_inventory(results, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             self._index_printers(hosts)
@@ -636,6 +741,7 @@ class PCScannerWorker(BaseWorker):
                                f"список ПК брался через {via.upper()}")
         w.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping, журналы входов)…")
         results = w.probe_hosts(hosts)
+        results = enrich_with_dc_logons(results, w.progress.emit)
         db.batch_update_inventory(results, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         w._index_printers(hosts)
         return len(hosts)
