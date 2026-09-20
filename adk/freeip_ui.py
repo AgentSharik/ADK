@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .config import settings
+from .i18n import tr  # noqa: E402
 from .pingui import PingDialog
 from .widgets import FramelessDialog, app_palette, make_badge
 from .workers import FreeIPWorker
@@ -186,24 +187,24 @@ class FreeIPDialog(FramelessDialog):
         pg.setHorizontalSpacing(8)
         self.prefix = QLineEdit("10.0.2")
         self.prefix.setPlaceholderText("10.0.2")
-        self.prefix.setToolTip("Первые три октета подсети /24")
+        self.prefix.setToolTip(tr("Первые три октета подсети /24"))
         self.prefix.returnPressed.connect(self.search)
         self.prefix.textChanged.connect(lambda _t: self.map.reset())
         self.start = QSpinBox()
         self.start.setRange(1, 254)
         self.start.setValue(50)
-        self.start.setToolTip("С какого хоста начинать проверку")
+        self.start.setToolTip(tr("С какого хоста начинать проверку"))
         self.start.valueChanged.connect(self._start_changed)
-        self.btn_start = QPushButton("🔍 Найти")
+        self.btn_start = QPushButton(tr("🔍 Найти"))
         self.btn_start.setObjectName("btnPrimary")
         self.btn_start.clicked.connect(self.search)
-        self.btn_stop = QPushButton("⏹ Стоп")
+        self.btn_stop = QPushButton(tr("⏹ Стоп"))
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self.stop)
-        pg.addWidget(QLabel("<b>Подсеть</b>"), 0, 0)
+        pg.addWidget(QLabel(tr("<b>Подсеть</b>")), 0, 0)
         pg.addWidget(self.prefix, 0, 1)
         pg.addWidget(QLabel(".x"), 0, 2)
-        pg.addWidget(QLabel("<b>начиная с</b>"), 0, 3)
+        pg.addWidget(QLabel(tr("<b>начиная с</b>")), 0, 3)
         pg.addWidget(self.start, 0, 4)
         pg.addWidget(self.btn_start, 0, 5)
         pg.addWidget(self.btn_stop, 0, 6)
@@ -216,7 +217,7 @@ class FreeIPDialog(FramelessDialog):
         ml = QVBoxLayout(map_card)
         ml.setContentsMargins(12, 10, 12, 10)
         head = QHBoxLayout()
-        self.lbl_map = QLabel("<b>Карта подсети</b> — клик по ячейке задаёт стартовый хост")
+        self.lbl_map = QLabel(tr("<b>Карта подсети</b> — клик по ячейке задаёт стартовый хост"))
         head.addWidget(self.lbl_map, 1)
         self.map = SubnetMap()
         self.map.start_host = self.start.value()
@@ -250,11 +251,10 @@ class FreeIPDialog(FramelessDialog):
         self.legend_box.setLayout(legend)
         row_map.addWidget(self.legend_box, 1, Qt.AlignmentFlag.AlignTop)
         ml.addLayout(row_map)
-        hint_map = QLabel(
-            "Проверка бежит по порядку: статус каждой ячейки появляется после её проверки. "
+        hint_map = QLabel(tr("Проверка бежит по порядку: статус каждой ячейки появляется после её проверки. "
             "<b>«Занят ПК парка»</b> — адрес записан за компьютером в базе ADK (учёт по последнему скану; "
             "сам ПК может быть и выключен). <b>«Отвечает на ping»</b> — устройство отвечает прямо сейчас "
-            "(живая проверка; ответить может любой прибор — принтер, камера, телефон, не только ПК).")
+            "(живая проверка; ответить может любой прибор — принтер, камера, телефон, не только ПК)."))
         hint_map.setWordWrap(True)
         hint_map.setStyleSheet(f"color: {pal.subtext}; font-size: 8.5pt;")
         ml.addWidget(hint_map)
@@ -272,7 +272,7 @@ class FreeIPDialog(FramelessDialog):
         rl.setContentsMargins(18, 14, 18, 14)
         rl.setSpacing(8)
         rl.addStretch(1)                       # содержимое карточки — по центру по вертикали (stretch сверху и снизу)
-        cap = QLabel("СВОБОДНЫЙ АДРЕС")
+        cap = QLabel(tr("СВОБОДНЫЙ АДРЕС"))
         cap.setStyleSheet(f"color: {pal.subtext}; font-size: 8.5pt; font-weight: bold; letter-spacing: 1px;")
         rl.addWidget(cap)
         self.lbl_ip = QLabel("—")
@@ -289,13 +289,13 @@ class FreeIPDialog(FramelessDialog):
         rl.addWidget(self.lbl_dhcp)
         rl.addSpacing(4)
         row = QHBoxLayout()
-        self.btn_copy = QPushButton("📋 Копировать")
+        self.btn_copy = QPushButton(tr("📋 Копировать"))
         self.btn_copy.setEnabled(False)
         self.btn_copy.clicked.connect(self._copy)
-        self.btn_ping = QPushButton("📡 Пинг")
+        self.btn_ping = QPushButton(tr("📡 Пинг"))
         self.btn_ping.setEnabled(False)
         self.btn_ping.clicked.connect(lambda: PingDialog(self.found, self.found, None, self).exec())
-        self.btn_next = QPushButton("➡️ Следующий")
+        self.btn_next = QPushButton(tr("➡️ Следующий"))
         self.btn_next.setObjectName("btnSuccess")
         self.btn_next.setEnabled(False)
         self.btn_next.clicked.connect(self.next_)
@@ -307,13 +307,13 @@ class FreeIPDialog(FramelessDialog):
         bottom.addWidget(res, 4)
 
         trow = QHBoxLayout()
-        lbl_found = QLabel("<b>Найдено за сеанс</b>")
-        lbl_found.setToolTip("Двойной клик по строке — скопировать адрес")
+        lbl_found = QLabel(tr("<b>Найдено за сеанс</b>"))
+        lbl_found.setToolTip(tr("Двойной клик по строке — скопировать адрес"))
         trow.addWidget(lbl_found, 1)
-        self.btn_copy_all = QPushButton("📋 Скопировать все")
+        self.btn_copy_all = QPushButton(tr("📋 Скопировать все"))
         self.btn_copy_all.setEnabled(False)
         self.btn_copy_all.clicked.connect(lambda: QApplication.clipboard().setText("\n".join(self.history)))
-        self.btn_copy_all.setToolTip("Скопировать все найденные адреса, по одному в строке")
+        self.btn_copy_all.setToolTip(tr("Скопировать все найденные адреса, по одному в строке"))
         trow.addWidget(self.btn_copy_all)
         right.addLayout(trow)
         self.table = QTableWidget(0, 3)
@@ -331,12 +331,12 @@ class FreeIPDialog(FramelessDialog):
         bottom.addLayout(right, 5)
 
         # ============ низ: статус + подсказка
-        self.status = QLabel("Укажите подсеть и нажмите «Найти».")
+        self.status = QLabel(tr("Укажите подсеть и нажмите «Найти»."))
         self.status.setObjectName("subtle")
         dhcp_note = (f"Сверяется с DHCP: {', '.join(settings.dhcp_servers)} (аренды, резервирования, исключения)."
                      if settings.dhcp_servers else "Сверка с DHCP выключена — укажите серверы в [Scanner] dhcp_servers.")
-        self.status.setToolTip("Свободным считается адрес, который не занят ни одним ПК по последнему сканированию, "
-                               "на который сейчас никто не отвечает на ping и у которого нет записи в DNS (PTR). " + dhcp_note)
+        self.status.setToolTip(tr("Свободным считается адрес, который не занят ни одним ПК по последнему сканированию, "
+                               "на который сейчас никто не отвечает на ping и у которого нет записи в DNS (PTR). ") + dhcp_note)
         self.lbl_map.setToolTip(self.status.toolTip())
         self.body.addWidget(self.status)
 
@@ -393,7 +393,7 @@ class FreeIPDialog(FramelessDialog):
         self.btn_stop.setEnabled(False)
         self.btn_start.setEnabled(True)
         self.lbl_ip.setText("—")
-        self.status.setText("Остановлено.")
+        self.status.setText(tr("Остановлено."))
 
     def on_dhcp(self, info: dict):
         self._dhcp = info
@@ -412,7 +412,7 @@ class FreeIPDialog(FramelessDialog):
         if self.worker and self.worker.isRunning():
             # предыдущий поток ещё дожидается начатых проверок — стартуем сразу, как он закончит (а не молча игнорируем клик)
             self.worker.finished.connect(self.search, Qt.ConnectionType.SingleShotConnection)
-            self.status.setText("⏳ Завершаю предыдущую проверку…")
+            self.status.setText(tr("⏳ Завершаю предыдущую проверку…"))
             return
         self.search()
 
@@ -427,7 +427,7 @@ class FreeIPDialog(FramelessDialog):
             self.lbl_ip.setText("—")
             self._set_checks([])
             self.lbl_dhcp.setText("")
-            self.status.setText("Свободные адреса не найдены — попробуйте другую подсеть или меньший стартовый хост.")
+            self.status.setText(tr("Свободные адреса не найдены — попробуйте другую подсеть или меньший стартовый хост."))
             return
         self.lbl_ip.setText(ip)
         host = int(ip.rsplit(".", 1)[1])

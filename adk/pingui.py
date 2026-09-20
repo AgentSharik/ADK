@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from . import config, db
 from .widgets import FramelessDialog, app_palette, make_badge, run_in_background
+from .i18n import tr  # noqa: E402
 from .workers import PingWorker
 
 log = logging.getLogger(__name__)
@@ -176,7 +177,7 @@ class PingDialog(FramelessDialog):
         hl.addWidget(self.dot)
         tl = QVBoxLayout()
         tl.setSpacing(0)
-        self.lbl_state = QLabel("Запуск…")
+        self.lbl_state = QLabel(tr("Запуск…"))
         self.lbl_state.setStyleSheet(f"font-size: {12 + _k // 2}pt; font-weight: bold;")
         self.lbl_target = QLabel(f"{computer_name} · {target}" if target != computer_name else computer_name)
         self.lbl_target.setStyleSheet(f"color: {pal.subtext};")
@@ -188,7 +189,7 @@ class PingDialog(FramelessDialog):
         self.lbl_now.setStyleSheet(f"font-size: {18 + _k}pt; font-weight: bold; color: {pal.title_accent};")
         self.lbl_now.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         hl.addWidget(self.lbl_now)
-        unit = QLabel("мс\nсейчас")
+        unit = QLabel(tr("мс\nсейчас"))
         unit.setStyleSheet(f"color: {pal.subtext}; font-size: {9 + _k // 2}pt;")
         hl.addWidget(unit)
         self.body.addWidget(head)
@@ -230,7 +231,7 @@ class PingDialog(FramelessDialog):
         jl.setContentsMargins(12, 8, 12, 10)
         jl.setSpacing(6)
         jh = QHBoxLayout()
-        jh.addWidget(QLabel("<b>Журнал</b>"))
+        jh.addWidget(QLabel(tr("<b>Журнал</b>")))
         self.lbl_journal = QLabel("")
         self.lbl_journal.setStyleSheet(f"color: {pal.subtext}; font-size: 10pt;")
         jh.addWidget(self.lbl_journal)
@@ -273,22 +274,22 @@ class PingDialog(FramelessDialog):
 
         # --- кнопки
         btns = QHBoxLayout()
-        self.btn_pause = QPushButton("⏸ Пауза")
+        self.btn_pause = QPushButton(tr("⏸ Пауза"))
         self.btn_pause.clicked.connect(self.toggle_pause)
-        self.btn_reset = QPushButton("↺ Сброс")
+        self.btn_reset = QPushButton(tr("↺ Сброс"))
         self.btn_reset.clicked.connect(self.reset)
-        self.btn_copy = QPushButton("📋 Копировать отчёт")
+        self.btn_copy = QPushButton(tr("📋 Копировать отчёт"))
         self.btn_copy.setObjectName("btnSuccess")
         self.btn_copy.clicked.connect(self.copy_report)
-        self.btn_copy_raw = QPushButton("🖥 Копировать вывод ping")
-        self.btn_copy_raw.setToolTip("Весь вывод как в консоли — для вставки в заявку")
+        self.btn_copy_raw = QPushButton(tr("🖥 Копировать вывод ping"))
+        self.btn_copy_raw.setToolTip(tr("Весь вывод как в консоли — для вставки в заявку"))
         self.btn_copy_raw.clicked.connect(self.copy_raw)
         btns.addWidget(self.btn_pause)
         btns.addWidget(self.btn_reset)
         btns.addWidget(self.btn_copy)
         btns.addWidget(self.btn_copy_raw)
         btns.addStretch()
-        close = QPushButton("Закрыть")
+        close = QPushButton(tr("Закрыть"))
         close.setObjectName("btnPrimary")
         close.clicked.connect(self.close)
         btns.addWidget(close)
@@ -430,14 +431,14 @@ class PingDialog(FramelessDialog):
                 self.app.update_pc_status_in_ui(self.computer_name, ok)
 
     def on_error(self, msg: str):
-        self.lbl_state.setText("Ошибка")
+        self.lbl_state.setText(tr("Ошибка"))
         self._log(f"⚠️ {msg}", "danger")
         self._set_state(False)
 
     def _set_state(self, ok: bool):
         pal = app_palette()
         self.dot.setStyleSheet(f"font-size: {20 + max(0, int(config.settings.design.get('font_size') or 10) - 10)}pt; color: {pal.solid('success' if ok else 'danger')};")
-        self.lbl_state.setText("Узел отвечает" if ok else "Узел не отвечает")
+        self.lbl_state.setText(tr("Узел отвечает") if ok else "Узел не отвечает")
         while self.badge_box.count():
             w = self.badge_box.takeAt(0).widget()
             if w:
@@ -475,7 +476,7 @@ class PingDialog(FramelessDialog):
     # ------------------------------------------------------------------ управление
     def toggle_pause(self):
         self._paused = not self._paused
-        self.btn_pause.setText("▶ Продолжить" if self._paused else "⏸ Пауза")
+        self.btn_pause.setText(tr("▶ Продолжить") if self._paused else "⏸ Пауза")
         self._log("⏸ пауза" if self._paused else "▶ продолжаем")
 
     def reset(self):

@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from . import ad, db, netutils
+from .i18n import tr  # noqa: E402
 from .config import ACCOUNT_DISABLE_FLAG, CREATE_NO_WINDOW, SMARTCARD_REQUIRED_FLAG, settings
 from .credentials import clear_credentials, save_credentials
 from .theme import PRESET_THEMES, is_color_dark
@@ -58,7 +59,7 @@ class LoginDialog(FramelessDialog):
         brand.setObjectName("brandLabel")
         brand.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.body.addWidget(brand)
-        sub = QLabel("Active Directory Kit · вход в домен " + settings.domain_netbios)
+        sub = QLabel(tr("Active Directory Kit · вход в домен ") + settings.domain_netbios)
         sub.setObjectName("subtle")
         sub.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.body.addWidget(sub)
@@ -76,54 +77,54 @@ class LoginDialog(FramelessDialog):
                                          f"border: 1px solid {pal.danger[2]}; border-radius: 8px; padding: 6px 10px;")
             self.lbl_error.setWordWrap(True)
             cl.addWidget(self.lbl_error)
-        cl.addWidget(QLabel("<b>Логин</b>"))
+        cl.addWidget(QLabel(tr("<b>Логин</b>")))
         self.user_in = QLineEdit(saved_user or "")
         self.user_in.setPlaceholderText(f"{settings.domain_netbios}\\login или login")
         self.user_in.setMinimumHeight(36)
         self.user_in.setClearButtonEnabled(True)
         cl.addWidget(self.user_in)
-        cl.addWidget(QLabel("<b>Пароль</b>"))
+        cl.addWidget(QLabel(tr("<b>Пароль</b>")))
         prow = QHBoxLayout()
         prow.setSpacing(6)
         self.pass_in = QLineEdit(saved_password or "")
         self.pass_in.setEchoMode(QLineEdit.EchoMode.Password)
-        self.pass_in.setPlaceholderText("пароль доменной учётной записи")
+        self.pass_in.setPlaceholderText(tr("пароль доменной учётной записи"))
         self.pass_in.setMinimumHeight(36)
-        self.btn_eye = QPushButton("Показать")
+        self.btn_eye = QPushButton(tr("Показать"))
         self.btn_eye.setCheckable(True)
         # ширина под самую длинную подпись при текущем шрифте (при 12 pt «Показать» обрезалось в 100 px)
         self.btn_eye.setFixedWidth(self.btn_eye.fontMetrics().horizontalAdvance("Показать") + 36)
         self.btn_eye.setMinimumHeight(36)
-        self.btn_eye.setToolTip("Показать/скрыть пароль")
+        self.btn_eye.setToolTip(tr("Показать/скрыть пароль"))
         self.btn_eye.toggled.connect(lambda on: (self.pass_in.setEchoMode(
-            QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password), self.btn_eye.setText("Скрыть" if on else "Показать")))
+            QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password), self.btn_eye.setText(tr("Скрыть") if on else "Показать")))
         prow.addWidget(self.pass_in, 1)
         prow.addWidget(self.btn_eye)
         cl.addLayout(prow)
         from .credentials import storage_name
         store = storage_name()
-        self.remember = QCheckBox("Запомнить меня" + (f" ({store})" if store else ""))
+        self.remember = QCheckBox(tr("Запомнить меня") + (f" ({store})" if store else ""))
         self.remember.setChecked(bool(saved_user))
         if not store:
-            self.remember.setToolTip("Защищённое хранилище недоступно — пароль сохранить не получится")
+            self.remember.setToolTip(tr("Защищённое хранилище недоступно — пароль сохранить не получится"))
         cl.addWidget(self.remember)
-        self.remember_method = QCheckBox("Запомнить способ входа")
-        self.remember_method.setToolTip("В следующий раз ADK сам выберет тот же способ: вход по паролю или через Windows (SSO)")
+        self.remember_method = QCheckBox(tr("Запомнить способ входа"))
+        self.remember_method.setToolTip(tr("В следующий раз ADK сам выберет тот же способ: вход по паролю или через Windows (SSO)"))
         self.remember_method.setChecked(bool(settings.login_method))
         cl.addWidget(self.remember_method)
         self.body.addWidget(card)
 
         # --- действия: главная кнопка и SSO как альтернатива
-        self.btn_login = QPushButton("Войти")
+        self.btn_login = QPushButton(tr("Войти"))
         self.btn_login.setObjectName("btnPrimary")
         self.btn_login.setMinimumHeight(42)
-        self.btn_login.setToolTip("Вход по логину и паролю (NTLM)")
+        self.btn_login.setToolTip(tr("Вход по логину и паролю (NTLM)"))
         self.btn_login.clicked.connect(self.try_login)
         self.body.addWidget(self.btn_login)
-        self.btn_sso = QPushButton("🪟 Войти под текущим пользователем Windows")
+        self.btn_sso = QPushButton(tr("🪟 Войти под текущим пользователем Windows"))
         self.btn_sso.setObjectName("btnInfo")
         self.btn_sso.setMinimumHeight(36)
-        self.btn_sso.setToolTip("Windows SSO (Kerberos): без ввода пароля, под учёткой, из-под которой запущена программа")
+        self.btn_sso.setToolTip(tr("Windows SSO (Kerberos): без ввода пароля, под учёткой, из-под которой запущена программа"))
         self.btn_sso.clicked.connect(self.try_sso)
         self.body.addWidget(self.btn_sso)
         self.status = QLabel("")
@@ -239,7 +240,7 @@ class RoleWelcomeDialog(FramelessDialog):
         cap_card.setObjectName("dashCard")
         cap_l = QVBoxLayout(cap_card)
         cap_l.setSpacing(6)
-        cap_l.addWidget(QLabel("<b>Возможности в текущей сессии:</b>"))
+        cap_l.addWidget(QLabel(tr("<b>Возможности в текущей сессии:</b>")))
 
         def cap(text: str) -> QLabel:           # длинные строки переносятся, а не обрезаются по краю окна
             lbl = QLabel(text)
@@ -259,11 +260,11 @@ class RoleWelcomeDialog(FramelessDialog):
         self.body.addWidget(cap_card)
         self.body.addStretch(1)
 
-        self.chk_dont_show = QCheckBox("Больше не показывать при входе")
+        self.chk_dont_show = QCheckBox(tr("Больше не показывать при входе"))
         self.chk_dont_show.setChecked(False)
         self.body.addWidget(self.chk_dont_show)
 
-        self.btn_ok = QPushButton("Продолжить")
+        self.btn_ok = QPushButton(tr("Продолжить"))
         self.btn_ok.setObjectName("btnPrimary")
         self.btn_ok.setMinimumHeight(38)
         self.btn_ok.clicked.connect(self._save_and_close)
@@ -332,7 +333,7 @@ class RoleInfoDialog(FramelessDialog):
         cap_card.setObjectName("dashCard")
         cap_l = QVBoxLayout(cap_card)
         cap_l.setSpacing(6)
-        cap_l.addWidget(QLabel("<b>Возможности в текущей сессии:</b>"))
+        cap_l.addWidget(QLabel(tr("<b>Возможности в текущей сессии:</b>")))
 
         def cap(text: str) -> QLabel:
             lbl = QLabel(text)
@@ -352,7 +353,7 @@ class RoleInfoDialog(FramelessDialog):
         self.body.addWidget(cap_card)
         self.body.addStretch()
 
-        btn_ok = QPushButton("Понятно")
+        btn_ok = QPushButton(tr("Понятно"))
         btn_ok.setObjectName("btnPrimary")
         btn_ok.setMinimumHeight(38)
         btn_ok.clicked.connect(self.accept)
@@ -388,7 +389,7 @@ class PluginsDialog(FramelessDialog):
         head = QHBoxLayout()
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
-        lbl_head = QLabel("<b>Плагины — свои кнопки в инспекторе и в меню строки</b>")
+        lbl_head = QLabel(tr("<b>Плагины — свои кнопки в инспекторе и в меню строки</b>"))
         lbl_head.setStyleSheet(f"font-size: 13.5px; color: {pal.title_accent};")
         title_box.addWidget(lbl_head)
         self.lbl_dir = QLabel("")
@@ -396,15 +397,15 @@ class PluginsDialog(FramelessDialog):
         self.lbl_dir.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         title_box.addWidget(self.lbl_dir)
         head.addLayout(title_box, 1)
-        self.btn_template = QPushButton("➕ Создать шаблон плагина")
+        self.btn_template = QPushButton(tr("➕ Создать шаблон плагина"))
         self.btn_template.setObjectName("btnPrimary")
-        self.btn_template.setToolTip("Создать файл-заготовку с полной документацией внутри (выключен, пока не переименован)")
+        self.btn_template.setToolTip(tr("Создать файл-заготовку с полной документацией внутри (выключен, пока не переименован)"))
         self.btn_template.clicked.connect(self._create_template)
         head.addWidget(self.btn_template)
-        self.btn_folder = QPushButton("📁 Папка плагинов")
+        self.btn_folder = QPushButton(tr("📁 Папка плагинов"))
         self.btn_folder.clicked.connect(self._open_plugins_dir)
         head.addWidget(self.btn_folder)
-        self.btn_reload = QPushButton("🔄 Перечитать")
+        self.btn_reload = QPushButton(tr("🔄 Перечитать"))
         self.btn_reload.clicked.connect(self.reload)
         head.addWidget(self.btn_reload)
         self.body.addLayout(head)
@@ -424,22 +425,22 @@ class PluginsDialog(FramelessDialog):
         self.body.addWidget(self.table, 1)
 
         act_row = QHBoxLayout()
-        self.btn_toggle = QPushButton("Включить")
+        self.btn_toggle = QPushButton(tr("Включить"))
         self.btn_toggle.setObjectName("btnSuccess")
         self.btn_toggle.setEnabled(False)
         self.btn_toggle.clicked.connect(self._toggle)
         act_row.addWidget(self.btn_toggle)
-        self.btn_edit = QPushButton("✏️ Открыть файл")
+        self.btn_edit = QPushButton(tr("✏️ Открыть файл"))
         self.btn_edit.setEnabled(False)
         self.btn_edit.clicked.connect(self._open_file)
         act_row.addWidget(self.btn_edit)
-        self.btn_delete = QPushButton("🗑️ Удалить")
+        self.btn_delete = QPushButton(tr("🗑️ Удалить"))
         self.btn_delete.setObjectName("btnDanger")
         self.btn_delete.setEnabled(False)
         self.btn_delete.clicked.connect(self._delete)
         act_row.addWidget(self.btn_delete)
         act_row.addStretch()
-        self.lbl_hint = QLabel("Двойной клик по строке — включить/выключить. Выключенные файлы начинаются с «_».")
+        self.lbl_hint = QLabel(tr("Двойной клик по строке — включить/выключить. Выключенные файлы начинаются с «_»."))
         self.lbl_hint.setObjectName("subtle")
         act_row.addWidget(self.lbl_hint)
         self.body.addLayout(act_row)
@@ -448,12 +449,12 @@ class PluginsDialog(FramelessDialog):
         info.setObjectName("dashCard")
         il = QVBoxLayout(info)
         il.setSpacing(4)
-        il.addWidget(QLabel("<b>Как сделать свой плагин</b>"))
-        steps = QLabel("1. «Создать шаблон плагина» — в папке появится <code>_template_plugin.py</code>: в нём описано всё "
+        il.addWidget(QLabel(tr("<b>Как сделать свой плагин</b>")))
+        steps = QLabel(tr("1. «Создать шаблон плагина» — в папке появится <code>_template_plugin.py</code>: в нём описано всё "
                        "(атрибуты, методы, что приходит в <code>ctx</code>, примеры).<br>"
                        "2. Откройте файл, переименуйте класс, впишите своё в <code>run(ctx)</code>.<br>"
                        "3. Уберите «_» из имени файла (или нажмите «Включить») и «Перечитать» — кнопка появится в инспекторе "
-                       "и в меню строки. Действия с <code>modifying = True</code> видит только роль «ПК».")
+                       "и в меню строки. Действия с <code>modifying = True</code> видит только роль «ПК»."))
         steps.setObjectName("subtle")
         steps.setWordWrap(True)
         il.addWidget(steps)
@@ -463,7 +464,7 @@ class PluginsDialog(FramelessDialog):
         self.status = QLabel("")
         self.status.setObjectName("subtle")
         foot.addWidget(self.status, 1)
-        btn_close = QPushButton("Закрыть")
+        btn_close = QPushButton(tr("Закрыть"))
         btn_close.setMinimumHeight(34)
         btn_close.clicked.connect(self.accept)
         foot.addWidget(btn_close)
@@ -488,7 +489,7 @@ class PluginsDialog(FramelessDialog):
             self.table.setItem(r, 1, it)
             rights = "меняет (роль «ПК»)" if any(a.modifying for a in f["actions"]) else ("только чтение" if f["actions"] else "")
             self.table.setItem(r, 2, QTableWidgetItem(rights))
-            st = QTableWidgetItem("● Включён" if f["enabled"] else "○ Выключен")
+            st = QTableWidgetItem(tr("● Включён") if f["enabled"] else "○ Выключен")
             st.setForeground(QColor(app_palette().success[0] if f["enabled"] else app_palette().subtext))
             st.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(r, 3, st)
@@ -509,7 +510,7 @@ class PluginsDialog(FramelessDialog):
         for b in (self.btn_toggle, self.btn_edit, self.btn_delete):
             b.setEnabled(f is not None)
         if f is not None:
-            self.btn_toggle.setText("Выключить" if f["enabled"] else "Включить")
+            self.btn_toggle.setText(tr("Выключить") if f["enabled"] else "Включить")
             self.btn_toggle.setObjectName("btnWarning" if f["enabled"] else "btnSuccess")
             self.btn_toggle.style().unpolish(self.btn_toggle)
             self.btn_toggle.style().polish(self.btn_toggle)
@@ -648,7 +649,7 @@ class UserCardDialog(FramelessDialog):
         # поэтому ряд переносится на вторую строку (FlowLayout), а не растягивает окно и не режет подписи
         bar_holder = QWidget()
         bar = FlowLayout(bar_holder, spacing=6)
-        b_copy = QPushButton("📋 Копировать")
+        b_copy = QPushButton(tr("📋 Копировать"))
         b_copy.setObjectName("btnSuccess")
         b_copy.clicked.connect(self.copy_to_clipboard)
         bar.addWidget(b_copy)
@@ -657,32 +658,32 @@ class UserCardDialog(FramelessDialog):
         self.btn_notes.clicked.connect(lambda: (NotesDialog(self.login, "user", self.app, self, title=fio).exec(),
                                                 self._refresh_notes_btn()))
         bar.addWidget(self.btn_notes)
-        b_hist = QPushButton("🕓 История")
+        b_hist = QPushButton(tr("🕓 История"))
         b_hist.clicked.connect(lambda: HistoryDialog(self.login, self.current_comp, self).exec())
         bar.addWidget(b_hist)
         if _access.can("groups_sync"):
-            b_cmp = QPushButton("🧬 Группы как у…")
-            b_cmp.setToolTip("Сравнить группы с эталонным сотрудником и выровнять членство")
+            b_cmp = QPushButton(tr("🧬 Группы как у…"))
+            b_cmp.setToolTip(tr("Сравнить группы с эталонным сотрудником и выровнять членство"))
             b_cmp.clicked.connect(lambda: GroupCompareDialog(self.entry, self.app, self).exec())
             bar.addWidget(b_cmp)
-        self.btn_reset = QPushButton("🔑 Смена пароля…")
+        self.btn_reset = QPushButton(tr("🔑 Смена пароля…"))
         self.btn_reset.setObjectName("btnWarning")
-        self.btn_reset.setToolTip("Новый пароль по политике или свой; крупно на экране, карточка для сотрудника, снятие блокировки")
+        self.btn_reset.setToolTip(tr("Новый пароль по политике или свой; крупно на экране, карточка для сотрудника, снятие блокировки"))
         self.btn_reset.clicked.connect(self.reset_password)
         bar.addWidget(self.btn_reset)
         self._ad_widgets.append(self.btn_reset)
         st = ad.account_status(self.entry, settings.max_password_age_days)
-        self.btn_unlock = QPushButton("🔓 Снять блокировку")
+        self.btn_unlock = QPushButton(tr("🔓 Снять блокировку"))
         self.btn_unlock.setObjectName("btnWarning")
-        self.btn_unlock.setToolTip("lockoutTime = 0 — снимает блокировку после неверных паролей, учётку не включает")
+        self.btn_unlock.setToolTip(tr("lockoutTime = 0 — снимает блокировку после неверных паролей, учётку не включает"))
         self.btn_unlock.clicked.connect(self.unlock)
         self.btn_unlock.setVisible(bool(st["locked"]))
         bar.addWidget(self.btn_unlock)
         self._ad_widgets.append(self.btn_unlock)
         disabled = bool(self.original_uac & ACCOUNT_DISABLE_FLAG)
-        self.btn_toggle = QPushButton("✅ Включить учётную запись" if disabled else "⛔ Отключить учётную запись")
+        self.btn_toggle = QPushButton(tr("✅ Включить учётную запись") if disabled else "⛔ Отключить учётную запись")
         self.btn_toggle.setObjectName("btnSuccess" if disabled else "btnDanger")
-        self.btn_toggle.setToolTip("Включить учётную запись (UAC −= 2)" if disabled else
+        self.btn_toggle.setToolTip(tr("Включить учётную запись (UAC −= 2)") if disabled else
                                    "Отключить учётную запись — увольнение / декрет: UAC += 2" + (" и экспорт ящика в PST" if settings.pst_backup_base else ""))
         self.btn_toggle.clicked.connect(self.toggle_disabled)
         bar.addWidget(self.btn_toggle)
@@ -726,7 +727,7 @@ class UserCardDialog(FramelessDialog):
             le.textChanged.connect(le.setToolTip)
             (left if attr in left_keys else right).addRow(label + ":", le)
             self.inputs[attr] = le
-        self.smartcard = QCheckBox("Только смарт-карта для входа")
+        self.smartcard = QCheckBox(tr("Только смарт-карта для входа"))
         self.smartcard.setChecked(bool(self.original_uac & SMARTCARD_REQUIRED_FLAG))
         self.original_skype = ad.get_ad_value(self.entry, "msRTCSIP-UserEnabled").upper() == "TRUE"
         self.skype = QCheckBox("Lync / Skype for Business")
@@ -744,11 +745,11 @@ class UserCardDialog(FramelessDialog):
         lay.addLayout(cols)
         lay.addStretch()
         foot = QHBoxLayout()
-        hint = QLabel("Отправляются только изменённые поля; пустое значение очищает атрибут.")
+        hint = QLabel(tr("Отправляются только изменённые поля; пустое значение очищает атрибут."))
         hint.setObjectName("subtle")
         hint.setWordWrap(True)          # 3.5.4: подсказка не должна диктовать минимальную ширину карточки
         foot.addWidget(hint, 1)
-        save = QPushButton("💾 Сохранить изменения в AD")
+        save = QPushButton(tr("💾 Сохранить изменения в AD"))
         save.setObjectName("btnSuccess")
         save.clicked.connect(self.save_changes)
         foot.addWidget(save)
@@ -790,7 +791,7 @@ class UserCardDialog(FramelessDialog):
         self.lbl_account.setVisible(False)
         lay.addWidget(self.lbl_account)
         lay.addStretch()
-        hint = QLabel("Смена пароля, снятие блокировки и отключение — кнопки в верхней панели карточки.")
+        hint = QLabel(tr("Смена пароля, снятие блокировки и отключение — кнопки в верхней панели карточки."))
         hint.setObjectName("subtle")
         lay.addWidget(hint)
         return w
@@ -806,12 +807,12 @@ class UserCardDialog(FramelessDialog):
             wdg.setVisible(False)
         for le in self.inputs.values():
             le.setReadOnly(True)
-            le.setToolTip("Только просмотр: изменение объектов AD недоступно для вашей роли")
+            le.setToolTip(tr("Только просмотр: изменение объектов AD недоступно для вашей роли"))
         for cb in (self.smartcard, self.skype):
             cb.setEnabled(False)
-            cb.setToolTip("Только просмотр: состояние задаёт администратор с правом «AD»")
-        self.groups_all.setToolTip("Только просмотр: добавление в группы недоступно для вашей роли")
-        self.groups_list.setToolTip("Только просмотр: двойной клик покажет участников группы")
+            cb.setToolTip(tr("Только просмотр: состояние задаёт администратор с правом «AD»"))
+        self.groups_all.setToolTip(tr("Только просмотр: добавление в группы недоступно для вашей роли"))
+        self.groups_list.setToolTip(tr("Только просмотр: двойной клик покажет участников группы"))
 
     def reset_password(self, after_unlock: bool = False):
         """Смена пароля. ``after_unlock=True`` — вызвано из сценария «сняли блокировку → задать пароль?»:
@@ -857,13 +858,13 @@ class UserCardDialog(FramelessDialog):
         lay.setSpacing(12)
         from . import access as _access
         left = QVBoxLayout()
-        self.lbl_groups = QLabel("<b>Состоит в группах</b> · двойной клик — участники")
+        self.lbl_groups = QLabel(tr("<b>Состоит в группах</b> · двойной клик — участники"))
         left.addWidget(self.lbl_groups)
         self.groups_list = QListWidget()
         self.groups_list.itemDoubleClicked.connect(
             lambda it: GroupMembersDialog(self.group_dns[it.text()], it.text(), self.app, self).exec())
         left.addWidget(self.groups_list, 1)
-        rm = self.btn_group_rm = QPushButton("➖ Удалить из выбранной")
+        rm = self.btn_group_rm = QPushButton(tr("➖ Удалить из выбранной"))
         rm.setObjectName("btnDanger")
         rm.clicked.connect(self.remove_from_group)
         rm.setVisible(_access.can("group_remove"))
@@ -871,16 +872,16 @@ class UserCardDialog(FramelessDialog):
         lay.addLayout(left, 1)
 
         right = QVBoxLayout()
-        right.addWidget(QLabel("<b>Все группы домена</b>"))
+        right.addWidget(QLabel(tr("<b>Все группы домена</b>")))
         self.group_filter = QLineEdit()
-        self.group_filter.setPlaceholderText("Фильтр по имени группы…")
+        self.group_filter.setPlaceholderText(tr("Фильтр по имени группы…"))
         self.group_filter.setClearButtonEnabled(True)
         self.group_filter.textChanged.connect(self._filter_groups)
         right.addWidget(self.group_filter)
         self.groups_all = QListWidget()
         self.groups_all.itemDoubleClicked.connect(lambda _it: _access.can("group_add") and self.add_to_group())
         right.addWidget(self.groups_all, 1)
-        add = self.btn_group_add = QPushButton("➕ Добавить в выбранную")
+        add = self.btn_group_add = QPushButton(tr("➕ Добавить в выбранную"))
         add.setObjectName("btnSuccess")
         add.clicked.connect(self.add_to_group)
         add.setVisible(_access.can("group_add"))
@@ -927,12 +928,12 @@ class UserCardDialog(FramelessDialog):
         lay.setContentsMargins(10, 12, 10, 8)
         from . import access as _access
         row = QHBoxLayout()
-        row.addWidget(QLabel("<b>Связанный ПК:</b>"))
+        row.addWidget(QLabel(tr("<b>Связанный ПК:</b>")))
         self.pc_input = QLineEdit(self.current_comp)
-        self.pc_input.setPlaceholderText("Имя ПК, например WS-101")
+        self.pc_input.setPlaceholderText(tr("Имя ПК, например WS-101"))
         self.pc_input.setMaximumWidth(220)
         row.addWidget(self.pc_input)
-        save_pc = QPushButton("💾 Сохранить привязку")
+        save_pc = QPushButton(tr("💾 Сохранить привязку"))
         save_pc.clicked.connect(self.save_pc_binding)
         save_pc.setVisible(_access.can("bind_pc"))
         row.addWidget(save_pc)
@@ -949,8 +950,8 @@ class UserCardDialog(FramelessDialog):
         self.specs_tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.specs_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         lay.addWidget(self.specs_tree, 1)
-        hint = QLabel("Данные из инвентарного снимка (только чтение). RMS, диски, перезагрузка, здоровье и принтеры — "
-                      "в инспекторе главного окна.")
+        hint = QLabel(tr("Данные из инвентарного снимка (только чтение). RMS, диски, перезагрузка, здоровье и принтеры — "
+                      "в инспекторе главного окна."))
         hint.setObjectName("subtle")
         hint.setWordWrap(True)
         lay.addWidget(hint)
@@ -1086,7 +1087,7 @@ class UserCardDialog(FramelessDialog):
             except Exception as exc:  # noqa: BLE001
                 log.debug("uac local update: %s", exc)
             now_disabled = not disabled
-            self.btn_toggle.setText("✅ Включить учётную запись" if now_disabled else "⛔ Отключить учётную запись")
+            self.btn_toggle.setText(tr("✅ Включить учётную запись") if now_disabled else "⛔ Отключить учётную запись")
             self.btn_toggle.setObjectName("btnSuccess" if now_disabled else "btnDanger")
             self.btn_toggle.style().unpolish(self.btn_toggle)
             self.btn_toggle.style().polish(self.btn_toggle)
@@ -1262,14 +1263,14 @@ class ResetPasswordDialog(FramelessDialog):
 
         self.password = QLineEdit(ad.generate_secure_password(12))
         self.password.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.password.setToolTip("Можно ввести свой пароль — минимум 8 символов")
+        self.password.setToolTip(tr("Можно ввести свой пароль — минимум 8 символов"))
         self.password.setStyleSheet(f"font-size: 20pt; font-weight: bold; letter-spacing: 3px; padding: 10px; "
                                     f"font-family: 'Consolas', 'DejaVu Sans Mono', monospace; color: {pal.title_accent};")
         self.password.textChanged.connect(self._check)
         self.body.addWidget(self.password)
 
         row = QHBoxLayout()
-        row.addWidget(QLabel("Длина:"))
+        row.addWidget(QLabel(tr("Длина:")))
         self.len_btns: dict[int, QPushButton] = {}
         for n in self.LENGTHS:
             b = QPushButton(str(n))
@@ -1279,8 +1280,8 @@ class ResetPasswordDialog(FramelessDialog):
             b.clicked.connect(lambda _c, k=n: self.generate(k))
             self.len_btns[n] = b
             row.addWidget(b)
-        self.btn_gen = QPushButton("🎲 Другой")
-        self.btn_gen.setToolTip("Сгенерировать заново")
+        self.btn_gen = QPushButton(tr("🎲 Другой"))
+        self.btn_gen.setToolTip(tr("Сгенерировать заново"))
         self.btn_gen.clicked.connect(lambda: self.generate())
         row.addWidget(self.btn_gen)
         row.addStretch()
@@ -1288,9 +1289,9 @@ class ResetPasswordDialog(FramelessDialog):
         row.addWidget(self.lbl_check)
         self.body.addLayout(row)
 
-        self.must_change = QCheckBox("Потребовать смену пароля при следующем входе")
+        self.must_change = QCheckBox(tr("Потребовать смену пароля при следующем входе"))
         self.must_change.setChecked(True)
-        self.unlock = QCheckBox("Снять блокировку (lockout), если была")
+        self.unlock = QCheckBox(tr("Снять блокировку (lockout), если была"))
         self.unlock.setChecked(True)
         if after_unlock:
             # пришли из «снять блокировку → задать пароль»: смену при входе не требуем (человек и так только что
@@ -1299,25 +1300,25 @@ class ResetPasswordDialog(FramelessDialog):
             self.unlock.setChecked(True)
             for cb in (self.must_change, self.unlock):
                 cb.setEnabled(False)
-            self.must_change.setToolTip("Задано сценарием «после снятия блокировки»: смена при входе не требуется")
-            self.unlock.setToolTip("Задано сценарием «после снятия блокировки»: блокировка снимается")
+            self.must_change.setToolTip(tr("Задано сценарием «после снятия блокировки»: смена при входе не требуется"))
+            self.unlock.setToolTip(tr("Задано сценарием «после снятия блокировки»: блокировка снимается"))
         self.body.addWidget(self.must_change)
         self.body.addWidget(self.unlock)
-        hint = QLabel("Пароль показывается только здесь и нигде не сохраняется. «Копировать карточку» — текст "
-                      "с логином и паролем для передачи сотруднику; после смены пароль также попадёт в буфер обмена.")
+        hint = QLabel(tr("Пароль показывается только здесь и нигде не сохраняется. «Копировать карточку» — текст "
+                      "с логином и паролем для передачи сотруднику; после смены пароль также попадёт в буфер обмена."))
         hint.setWordWrap(True)
         hint.setObjectName("subtle")
         self.body.addWidget(hint)
         self.body.addStretch()
 
         btns = QHBoxLayout()
-        self.btn_card = QPushButton("📋 Копировать карточку")
+        self.btn_card = QPushButton(tr("📋 Копировать карточку"))
         self.btn_card.clicked.connect(lambda: QApplication.clipboard().setText(self._card()))
         btns.addWidget(self.btn_card)
         btns.addStretch()
-        cancel = QPushButton("Отмена")
+        cancel = QPushButton(tr("Отмена"))
         cancel.clicked.connect(self.reject)
-        self.btn_ok = QPushButton("🔑 Сменить пароль")
+        self.btn_ok = QPushButton(tr("🔑 Сменить пароль"))
         self.btn_ok.setObjectName("btnDanger")
         self.btn_ok.setDefault(True)
         self.btn_ok.clicked.connect(self._accept)
@@ -1342,7 +1343,7 @@ class ResetPasswordDialog(FramelessDialog):
         pal = app_palette()
         ok = len(p) >= 8
         strong = ok and any(c.isdigit() for c in p) and any(c.isalpha() for c in p) and any(not c.isalnum() for c in p)
-        self.lbl_check.setText("✔ надёжный" if strong else ("• простой" if ok else "✖ короче 8 символов"))
+        self.lbl_check.setText(tr("✔ надёжный") if strong else ("• простой" if ok else "✖ короче 8 символов"))
         self.lbl_check.setStyleSheet(f"color: {pal.success[0] if strong else pal.warning[0] if ok else pal.danger[0]}; font-weight: bold;")
         self.btn_ok.setEnabled(ok)
 
@@ -1376,7 +1377,7 @@ class AuditLogDialog(FramelessDialog):
             self.period.addItem(label, days)
         self.period.setCurrentIndex(2)
         self.text = QLineEdit()
-        self.text.setPlaceholderText("Поиск по логину / ПК / деталям…")
+        self.text.setPlaceholderText(tr("Поиск по логину / ПК / деталям…"))
         for wdg in (self.admin, self.action, self.period):
             wdg.currentIndexChanged.connect(self.reload)
             flt.addWidget(wdg)
@@ -1458,7 +1459,7 @@ class PrintersDialog(FramelessDialog):
         self.app = app
         top = QHBoxLayout()
         self.text = QLineEdit()
-        self.text.setPlaceholderText("Фильтр: модель / IP / имя ПК…")
+        self.text.setPlaceholderText(tr("Фильтр: модель / IP / имя ПК…"))
         self.text.textChanged.connect(self.reload)
         top.addWidget(self.text, 1)
         self.kind = QComboBox()
@@ -1471,24 +1472,24 @@ class PrintersDialog(FramelessDialog):
         self.btn_csv.clicked.connect(self.export_csv)
         top.addWidget(self.btn_csv)
         # 3.5.10: живой опрос парка — принтеры берутся с самих ПК (WinRM/WMI), CSV и база не нужны
-        self.btn_live = QPushButton("📡 Опросить парк")
+        self.btn_live = QPushButton(tr("📡 Опросить парк"))
         self.btn_live.setObjectName("btnPrimary")
-        self.btn_live.setToolTip("Спросить каждый ПК в сети, какие принтеры у него установлены прямо сейчас.\n"
-                                 "Работает без инвентарных CSV; ничего не записывает, пока не нажать «Сохранить в базу».")
+        self.btn_live.setToolTip(tr("Спросить каждый ПК в сети, какие принтеры у него установлены прямо сейчас.\n"
+                                 "Работает без инвентарных CSV; ничего не записывает, пока не нажать «Сохранить в базу»."))
         self.btn_live.clicked.connect(self.poll_live)
         top.addWidget(self.btn_live)
         # 3.8.0: «Область» — опрос только ПК выбранной организации: кто какой принтер использует
-        self.btn_org = QPushButton("🏢 Область")
-        self.btn_org.setToolTip("Опросить принтеры только у ПК выбранной организации (как в Excel-описи).\n"
-                                "Покажет, какой принтер к какому сотруднику подключён, тип подключения и адрес.")
+        self.btn_org = QPushButton(tr("🏢 Область"))
+        self.btn_org.setToolTip(tr("Опросить принтеры только у ПК выбранной организации (как в Excel-описи).\n"
+                                "Покажет, какой принтер к какому сотруднику подключён, тип подключения и адрес."))
         self.btn_org.clicked.connect(self.poll_org)
         top.addWidget(self.btn_org)
-        self.btn_stop = QPushButton("⏹ Стоп")
+        self.btn_stop = QPushButton(tr("⏹ Стоп"))
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self.stop_live)
         top.addWidget(self.btn_stop)
-        self.btn_save = QPushButton("💾 Сохранить в базу")
-        self.btn_save.setToolTip("Записать результат живого опроса в кэш принтеров — по нему работает поиск по IP/модели")
+        self.btn_save = QPushButton(tr("💾 Сохранить в базу"))
+        self.btn_save.setToolTip(tr("Записать результат живого опроса в кэш принтеров — по нему работает поиск по IP/модели"))
         self.btn_save.setEnabled(False)
         self.btn_save.clicked.connect(self.save_live)
         top.addWidget(self.btn_save)
@@ -1509,8 +1510,8 @@ class PrintersDialog(FramelessDialog):
             self.table.setColumnWidth(i, wd)
         self.table.itemDoubleClicked.connect(lambda _: self.open_owners())
         self.body.addWidget(self.table, 1)
-        hint = QLabel("Данные — из инвентарных CSV (обновляются сканером и при открытии карточки). "
-                      "Виртуальные принтеры (PDF, XPS, OneNote, факс) исключены. Двойной клик — кто подключён.")
+        hint = QLabel(tr("Данные — из инвентарных CSV (обновляются сканером и при открытии карточки). "
+                      "Виртуальные принтеры (PDF, XPS, OneNote, факс) исключены. Двойной клик — кто подключён."))
         hint.setWordWrap(True)
         self.body.addWidget(hint)
         self.status = QLabel("")
@@ -1555,7 +1556,7 @@ class PrintersDialog(FramelessDialog):
             return
         src = "живой опрос" if self.live_rows is not None else "сохранённые данные"
         if not self.rows and self.live_rows is None:
-            self.status.setText("В базе пока нет принтеров — нажмите «Опросить парк», чтобы собрать их с ПК прямо сейчас")
+            self.status.setText(tr("В базе пока нет принтеров — нажмите «Опросить парк», чтобы собрать их с ПК прямо сейчас"))
         else:
             self.status.setText(f"Принтеров: {len(self.rows)} · подключений: {total_pcs} · {src}")
 
@@ -1569,7 +1570,7 @@ class PrintersDialog(FramelessDialog):
             self.status.setText(f"⚠️ Список ПК не получен: {exc}")
             return
         if not hosts:
-            self.status.setText("⚠️ ПК для опроса не найдены: инвентарь пуст и AD не вернул рабочих станций (проверьте host_pattern)")
+            self.status.setText(tr("⚠️ ПК для опроса не найдены: инвентарь пуст и AD не вернул рабочих станций (проверьте host_pattern)"))
             return
         self._start_live(hosts)
 
@@ -1610,7 +1611,7 @@ class PrintersDialog(FramelessDialog):
         if self.worker:
             self.worker.cancel()
         self.btn_stop.setEnabled(False)
-        self.status.setText("⏹ Останавливаю — начатые опросы доработают…")
+        self.status.setText(tr("⏹ Останавливаю — начатые опросы доработают…"))
 
     def _live_done(self, results: dict):
         from . import fleetpoll
@@ -1702,7 +1703,7 @@ class GroupMembersDialog(FramelessDialog):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.body.addWidget(self.table)
-        self.status = QLabel("Загрузка…")
+        self.status = QLabel(tr("Загрузка…"))
         self.body.addWidget(self.status)
 
         def load():
@@ -1775,22 +1776,22 @@ class RegisterUserDialog(FramelessDialog):
         self.login.setMaxLength(20)
         self.login.setPlaceholderText("ivanov_i")
         self.login.textChanged.connect(self._refresh)
-        gen = QPushButton("✨ Сгенерировать")
-        gen.setToolTip("Логин из фамилии и имени (транслит) + надёжный пароль")
+        gen = QPushButton(tr("✨ Сгенерировать"))
+        gen.setToolTip(tr("Логин из фамилии и имени (транслит) + надёжный пароль"))
         gen.clicked.connect(self.generate)
         lrow.addWidget(self.login, 1)
         lrow.addWidget(gen)
         f2.addRow("Логин:", lrow)
         prow = QHBoxLayout()
         self.password = QLineEdit()
-        self.password.setPlaceholderText("минимум 8 символов")
+        self.password.setPlaceholderText(tr("минимум 8 символов"))
         self.password.textChanged.connect(self._refresh)
-        self.btn_eye = QPushButton("Скрыть")
+        self.btn_eye = QPushButton(tr("Скрыть"))
         self.btn_eye.setFixedWidth(self.btn_eye.fontMetrics().horizontalAdvance("Показать") + 36)
         self.btn_eye.setCheckable(True)
-        self.btn_eye.setToolTip("Показать/скрыть пароль")
+        self.btn_eye.setToolTip(tr("Показать/скрыть пароль"))
         self.btn_eye.toggled.connect(lambda on: (self.password.setEchoMode(
-            QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password), self.btn_eye.setText("Скрыть" if on else "Показать")))
+            QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password), self.btn_eye.setText(tr("Скрыть") if on else "Показать")))
         self.btn_eye.setChecked(True)
         prow.addWidget(self.password, 1)
         prow.addWidget(self.btn_eye)
@@ -1813,7 +1814,7 @@ class RegisterUserDialog(FramelessDialog):
                                            ("streetAddress", "Адрес"), ("physicalDeliveryOfficeName", "Кабинет"))):
             cb = QComboBox()
             cb.setEditable(True)
-            cb.lineEdit().setPlaceholderText("подсказки из AD…")
+            cb.lineEdit().setPlaceholderText(tr("подсказки из AD…"))
             cb.editTextChanged.connect(self._refresh)
             r, c = divmod(i, 2)
             f3.addWidget(QLabel(label + ":"), r, c * 2)
@@ -1833,14 +1834,14 @@ class RegisterUserDialog(FramelessDialog):
             self.cb_template.addItem(name, name)
         self.cb_template.currentIndexChanged.connect(self.apply_template)
         trow.addWidget(self.cb_template, 1)
-        b_save = QPushButton("Сохранить")
-        b_save.setToolTip("Сохранить текущие поля (и группы образца) как шаблон")
+        b_save = QPushButton(tr("Сохранить"))
+        b_save.setToolTip(tr("Сохранить текущие поля (и группы образца) как шаблон"))
         b_save.clicked.connect(self.save_template)
-        b_del = QPushButton("Удалить")
-        b_del.setToolTip("Удалить выбранный шаблон")
+        b_del = QPushButton(tr("Удалить"))
+        b_del.setToolTip(tr("Удалить выбранный шаблон"))
         b_del.clicked.connect(self.delete_template)
-        tpl = QPushButton("👥 Как у сотрудника…")
-        tpl.setToolTip("Скопировать должность, отдел, группы и OU у существующего сотрудника")
+        tpl = QPushButton(tr("👥 Как у сотрудника…"))
+        tpl.setToolTip(tr("Скопировать должность, отдел, группы и OU у существующего сотрудника"))
         tpl.clicked.connect(self.copy_template)
         trow.addWidget(b_save)
         trow.addWidget(b_del)
@@ -1856,7 +1857,7 @@ class RegisterUserDialog(FramelessDialog):
         card = QFrame()
         card.setObjectName("dashCard")
         cl = QVBoxLayout(card)
-        self.pv_fio = QLabel("👤 Новый сотрудник")
+        self.pv_fio = QLabel(tr("👤 Новый сотрудник"))
         self.pv_fio.setStyleSheet("font-size: 14pt; font-weight: bold;")
         self.pv_fio.setWordWrap(True)
         self.pv_title = QLabel("—")
@@ -1879,7 +1880,7 @@ class RegisterUserDialog(FramelessDialog):
         chk = QFrame()
         chk.setObjectName("dashCard")
         kl = QVBoxLayout(chk)
-        kl.addWidget(QLabel("<b>Готовность</b>"))
+        kl.addWidget(QLabel(tr("<b>Готовность</b>")))
         self.checks: dict[str, QLabel] = {}
         self._check_text: dict[str, str] = {}
         for key, text in (("fio", "Фамилия и имя"), ("login", "Логин ≤ 20 символов, латиница"),
@@ -1891,12 +1892,12 @@ class RegisterUserDialog(FramelessDialog):
             kl.addWidget(lb)
         right.addWidget(chk)
         right.addStretch()
-        self.btn_create = QPushButton("➕ Создать учётную запись")
+        self.btn_create = QPushButton(tr("➕ Создать учётную запись"))
         self.btn_create.setObjectName("btnPrimary")
         self.btn_create.setMinimumHeight(40)
         self.btn_create.clicked.connect(self.create)
         right.addWidget(self.btn_create)
-        note = QLabel("Создаётся отключённой → пароль → включается. При сбое учётка удаляется.")
+        note = QLabel(tr("Создаётся отключённой → пароль → включается. При сбое учётка удаляется."))
         note.setWordWrap(True)
         note.setStyleSheet(f"color: {pal.subtext}; font-size: 9pt;")
         right.addWidget(note)
@@ -2215,8 +2216,8 @@ class HotkeyCaptureEdit(QLineEdit):
         super().__init__(text, parent)
         self.on_commit = on_commit
         self.setReadOnly(True)
-        self.setPlaceholderText("кликните сюда и нажмите сочетание…")
-        self.setToolTip("Нажмите сочетание (например Ctrl+Shift+A). Esc — очистить, Enter — сохранить.")
+        self.setPlaceholderText(tr("кликните сюда и нажмите сочетание…"))
+        self.setToolTip(tr("Нажмите сочетание (например Ctrl+Shift+A). Esc — очистить, Enter — сохранить."))
 
     def focusInEvent(self, event):  # noqa: N802
         super().focusInEvent(event)
@@ -2282,15 +2283,15 @@ class DesignSettingsDialog(FramelessDialog):
         tabs.addTab(self._tab_ui(), "⚙️ Интерфейс")
         self.body.addWidget(tabs, 1)
         foot = QHBoxLayout()
-        self.lbl_state = QLabel("Изменения применяются сразу и сохраняются в config.ini")
+        self.lbl_state = QLabel(tr("Изменения применяются сразу и сохраняются в config.ini"))
         self.lbl_state.setStyleSheet(f"color: {app_palette().subtext};")
         foot.addWidget(self.lbl_state, 1)
-        reset = QPushButton("↺ Тема по умолчанию")
+        reset = QPushButton(tr("↺ Тема по умолчанию"))
         reset.clicked.connect(lambda: self.preset("dark"))
-        save_close = QPushButton("💾 Сохранить и закрыть")
+        save_close = QPushButton(tr("💾 Сохранить и закрыть"))
         save_close.setObjectName("btnPrimary")
         save_close.clicked.connect(self._save_and_close)
-        close = QPushButton("Закрыть")
+        close = QPushButton(tr("Закрыть"))
         close.clicked.connect(self.accept)
         foot.addWidget(reset)
         foot.addWidget(save_close)
@@ -2347,12 +2348,12 @@ class DesignSettingsDialog(FramelessDialog):
                 flow.addWidget(tile)
                 self.tiles[key] = tile
             lay.addWidget(holder)
-        btn_default = QPushButton("↩ Сбросить к теме по умолчанию (Графит)")
-        btn_default.setToolTip("Вернуть встроенную тёмную тему «Графит» — как при первой установке")
+        btn_default = QPushButton(tr("↩ Сбросить к теме по умолчанию (Графит)"))
+        btn_default.setToolTip(tr("Вернуть встроенную тёмную тему «Графит» — как при первой установке"))
         btn_default.clicked.connect(lambda: self.preset("dark"))
         lay.addWidget(btn_default)
 
-        lay.addWidget(QLabel("<b>Акцентный цвет</b> — кнопки, заголовки, выделение"))
+        lay.addWidget(QLabel(tr("<b>Акцентный цвет</b> — кнопки, заголовки, выделение")))
         arow = QHBoxLayout()
         arow.setSpacing(6)
         self.accent_swatches: list[Swatch] = []
@@ -2361,15 +2362,15 @@ class DesignSettingsDialog(FramelessDialog):
             sw.clicked.connect(lambda _, c=color: self.set_accent(c))
             arow.addWidget(sw)
             self.accent_swatches.append(sw)
-        b_more = QPushButton("+ Свой…")
+        b_more = QPushButton(tr("+ Свой…"))
         self.btn_accent_custom = b_more
-        b_more.setToolTip("Выбрать акцент из палитры")
+        b_more.setToolTip(tr("Выбрать акцент из палитры"))
         b_more.clicked.connect(lambda: self._pick_into(self.set_accent, self.design["accent_color"], "Акцентный цвет"))
         arow.addWidget(b_more)
         arow.addStretch()
         lay.addLayout(arow)
 
-        lay.addWidget(QLabel("<b>Фон окна</b>"))
+        lay.addWidget(QLabel(tr("<b>Фон окна</b>")))
         brow = QHBoxLayout()
         brow.setSpacing(6)
         self.bg_swatches: list[Swatch] = []
@@ -2378,7 +2379,7 @@ class DesignSettingsDialog(FramelessDialog):
             sw.clicked.connect(lambda _, c=color: self.set_solid(c))
             brow.addWidget(sw)
             self.bg_swatches.append(sw)
-        b_bg = QPushButton("+ Свой…")
+        b_bg = QPushButton(tr("+ Свой…"))
         self.btn_bg_custom = b_bg
         b_bg.clicked.connect(lambda: self._pick_into(self.set_solid, self._c1, "Цвет фона"))
         brow.addWidget(b_bg)
@@ -2386,28 +2387,28 @@ class DesignSettingsDialog(FramelessDialog):
         lay.addLayout(brow)
 
         grow = QHBoxLayout()
-        grow.addWidget(QLabel("Градиент:"))
+        grow.addWidget(QLabel(tr("Градиент:")))
         self.sw_g1 = Swatch(self._c1, "Цвет 1 (верхний левый угол)", 34)
         self.sw_g1.clicked.connect(lambda: self._pick_into(lambda c: self.set_grad(1, c), self._c1, "Цвет градиента 1"))
         self.sw_g2 = Swatch(self._c2, "Цвет 2 (нижний правый угол)", 34)
         self.sw_g2.clicked.connect(lambda: self._pick_into(lambda c: self.set_grad(2, c), self._c2, "Цвет градиента 2"))
         self.grad_preview = QLabel()
         self.grad_preview.setFixedSize(180, 34)
-        b_swap = QPushButton("Поменять")
-        b_swap.setToolTip("Поменять цвета местами")
+        b_swap = QPushButton(tr("Поменять"))
+        b_swap.setToolTip(tr("Поменять цвета местами"))
         b_swap.clicked.connect(lambda: self.set_grad(0, None))
         grow.addWidget(self.sw_g1)
         grow.addWidget(QLabel("→"))
         grow.addWidget(self.sw_g2)
         grow.addWidget(self.grad_preview)
         grow.addWidget(b_swap)
-        b_apply_grad = QPushButton("Применить градиент")
+        b_apply_grad = QPushButton(tr("Применить градиент"))
         b_apply_grad.clicked.connect(lambda: self.set_grad(0, None, swap=False))
         grow.addWidget(b_apply_grad)
         grow.addStretch()
         lay.addLayout(grow)
 
-        self.chk_follow = QCheckBox("Тёмная/светлая — как в Windows (следовать системной теме)")
+        self.chk_follow = QCheckBox(tr("Тёмная/светлая — как в Windows (следовать системной теме)"))
         self.chk_follow.setChecked(bool(self.design.get("follow_system")))
         self.chk_follow.toggled.connect(self._follow_toggled)
         lay.addWidget(self.chk_follow)
@@ -2428,7 +2429,7 @@ class DesignSettingsDialog(FramelessDialog):
         f.addRow("Семейство:", self.font)
         f.addRow("Размер:", self.size)
         lay.addLayout(f)
-        self.font_preview = QLabel("Иванов Иван Петрович · WS-101 · 10.0.2.11 · Съешь же ещё этих мягких французских булок")
+        self.font_preview = QLabel(tr("Иванов Иван Петрович · WS-101 · 10.0.2.11 · Съешь же ещё этих мягких французских булок"))
         self.font_preview.setWordWrap(True)
         self.font_preview.setObjectName("dashCard")
         self.font_preview.setMinimumHeight(80)
@@ -2448,34 +2449,34 @@ class DesignSettingsDialog(FramelessDialog):
         self.lang.addItem("Русский", "ru")
         self.lang.addItem("English", "en")
         self.lang.setCurrentIndex(max(0, self.lang.findData(settings.language)))
-        self.chk_tray = QCheckBox("Показывать значок ADK в трее (закрытие крестиком — всегда выход)")
+        self.chk_tray = QCheckBox(tr("Показывать значок ADK в трее (закрытие крестиком — всегда выход)"))
         self.chk_tray.setChecked(settings.minimize_to_tray)
         self.hotkey = HotkeyCaptureEdit(settings.global_hotkey, self.save_hotkey)
         hk_row = QWidget()
         hr = QHBoxLayout(hk_row)
         hr.setContentsMargins(0, 0, 0, 0)
         hr.addWidget(self.hotkey, 1)
-        self.btn_hk_save = QPushButton("💾 Сохранить")
+        self.btn_hk_save = QPushButton(tr("💾 Сохранить"))
         self.btn_hk_save.clicked.connect(self.save_hotkey)
         hr.addWidget(self.btn_hk_save)
         uf.addRow("Язык:", self.lang)
         uf.addRow(self.chk_tray)
         uf.addRow("Клавиши вызова ADK:", hk_row)
-        hk_hint = QLabel("Кликните в поле и нажмите сочетание — оно запишется само (Enter или «Сохранить» применяет). "
-                         "Работает из любой программы: разворачивает ADK и ставит курсор в поиск. Esc — выключить.")
+        hk_hint = QLabel(tr("Кликните в поле и нажмите сочетание — оно запишется само (Enter или «Сохранить» применяет). "
+                         "Работает из любой программы: разворачивает ADK и ставит курсор в поиск. Esc — выключить."))
         hk_hint.setObjectName("subtle")
         hk_hint.setWordWrap(True)
         uf.addRow("", hk_hint)
-        btn_reset_login = QPushButton("↺ Сбросить сохранённый способ входа")
-        btn_reset_login.setToolTip("Вернуть экран входа к обычному виду: ADK снова спросит, как входить (пароль или Windows)")
+        btn_reset_login = QPushButton(tr("↺ Сбросить сохранённый способ входа"))
+        btn_reset_login.setToolTip(tr("Вернуть экран входа к обычному виду: ADK снова спросит, как входить (пароль или Windows)"))
         btn_reset_login.clicked.connect(self.reset_login_method)
         uf.addRow(btn_reset_login)
         lay.addLayout(uf)
-        save_ui = QPushButton("💾 Сохранить настройки интерфейса")
+        save_ui = QPushButton(tr("💾 Сохранить настройки интерфейса"))
         save_ui.setObjectName("btnPrimary")
         save_ui.clicked.connect(self.save_ui)
         lay.addWidget(save_ui)
-        note = QLabel("Язык применяется сразу; трей и горячая клавиша — тоже (без перезапуска).")
+        note = QLabel(tr("Язык применяется сразу; трей и горячая клавиша — тоже (без перезапуска)."))
         note.setStyleSheet(f"color: {app_palette().subtext};")
         lay.addWidget(note)
         lay.addStretch()
@@ -2496,7 +2497,7 @@ class DesignSettingsDialog(FramelessDialog):
         set_language(lang)                       # 3.6.3: язык меняется сразу, без перезапуска
         self.app.retranslate()
         self.app.reapply_hotkey()
-        self.lbl_state.setText("✅ Настройки интерфейса сохранены")
+        self.lbl_state.setText(tr("✅ Настройки интерфейса сохранены"))
 
     def save_hotkey(self):
         """Сохранить горячую клавишу немедленно (кнопка «Сохранить» / Enter)."""
@@ -2508,12 +2509,12 @@ class DesignSettingsDialog(FramelessDialog):
         settings.save_section("UI", {"global_hotkey": hk})
         settings.global_hotkey = hk
         self.app.reapply_hotkey()
-        self.lbl_state.setText("✅ Горячая клавиша сохранена" if hk else "✅ Горячая клавиша выключена")
+        self.lbl_state.setText(tr("✅ Горячая клавиша сохранена") if hk else "✅ Горячая клавиша выключена")
 
     def reset_login_method(self):
         settings.save_section("UI", {"login_method": ""})
         settings.login_method = ""
-        self.lbl_state.setText("✅ Способ входа сброшен — ADK снова спросит, как входить")
+        self.lbl_state.setText(tr("✅ Способ входа сброшен — ADK снова спросит, как входить"))
 
     def _follow_toggled(self, on: bool):
         self.design["follow_system"] = on
@@ -2589,4 +2590,4 @@ class DesignSettingsDialog(FramelessDialog):
         apply_theme(self.design)
         self.app.on_theme_changed()
         self._sync_selection()
-        self.lbl_state.setText("✅ Применено и сохранено")
+        self.lbl_state.setText(tr("✅ Применено и сохранено"))

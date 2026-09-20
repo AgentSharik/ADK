@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 
 from . import ad
 from .config import CREATE_NO_WINDOW
+from .i18n import tr  # noqa: E402
 from .widgets import FramelessDialog, MessageBox, app_palette, fit_columns, run_in_background
 from .workers import INVENTORY_COLUMNS, INVENTORY_DEFAULT, InventoryWorker
 
@@ -59,9 +60,9 @@ class InventoryDialog(FramelessDialog):
         left.setMinimumWidth(260)
         ll = QVBoxLayout(left)
         ll.setContentsMargins(12, 10, 12, 10)
-        ll.addWidget(QLabel("<b>1. Организация</b>"))
+        ll.addWidget(QLabel(tr("<b>1. Организация</b>")))
         self.filter = QLineEdit()
-        self.filter.setPlaceholderText("Фильтр…")
+        self.filter.setPlaceholderText(tr("Фильтр…"))
         self.filter.textChanged.connect(self._apply_filter)
         ll.addWidget(self.filter)
         self.list = QListWidget()
@@ -69,10 +70,10 @@ class InventoryDialog(FramelessDialog):
         self.list.itemSelectionChanged.connect(self._company_changed)
         self.list.itemDoubleClicked.connect(lambda _it: self.preview())
         ll.addWidget(self.list, 1)
-        self.lbl_companies = QLabel("Загрузка списка организаций…")
+        self.lbl_companies = QLabel(tr("Загрузка списка организаций…"))
         self.lbl_companies.setStyleSheet(f"color: {pal.subtext}; font-size: 9pt;")
         ll.addWidget(self.lbl_companies)
-        self.btn_preview = QPushButton("👁 Предпросмотр")
+        self.btn_preview = QPushButton(tr("👁 Предпросмотр"))
         self.btn_preview.setObjectName("btnPrimary")
         self.btn_preview.setEnabled(False)
         self.btn_preview.clicked.connect(self.preview)
@@ -82,7 +83,7 @@ class InventoryDialog(FramelessDialog):
         # ============ 2. предпросмотр
         mid = QVBoxLayout()
         mid.setSpacing(8)
-        self.lbl_title = QLabel("<b>2. Что попадёт в файл</b> — выберите организацию слева")
+        self.lbl_title = QLabel(tr("<b>2. Что попадёт в файл</b> — выберите организацию слева"))
         mid.addWidget(self.lbl_title)
         self.tiles = QHBoxLayout()
         self.tiles.setSpacing(8)
@@ -105,7 +106,7 @@ class InventoryDialog(FramelessDialog):
         right.setObjectName("dashCard")
         rl = QVBoxLayout(right)
         rl.setContentsMargins(12, 10, 12, 10)
-        rl.addWidget(QLabel("<b>3. Колонки</b>"))
+        rl.addWidget(QLabel(tr("<b>3. Колонки</b>")))
         self.checks: dict[str, QCheckBox] = {}
         grid = QGridLayout()
         grid.setVerticalSpacing(2)
@@ -117,22 +118,22 @@ class InventoryDialog(FramelessDialog):
             grid.addWidget(cb, i, 0)
         rl.addLayout(grid)
         quick = QHBoxLayout()
-        b_all = QPushButton("Все")
+        b_all = QPushButton(tr("Все"))
         b_all.clicked.connect(lambda: self._set_all(True))
-        b_std = QPushButton("Стандарт")
+        b_std = QPushButton(tr("Стандарт"))
         b_std.clicked.connect(lambda: [cb.setChecked(k in INVENTORY_DEFAULT) for k, cb in self.checks.items()])
         quick.addWidget(b_all)
         quick.addWidget(b_std)
         rl.addLayout(quick)
         rl.addStretch()
-        rl.addWidget(QLabel("<b>Папка</b>"))
-        self.btn_dir = QPushButton("📁 Выбрать…")
+        rl.addWidget(QLabel(tr("<b>Папка</b>")))
+        self.btn_dir = QPushButton(tr("📁 Выбрать…"))
         self.btn_dir.clicked.connect(self.choose_dir)
         rl.addWidget(self.btn_dir)
-        self.cb_open = QCheckBox("Открыть после сохранения")
+        self.cb_open = QCheckBox(tr("Открыть после сохранения"))
         self.cb_open.setChecked(True)
         rl.addWidget(self.cb_open)
-        self.btn_go = QPushButton("💾 Сохранить Excel")
+        self.btn_go = QPushButton(tr("💾 Сохранить Excel"))
         self.btn_go.setObjectName("btnSuccess")
         self.btn_go.setEnabled(False)
         self.btn_go.clicked.connect(self.generate)
@@ -141,7 +142,7 @@ class InventoryDialog(FramelessDialog):
 
         foot = QHBoxLayout()
         foot.addStretch()
-        close = QPushButton("Закрыть")
+        close = QPushButton(tr("Закрыть"))
         close.clicked.connect(self.close)
         foot.addWidget(close)
         self.body.addLayout(foot)
@@ -187,7 +188,7 @@ class InventoryDialog(FramelessDialog):
         self.btn_go.setEnabled(False)
         self.btn_preview.setEnabled(False)
         self.lbl_title.setText(f"<b>2. Что попадёт в файл</b> — {company}")
-        self.status.setText("⏳ Собираю данные…")
+        self.status.setText(tr("⏳ Собираю данные…"))
         self.worker = InventoryWorker(self.app.get_conn, company, "", parent=self, preview=True)
         self.worker.progress.connect(self.status.setText)
         self.worker.rows_ready.connect(self.show_rows)
@@ -234,7 +235,7 @@ class InventoryDialog(FramelessDialog):
                 it = QTableWidgetItem(str(row.get(key, "")))
                 if key == "comp" and row.get("comp") == "Не привязан":
                     it.setForeground(Qt.GlobalColor.red if not pal.is_dark else Qt.GlobalColor.white)
-                    it.setToolTip("У сотрудника нет привязанного ПК")
+                    it.setToolTip(tr("У сотрудника нет привязанного ПК"))
                 self.table.setItem(r, c, it)
         fit_columns(self.table, max_width=300, min_width=70, wrap=False)
 
@@ -265,7 +266,7 @@ class InventoryDialog(FramelessDialog):
         if self.worker and self.worker.isRunning():
             return
         self.btn_go.setEnabled(False)
-        self.status.setText("⏳ Запись Excel…")
+        self.status.setText(tr("⏳ Запись Excel…"))
         self.worker = InventoryWorker(self.app.get_conn, self.company, self.out_dir, parent=self,
                                       columns=self.columns(), rows=self.rows)
         self.worker.progress.connect(self.status.setText)

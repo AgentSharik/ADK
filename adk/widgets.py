@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .theme import Palette
+from .i18n import tr  # noqa: E402
 
 _EDGE = 8
 
@@ -120,10 +121,10 @@ class TitleBar(QWidget):
             # 3.5.10: свои контурные иконки в цвете текста темы — системные SP_TitleBar* на Windows чёрные и на тёмных
             # темах кнопки просто не видно (перекрашиваются при смене темы в _sync_max_icon/refresh_icons)
             self.btn_min = QPushButton()
-            self.btn_min.setToolTip("Свернуть")
+            self.btn_min.setToolTip(tr("Свернуть"))
             self.btn_min.clicked.connect(window.showMinimized)
             self.btn_max = QPushButton()
-            self.btn_max.setToolTip("Развернуть / восстановить (двойной клик по шапке, F11 — во весь экран)")
+            self.btn_max.setToolTip(tr("Развернуть / восстановить (двойной клик по шапке, F11 — во весь экран)"))
             self.btn_max.clicked.connect(self.toggle_max)
             for b in (self.btn_min, self.btn_max):
                 b.setObjectName("winBtn")
@@ -134,7 +135,7 @@ class TitleBar(QWidget):
         close.setObjectName("btnClose")
         close.setProperty("class", "winBtn")
         close.setFixedSize(34, 28)
-        close.setToolTip("Закрыть")
+        close.setToolTip(tr("Закрыть"))
         close.clicked.connect(window.close)
         lay.addWidget(close)
         self.btn_close = close
@@ -335,7 +336,7 @@ class MessageBox(FramelessDialog):
                 b.clicked.connect(lambda _, v=val: self._finish(v))
                 btns.addWidget(b)
         else:
-            b = QPushButton("ОК")
+            b = QPushButton(tr("ОК"))
             b.setObjectName("btnPrimary")
             b.setMinimumWidth(100)
             b.clicked.connect(lambda: self._finish(self.OK))
@@ -375,10 +376,10 @@ class InputDialog(FramelessDialog):
         self.body.addWidget(self.edit)
         btns = QHBoxLayout()
         btns.addStretch()
-        ok = QPushButton("ОК")
+        ok = QPushButton(tr("ОК"))
         ok.setObjectName("btnPrimary")
         ok.clicked.connect(self.accept)
-        cancel = QPushButton("Отмена")
+        cancel = QPushButton(tr("Отмена"))
         cancel.clicked.connect(self.reject)
         btns.addWidget(ok)
         btns.addWidget(cancel)
@@ -821,26 +822,26 @@ class OrgPickerDialog(FramelessDialog):
         super().__init__("🏢 Область — опрос по организации", parent, (460, 520))
         self.choice = ""
         pal = app_palette()
-        hint = QLabel("Покажутся только ПК выбранной организации — как в Excel-описи.")
+        hint = QLabel(tr("Покажутся только ПК выбранной организации — как в Excel-описи."))
         hint.setStyleSheet(f"color: {pal.subtext}; font-size: 9pt;")
         self.body.addWidget(hint)
         self.filter = QLineEdit()
-        self.filter.setPlaceholderText("Фильтр по названию…")
+        self.filter.setPlaceholderText(tr("Фильтр по названию…"))
         self.filter.textChanged.connect(self._apply)
         self.body.addWidget(self.filter)
         self.list = QListWidget()
         self.list.itemDoubleClicked.connect(lambda _it: self._pick())
         self.list.itemSelectionChanged.connect(lambda: self.btn_ok.setEnabled(self.list.currentItem() is not None))
         self.body.addWidget(self.list, 1)
-        self.lbl = QLabel("Загрузка списка организаций из AD…")
+        self.lbl = QLabel(tr("Загрузка списка организаций из AD…"))
         self.lbl.setStyleSheet(f"color: {pal.subtext}; font-size: 9pt;")
         self.body.addWidget(self.lbl)
         row = QHBoxLayout()
         row.addStretch()
-        cancel = QPushButton("Отмена")
+        cancel = QPushButton(tr("Отмена"))
         cancel.clicked.connect(self.reject)
         row.addWidget(cancel)
-        self.btn_ok = QPushButton("Выбрать")
+        self.btn_ok = QPushButton(tr("Выбрать"))
         self.btn_ok.setObjectName("btnPrimary")
         self.btn_ok.setEnabled(False)
         self.btn_ok.clicked.connect(self._pick)

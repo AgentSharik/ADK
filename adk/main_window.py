@@ -1187,9 +1187,9 @@ class ADApp(FramelessMainWindow):
         self.printer_pcs.setColumnWidth(3, 80)
         self.printer_pcs.itemDoubleClicked.connect(lambda it: self._open_printer_pc(it.row()))
         lay.addWidget(self.printer_pcs, 1)
-        hint = QLabel("Принтеры берутся из инвентарных CSV. Доступность — TCP 9100/631/80, затем ping. «Проверка» при "
+        hint = QLabel(tr("Принтеры берутся из инвентарных CSV. Доступность — TCP 9100/631/80, затем ping. «Проверка» при "
                       "поиске по IP: порты печати 9100/631 или веб-панель принтера — значит принтер; открытые 445/3389 — "
-                      "это уже компьютер.")
+                      "это уже компьютер."))
         hint.setObjectName("subtle")
         hint.setWordWrap(True)
         lay.addWidget(hint)
@@ -1257,7 +1257,7 @@ class ADApp(FramelessMainWindow):
             self.printer_pcs.setItem(r, 0, QTableWidgetItem(x["comp"]))
             self.printer_pcs.setItem(r, 1, QTableWidgetItem(x.get("user") or "—"))
             self.printer_pcs.setItem(r, 2, StatusItem("● В сети" if x["is_online"] else "● Не в сети", "online" if x["is_online"] else "offline"))
-            self.printer_pcs.setItem(r, 3, QTableWidgetItem("да" if x.get("is_default") else ""))
+            self.printer_pcs.setItem(r, 3, QTableWidgetItem(tr("да") if x.get("is_default") else ""))
         fit_columns(self.printer_pcs, wrap=False, stretch_last=False)
         self.printer_pcs.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.btn_ping.setVisible(False)

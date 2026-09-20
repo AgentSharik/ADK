@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (QButtonGroup, QFileDialog, QFrame, QHBoxLayout, QLa
 
 from . import db
 from .config import DOCS_DIR, PORTABLE_DIR, park_pattern, settings
+from .i18n import tr  # noqa: E402
 from .widgets import FramelessDialog, app_palette
 from .workers import BaseWorker, PCScannerWorker
 
@@ -85,9 +86,8 @@ class DbSetupDialog(FramelessDialog):
         self.body.setSpacing(10)
         self.body.setContentsMargins(18, 4, 18, 4)
 
-        intro = QLabel(
-            "ADK хранит инвентарь парка, историю, заметки и принтеры в одном файле <b>pc_mapping.db</b>.<br>"
-            "Укажите папку, где он <b>уже лежит</b> (если ADK у вас уже установлен на другом ПК) или где его <b>создать</b>.")
+        intro = QLabel(tr("ADK хранит инвентарь парка, историю, заметки и принтеры в одном файле <b>pc_mapping.db</b>.<br>"
+            "Укажите папку, где он <b>уже лежит</b> (если ADK у вас уже установлен на другом ПК) или где его <b>создать</b>."))
         intro.setWordWrap(True)
         self.body.addWidget(intro)
 
@@ -98,14 +98,14 @@ class DbSetupDialog(FramelessDialog):
         cl.setSpacing(8)
         cl.setContentsMargins(14, 12, 14, 12)
         self.grp = QButtonGroup(self)
-        self.rb_default = QRadioButton("Рядом с программой (папка ADK возле ADK.exe — конфиг и база всегда при нём)"
+        self.rb_default = QRadioButton(tr("Рядом с программой (папка ADK возле ADK.exe — конфиг и база всегда при нём)")
                                        if PORTABLE_DIR else "В моих документах (база только на этом ПК)")
         self.rb_default.setToolTip(os.path.join(DOCS_DIR, DB_FILE))
         self.rb_default.setMinimumHeight(26)
         self.lbl_default_path = QLabel(os.path.join(DOCS_DIR, DB_FILE))
         self.lbl_default_path.setObjectName("subtle")
         self.lbl_default_path.setContentsMargins(26, 0, 0, 0)
-        self.rb_custom = QRadioButton("В другой папке — общая для отдела, сетевая или уже существующая")
+        self.rb_custom = QRadioButton(tr("В другой папке — общая для отдела, сетевая или уже существующая"))
         self.rb_custom.setMinimumHeight(26)
         self.grp.addButton(self.rb_default, 0)
         self.grp.addButton(self.rb_custom, 1)
@@ -117,7 +117,7 @@ class DbSetupDialog(FramelessDialog):
         self.path_in = QLineEdit()
         self.path_in.setPlaceholderText(r"например D:\ADK или \\server\share\ADK")
         self.path_in.setMinimumHeight(34)
-        self.btn_browse = QPushButton("📁 Обзор…")
+        self.btn_browse = QPushButton(tr("📁 Обзор…"))
         self.btn_browse.setMinimumHeight(34)
         self.btn_browse.clicked.connect(self.browse)
         row.addWidget(self.path_in, 1)
@@ -132,9 +132,8 @@ class DbSetupDialog(FramelessDialog):
         self.lbl_found.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.body.addWidget(self.lbl_found)
 
-        hint = QLabel(
-            "💡 <b>Совет.</b> Установите ADK на <b>одном</b> компьютере, а на остальных создайте ярлык на его <code>ADK.exe</code> — "
-            "база будет одна, и заполнять её нужно один раз. Если баз несколько, инвентарь и заметки у коллег будут разными.")
+        hint = QLabel(tr("💡 <b>Совет.</b> Установите ADK на <b>одном</b> компьютере, а на остальных создайте ярлык на его <code>ADK.exe</code> — "
+            "база будет одна, и заполнять её нужно один раз. Если баз несколько, инвентарь и заметки у коллег будут разными."))
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {pal.text}; background: {pal.info[1]}; border: 1px solid {pal.info[2]}; "
                            f"border-radius: 8px; padding: 8px 10px;")
@@ -143,9 +142,9 @@ class DbSetupDialog(FramelessDialog):
 
         btns = QHBoxLayout()
         btns.addStretch()
-        self.btn_cancel = QPushButton("Выход")
+        self.btn_cancel = QPushButton(tr("Выход"))
         self.btn_cancel.clicked.connect(self.reject)
-        self.btn_ok = QPushButton("Продолжить")
+        self.btn_ok = QPushButton(tr("Продолжить"))
         self.btn_ok.setObjectName("btnPrimary")
         self.btn_ok.setMinimumHeight(40)
         self.btn_ok.clicked.connect(self.finish)
@@ -174,7 +173,7 @@ class DbSetupDialog(FramelessDialog):
         self.btn_browse.setEnabled(self.rb_custom.isChecked())
         path = self.chosen_path()
         if not path:
-            self.lbl_found.setText("Укажите папку.")
+            self.lbl_found.setText(tr("Укажите папку."))
             self.btn_ok.setEnabled(False)
             return
         self.btn_ok.setEnabled(True)
@@ -186,16 +185,16 @@ class DbSetupDialog(FramelessDialog):
             if db_has_inventory(path):
                 self.is_new = False
                 self.lbl_found.setText(f"✅ База найдена: {describe_db(path)}. ADK будет использовать её как есть.{net}")
-                self.btn_ok.setText("Использовать эту базу")
+                self.btn_ok.setText(tr("Использовать эту базу"))
             else:
                 self.is_new = True
                 self.lbl_found.setText(f"ℹ️ Файл есть, но инвентарь в нём пуст — после входа ADK заполнит его: опросит домен и ПК.{net}")
-                self.btn_ok.setText("Продолжить")
+                self.btn_ok.setText(tr("Продолжить"))
         else:
             self.is_new = True
-            self.lbl_found.setText("🆕 Базы здесь нет — она будет создана, и после входа ADK заполнит её: "
+            self.lbl_found.setText(tr("🆕 Базы здесь нет — она будет создана, и после входа ADK заполнит её: ") +
                                    f"ПК из домена, их адреса, кто за ними работает, принтеры.{net}")
-            self.btn_ok.setText("Создать базу здесь")
+            self.btn_ok.setText(tr("Создать базу здесь"))
 
     def browse(self):
         start = self.path_in.text().strip() or DOCS_DIR
@@ -289,10 +288,9 @@ class ParkMaskDialog(FramelessDialog):
         self.body.setSpacing(10)
         self.body.setContentsMargins(18, 4, 18, 4)
 
-        intro = QLabel(
-            "Выберите имена ПК, с которыми будет работать ADK — остальные машины домена ADK показывать не будет.<br>"
+        intro = QLabel(tr("Выберите имена ПК, с которыми будет работать ADK — остальные машины домена ADK показывать не будет.<br>"
             "Пишите серию как удобно: <b>PC-</b> — все ПК, начинающиеся на PC; <b>PC-0000</b> — ПК "
-            "<b>PC-</b> ровно с четырьмя цифрами. Несколько серий — несколько полей.")
+            "<b>PC-</b> ровно с четырьмя цифрами. Несколько серий — несколько полей."))
         intro.setWordWrap(True)
         self.body.addWidget(intro)
 
@@ -303,7 +301,7 @@ class ParkMaskDialog(FramelessDialog):
         self.rows_lay.setSpacing(6)
         self.body.addWidget(self.rows_card)
 
-        self.btn_add = QPushButton("＋ Добавить серию")
+        self.btn_add = QPushButton(tr("＋ Добавить серию"))
         self.btn_add.setMinimumHeight(34)
         self.btn_add.clicked.connect(lambda: self.add_row())
         self.body.addWidget(self.btn_add)
@@ -315,9 +313,9 @@ class ParkMaskDialog(FramelessDialog):
 
         self.body.addStretch(1)
         btns = QHBoxLayout()
-        btn_skip = QPushButton("Пропустить — все ПК домена")
+        btn_skip = QPushButton(tr("Пропустить — все ПК домена"))
         btn_skip.clicked.connect(self.reject)
-        self.btn_ok = QPushButton("💾 Сохранить и продолжить")
+        self.btn_ok = QPushButton(tr("💾 Сохранить и продолжить"))
         self.btn_ok.setObjectName("btnPrimary")
         self.btn_ok.setMinimumHeight(40)
         self.btn_ok.clicked.connect(self.save)
@@ -327,7 +325,7 @@ class ParkMaskDialog(FramelessDialog):
         self.body.addLayout(btns)
 
         if not self.computer_names:
-            self.total_lbl.setText("ℹ️ Список ПК домена недоступен — количество не показываю, маска всё равно сохранится.")
+            self.total_lbl.setText(tr("ℹ️ Список ПК домена недоступен — количество не показываю, маска всё равно сохранится."))
         self.add_row()
         self.recount()
 
@@ -336,14 +334,14 @@ class ParkMaskDialog(FramelessDialog):
         row = QHBoxLayout()
         edit = QLineEdit(text)
         edit.setMinimumHeight(34)
-        edit.setPlaceholderText("например PC- или PC-0000")
+        edit.setPlaceholderText(tr("например PC- или PC-0000"))
         cnt = QLabel("")
         cnt.setObjectName("subtle")
         cnt.setMinimumWidth(90)
         btn_del = QPushButton("✕")
         btn_del.setFixedWidth(36)
         btn_del.setMinimumHeight(34)
-        btn_del.setToolTip("Убрать серию")
+        btn_del.setToolTip(tr("Убрать серию"))
         row.addWidget(edit, 1)
         row.addWidget(cnt)
         row.addWidget(btn_del)
@@ -407,8 +405,8 @@ class ParkMaskDialog(FramelessDialog):
         pats = self._patterns()
         if not pats:
             # 3.12.0: кнопка всегда доступна; пустой ввод — понятная подсказка вместо серой кнопки
-            self.total_lbl.setText("Введите серию (например PC- или PC-0000) — или нажмите «Пропустить», "
-                                   "чтобы работать со всеми ПК домена.")
+            self.total_lbl.setText(tr("Введите серию (например PC- или PC-0000) — или нажмите «Пропустить», "
+                                   "чтобы работать со всеми ПК домена."))
             return
         mask = ", ".join(pats)
         settings.host_mask = mask

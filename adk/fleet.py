@@ -48,16 +48,16 @@ class MassPingDialog(FramelessDialog):
         self.body.addWidget(self.table, 1)
         self.body.addWidget(self.status)
         btns = QHBoxLayout()
-        self.btn_again = QPushButton("🔄 Повторить")
+        self.btn_again = QPushButton(tr("🔄 Повторить"))
         self.btn_again.clicked.connect(self.start)
-        self.btn_wol = QPushButton("⚡ Разбудить выключенные (WoL)")
+        self.btn_wol = QPushButton(tr("⚡ Разбудить выключенные (WoL)"))
         self.btn_wol.setObjectName("btnPrimary")
         self.btn_wol.clicked.connect(self.wake_offline)
         self.btn_wol.setEnabled(False)
         btns.addWidget(self.btn_again)
         btns.addWidget(self.btn_wol)
         btns.addStretch()
-        close = QPushButton("Закрыть")
+        close = QPushButton(tr("Закрыть"))
         close.clicked.connect(self.accept)
         btns.addWidget(close)
         self.body.addLayout(btns)
@@ -101,7 +101,7 @@ class MassPingDialog(FramelessDialog):
         self.result[comp] = (ip, online)
         self.table.item(r, 1).setText(ip)
         it = self.table.item(r, 2)
-        it.setText("🟢 в сети" if online else "🔴 нет")
+        it.setText(tr("🟢 в сети") if online else "🔴 нет")
         it.setForeground(QColor(pal.success[0] if online else pal.danger[0]))
         try:
             db.set_pc_online(comp, online)
@@ -176,7 +176,7 @@ class SoftwareDialog(FramelessDialog):
             self.tabs.addTab(self._build_sec_tab(), "🛡️ Обновления безопасности")
             self.tabs.addTab(self._build_hotfix_tab(), "🩹 Обновления Windows")
         self.tabs.addTab(self._build_fleet_tab(), "🔎 У кого установлено")
-        close = QPushButton("Закрыть")
+        close = QPushButton(tr("Закрыть"))
         close.clicked.connect(self.accept)
         self.body.addWidget(close, alignment=Qt.AlignmentFlag.AlignRight)
         if comp:
@@ -188,10 +188,10 @@ class SoftwareDialog(FramelessDialog):
         lay = QVBoxLayout(w)
         top = QHBoxLayout()
         self.filter = QLineEdit()
-        self.filter.setPlaceholderText("Фильтр по названию/издателю…")
+        self.filter.setPlaceholderText(tr("Фильтр по названию/издателю…"))
         self.filter.textChanged.connect(self._apply_filter)
         top.addWidget(self.filter, 1)
-        self.btn_poll = QPushButton("🔄 Опросить ПК")
+        self.btn_poll = QPushButton(tr("🔄 Опросить ПК"))
         self.btn_poll.setObjectName("btnPrimary")
         self.btn_poll.clicked.connect(self.poll)
         top.addWidget(self.btn_poll)
@@ -207,7 +207,7 @@ class SoftwareDialog(FramelessDialog):
         lay = QVBoxLayout(w)
         self.hot = _table(["KB", "Описание", "Установлено"])
         lay.addWidget(self.hot, 1)
-        lay.addWidget(QLabel("Все обновления за последнее время (Win32_QuickFixEngineering). Заполняется при опросе ПК."))
+        lay.addWidget(QLabel(tr("Все обновления за последнее время (Win32_QuickFixEngineering). Заполняется при опросе ПК.")))
         return w
 
     def _build_sec_tab(self) -> QWidget:
@@ -215,7 +215,7 @@ class SoftwareDialog(FramelessDialog):
         lay = QVBoxLayout(w)
         self.sec = _table(["KB", "Описание", "Установлено"])
         lay.addWidget(self.sec, 1)
-        lay.addWidget(QLabel("Только обновления безопасности (по описанию KB). Заполняется при опросе ПК."))
+        lay.addWidget(QLabel(tr("Только обновления безопасности (по описанию KB). Заполняется при опросе ПК.")))
         return w
 
     def _build_fleet_tab(self) -> QWidget:
@@ -223,28 +223,28 @@ class SoftwareDialog(FramelessDialog):
         lay = QVBoxLayout(w)
         top = QHBoxLayout()
         self.q = QLineEdit()
-        self.q.setPlaceholderText("Название программы (часть), например: 1С, Chrome, KES…")
+        self.q.setPlaceholderText(tr("Название программы (часть), например: 1С, Chrome, KES…"))
         self.q.returnPressed.connect(self.search_fleet)
         top.addWidget(self.q, 1)
-        b = QPushButton("Найти")
+        b = QPushButton(tr("Найти"))
         b.setObjectName("btnPrimary")
         b.clicked.connect(self.search_fleet)
         top.addWidget(b)
         # 3.5.10: опрос всего парка отсюда — без него вкладка у организации без сохранённых данных была пустой
-        self.btn_fleet_poll = QPushButton("📡 Опросить парк")
-        self.btn_fleet_poll.setToolTip("Опросить все ПК в сети (WinRM → WMI → удалённый реестр) и сохранить их ПО в базу")
+        self.btn_fleet_poll = QPushButton(tr("📡 Опросить парк"))
+        self.btn_fleet_poll.setToolTip(tr("Опросить все ПК в сети (WinRM → WMI → удалённый реестр) и сохранить их ПО в базу"))
         self.btn_fleet_poll.clicked.connect(self.poll_fleet)
         top.addWidget(self.btn_fleet_poll)
         # 3.8.0: «Область» — опрос только ПК выбранной организации, с колонкой «Пользователь»
-        self.btn_fleet_org = QPushButton("🏢 Область")
-        self.btn_fleet_org.setToolTip("Опросить только ПК выбранной организации (как в Excel-описи)\\n"
-                                      "и показать, какой пользователь какое ПО использует")
+        self.btn_fleet_org = QPushButton(tr("🏢 Область"))
+        self.btn_fleet_org.setToolTip(tr("Опросить только ПК выбранной организации (как в Excel-описи)\\n"
+                                      "и показать, какой пользователь какое ПО использует"))
         self.btn_fleet_org.clicked.connect(self.poll_org)
         top.addWidget(self.btn_fleet_org)
         self._org_users: dict[str, str] | None = None
         self._org_rows: list[tuple[str, str, str, str]] | None = None
         self._org_name = ""
-        self.btn_fleet_stop = QPushButton("⏹ Стоп")
+        self.btn_fleet_stop = QPushButton(tr("⏹ Стоп"))
         self.btn_fleet_stop.setEnabled(False)
         self.btn_fleet_stop.clicked.connect(lambda: (self.fleet_worker.cancel() if self.fleet_worker else None,
                                                      self.btn_fleet_stop.setEnabled(False)))
@@ -254,7 +254,7 @@ class SoftwareDialog(FramelessDialog):
         self.fleet = _table(["ПК", "Программа", "Версия", "Опрошен"])
         self.fleet.itemDoubleClicked.connect(lambda it: self.app.search_text(self.fleet.item(it.row(), 0).text()) if hasattr(self.app, "search_text") else None)
         lay.addWidget(self.fleet, 1)
-        self.fleet_lbl = QLabel("Поиск идёт по сохранённым данным опрошенных ПК. Двойной клик — найти ПК в главном окне.")
+        self.fleet_lbl = QLabel(tr("Поиск идёт по сохранённым данным опрошенных ПК. Двойной клик — найти ПК в главном окне."))
         lay.addWidget(self.fleet_lbl)
         self._fill_summary()
         return w
@@ -262,9 +262,9 @@ class SoftwareDialog(FramelessDialog):
     def _fill_summary(self):
         top = software.software_summary()
         if not top:
-            self.fleet_lbl.setText("Сохранённых данных о ПО пока нет — нажмите «Опросить парк» или опросите ПК из его карточки.")
+            self.fleet_lbl.setText(tr("Сохранённых данных о ПО пока нет — нажмите «Опросить парк» или опросите ПК из его карточки."))
             return
-        self.fleet_lbl.setText("Топ программ по числу ПК (по сохранённым данным). Введите название для точного поиска.")
+        self.fleet_lbl.setText(tr("Топ программ по числу ПК (по сохранённым данным). Введите название для точного поиска."))
         _fill(self.fleet, [(f"{n} ПК", name) for name, n in top[:100]])
 
     # --- данные
@@ -282,7 +282,7 @@ class SoftwareDialog(FramelessDialog):
 
     def poll(self):
         self.btn_poll.setEnabled(False)
-        self.lbl.setText("⏳ Опрашиваю ПК (WinRM → WMI → удалённый реестр), обычно 10–60 с…")
+        self.lbl.setText(tr("⏳ Опрашиваю ПК (WinRM → WMI → удалённый реестр), обычно 10–60 с…"))
 
         def done(d: dict):
             self.btn_poll.setEnabled(True)
@@ -311,7 +311,7 @@ class SoftwareDialog(FramelessDialog):
             self.fleet_lbl.setText(f"⚠️ Список ПК не получен: {exc}")
             return
         if not hosts:
-            self.fleet_lbl.setText("⚠️ ПК для опроса не найдены: инвентарь пуст и AD не вернул рабочих станций")
+            self.fleet_lbl.setText(tr("⚠️ ПК для опроса не найдены: инвентарь пуст и AD не вернул рабочих станций"))
             return
         self._start_fleet_poll(hosts)
 
@@ -400,30 +400,30 @@ class LogonsDialog(FramelessDialog):
         super().__init__(f"🔐 Входы на ПК за 24 ч: {comp}", parent, (860, 560))
         self.comp, self.app = comp, app
         top = QHBoxLayout()
-        top.addWidget(QLabel("Период:"))
+        top.addWidget(QLabel(tr("Период:")))
         self.hours = QComboBox()
         for h in (1, 8, 24, 72, 168):
             self.hours.addItem(f"{h} ч" if h < 48 else f"{h // 24} дн.", h)
         self.hours.setCurrentIndex(2)
         top.addWidget(self.hours)
-        self.only_fail = QCheckBox("Только отказы")
+        self.only_fail = QCheckBox(tr("Только отказы"))
         self.only_fail.toggled.connect(self._render)
         top.addWidget(self.only_fail)
-        self.show_net = QCheckBox("Сетевые входы (тип 3)")
-        self.show_net.setToolTip("Тип 3 — это не вход за этим ПК, а обращение к нему по сети с другого компьютера "
-                                 "(общие папки, службы). По умолчанию скрыты и не читаются с ПК — включите, чтобы увидеть.")
+        self.show_net = QCheckBox(tr("Сетевые входы (тип 3)"))
+        self.show_net.setToolTip(tr("Тип 3 — это не вход за этим ПК, а обращение к нему по сети с другого компьютера "
+                                 "(общие папки, службы). По умолчанию скрыты и не читаются с ПК — включите, чтобы увидеть."))
         self.show_net.toggled.connect(self._net_toggled)
         top.addWidget(self.show_net)
         top.addStretch()
-        b = QPushButton("🔄 Обновить")
+        b = QPushButton(tr("🔄 Обновить"))
         b.setObjectName("btnPrimary")
         b.clicked.connect(self.load)
         top.addWidget(b)
         self.body.addLayout(top)
         # 3.9.0: расшифровка типов входов — вопрос «что значит вход по кэшу/пустые» больше не возникает
-        legend = QLabel("<b>Типы входов:</b> Консоль — вошёл за этим ПК · Разблокировка — снял блокировку · "
+        legend = QLabel(tr("<b>Типы входов:</b> Консоль — вошёл за этим ПК · Разблокировка — снял блокировку · "
                         "RDP — удалённый рабочий стол · Вход по кэшу — пустило без сети, по сохранённым данным · "
-                        "«—» в IP — журнал не записал, откуда")
+                        "«—» в IP — журнал не записал, откуда"))
         legend.setWordWrap(True)
         legend.setStyleSheet("color: %s; font-size: 8.5pt;" % app_palette().subtext)
         self.body.addWidget(legend)
@@ -433,7 +433,7 @@ class LogonsDialog(FramelessDialog):
         self.table = _table(["Время", "Пользователь", "Тип", "Откуда (IP)", "Результат"])
         fit_columns(self.table, max_width=360)
         self.body.addWidget(self.table, 1)
-        close = QPushButton("Закрыть")
+        close = QPushButton(tr("Закрыть"))
         close.clicked.connect(self.accept)
         self.body.addWidget(close, alignment=Qt.AlignmentFlag.AlignRight)
         self._data: dict = {"events": [], "by_user": [], "ok": 0, "fails": 0}
@@ -443,7 +443,7 @@ class LogonsDialog(FramelessDialog):
         include = self.show_net.isChecked()
         self._loaded_net = include
         hint = "" if include else " (сетевые входы отсеиваются сразу — читается быстрее)"
-        self.summary.setText("⏳ Читаю журнал Security на ПК (Get-WinEvent, до 1–2 минут на большом журнале)…" + hint)
+        self.summary.setText(tr("⏳ Читаю журнал Security на ПК (Get-WinEvent, до 1–2 минут на большом журнале)…") + hint)
         hours = int(self.hours.currentData())
         run_in_background(self, lambda: logons.get_logons(self.comp, hours, include_net=include),
                           self._done, lambda m: self.summary.setText(f"⚠️ {m}"))
@@ -534,12 +534,12 @@ class ComparePCDialog(FramelessDialog):
         super().__init__(f"⚖️ Сравнение ПК: {comp_a} ↔ {comp_b}", parent, (960, 620))
         self.a, self.b, self.app = comp_a, comp_b, app
         top = QHBoxLayout()
-        self.only_diff = QCheckBox("Только различия")
+        self.only_diff = QCheckBox(tr("Только различия"))
         self.only_diff.setChecked(True)
         self.only_diff.toggled.connect(self.render)
         top.addWidget(self.only_diff)
         top.addStretch()
-        self.lbl = QLabel("⏳ Загрузка…")
+        self.lbl = QLabel(tr("⏳ Загрузка…"))
         self.lbl.setWordWrap(True)          # две ошибки «CSV … не найден» не влезали в строку и уходили за край окна
         self.lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         top.addWidget(self.lbl, 1)
@@ -552,7 +552,7 @@ class ComparePCDialog(FramelessDialog):
         soft_page = QWidget()
         sl = QVBoxLayout(soft_page)
         sl.setContentsMargins(0, 6, 0, 0)
-        self.lbl_soft = QLabel("⏳ Опрашиваю оба ПК…")
+        self.lbl_soft = QLabel(tr("⏳ Опрашиваю оба ПК…"))
         self.lbl_soft.setObjectName("subtle")
         self.lbl_soft.setWordWrap(True)
         sl.addWidget(self.lbl_soft)
@@ -562,7 +562,7 @@ class ComparePCDialog(FramelessDialog):
                                    "сохранённый список, и в шапке написано, от какой он даты")
         self.tabs.addTab(self.t_prn, "🖨️ Принтеры")
         self.body.addWidget(self.tabs, 1)
-        close = QPushButton("Закрыть")
+        close = QPushButton(tr("Закрыть"))
         close.clicked.connect(self.accept)
         self.body.addWidget(close, alignment=Qt.AlignmentFlag.AlignRight)
         self._data = None
@@ -625,7 +625,7 @@ class ComparePCDialog(FramelessDialog):
             errs = [f"CSV с характеристиками не найден ни для {self.a}, ни для {self.b}"]
         n = sum(1 for r in compare_specs(sa, sb) if r[3])
         src_a, src_b = self._data.get("soft_src", ("", ""))
-        self.lbl_soft.setText("Список программ снят с ПК прямо сейчас; если ПК недоступен — последний сохранённый.   "
+        self.lbl_soft.setText(tr("Список программ снят с ПК прямо сейчас; если ПК недоступен — последний сохранённый.   ")
                               + "   ·   ".join(f"<b>{c}</b>: {t}" for c, t in ((self.a, src_a), (self.b, src_b)) if t))
         self.lbl.setText("; ".join(errs) if errs else f"Различий в характеристиках: {n}")
 

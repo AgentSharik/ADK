@@ -23,6 +23,7 @@ from PyQt6.QtGui import QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from . import config, db
+from .i18n import tr  # noqa: E402
 from .widgets import FramelessDialog, app_palette
 from .workers import BaseWorker, PCScannerWorker, _Emitter
 
@@ -116,11 +117,11 @@ class StartupScanDialog(FramelessDialog):
         super().__init__("ADK — сканирование парка", parent, (560, 300))
         self.choice = ""
         pal = app_palette()
-        q = QLabel("Собрать данные о парке сейчас?")
+        q = QLabel(tr("Собрать данные о парке сейчас?"))
         q.setStyleSheet(f"font-size: 13pt; font-weight: bold; color: {pal.text};")
         q.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.body.addWidget(q)
-        sub = QLabel("База обновляется сканированием — без него поиск видит прошлый снимок.")
+        sub = QLabel(tr("База обновляется сканированием — без него поиск видит прошлый снимок."))
         sub.setStyleSheet(f"color: {pal.subtext};")
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.body.addWidget(sub)
@@ -154,7 +155,7 @@ class StartupScanDialog(FramelessDialog):
         row.addWidget(tile("🌐 Всё:\nПК + принтеры + ПО", "три шага, дольше всего\nи самая полная база", "full", True))
         row.addWidget(tile("💻 Только ПК", "адреса, кто за каким ПК,\nпоследние входы — быстро", "pcs"))
         row.addWidget(tile("⏭ Не сейчас", "F5 — запустить\nв любой момент", "skip"))
-        hint = QLabel("«Всё» опрашивает и выключенные ПК пропускает — окно прогресса можно свернуть, работа продолжится.")
+        hint = QLabel(tr("«Всё» опрашивает и выключенные ПК пропускает — окно прогресса можно свернуть, работа продолжится."))
         hint.setStyleSheet(f"color: {pal.subtext}; font-size: 8.5pt;")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.body.addWidget(hint)
@@ -374,14 +375,14 @@ class FullScanDialog(FramelessDialog):
                 continue
             head = QLabel(f"{title} — {desc}")
             head.setStyleSheet(f"color: {pal.subtext}; font-size: 9.5pt; background: transparent;")
-            val = QLabel("ожидает своей очереди")
+            val = QLabel(tr("ожидает своей очереди"))
             val.setStyleSheet(f"color: {pal.subtext}; font-size: 9pt; background: transparent;")
             self._rows[key] = (head, val)
             rows.addWidget(head)
             rows.addWidget(val)
             rows.addSpacing(2)
         rows.addStretch()
-        self.lbl_step = QLabel("Подготовка…")
+        self.lbl_step = QLabel(tr("Подготовка…"))
         self.lbl_step.setWordWrap(True)
         self.lbl_step.setStyleSheet(f"color: {pal.text}; font-size: 10.5pt; font-weight: bold;")
         self.body.addWidget(self.lbl_step)
@@ -391,13 +392,13 @@ class FullScanDialog(FramelessDialog):
 
         btns = QHBoxLayout()
         btns.addStretch()
-        self.btn_hide = QPushButton("⏬ Свернуть — работа продолжится")
+        self.btn_hide = QPushButton(tr("⏬ Свернуть — работа продолжится"))
         self.btn_hide.clicked.connect(self.hide)
         btns.addWidget(self.btn_hide)
-        self.btn_stop = QPushButton("⏹ Остановить")
+        self.btn_stop = QPushButton(tr("⏹ Остановить"))
         self.btn_stop.clicked.connect(self.stop)
         btns.addWidget(self.btn_stop)
-        self.btn_close = QPushButton("Закрыть")
+        self.btn_close = QPushButton(tr("Закрыть"))
         self.btn_close.setObjectName("btnSuccess")
         self.btn_close.setEnabled(False)
         self.btn_close.clicked.connect(self.accept)
@@ -447,7 +448,7 @@ class FullScanDialog(FramelessDialog):
     def stop(self):
         if self.worker.isRunning():
             self.worker.cancel()
-            self.lbl_step.setText("Останавливаю — начатые опросы дорабатывают…")
+            self.lbl_step.setText(tr("Останавливаю — начатые опросы дорабатывают…"))
             self.btn_stop.setEnabled(False)
 
     def _on_done(self, summary: dict):

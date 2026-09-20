@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from . import db, health
 from .widgets import DrivePicker, FramelessDialog, app_palette, fit_columns, make_badge, run_in_background
+from .i18n import tr  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -389,7 +390,7 @@ class HealthDialog(FramelessDialog):
         hl.setContentsMargins(14, 10, 14, 10)
         self.lbl_title = QLabel(f"💻 {comp}")
         self.lbl_title.setStyleSheet("font-size: 14pt; font-weight: bold;")
-        self.lbl_os = QLabel("⏳ Опрашиваю через PowerShell/CIM…")
+        self.lbl_os = QLabel(tr("⏳ Опрашиваю через PowerShell/CIM…"))
         self.lbl_os.setStyleSheet(f"color: {pal.subtext};")
         tl = QVBoxLayout()
         tl.setSpacing(0)
@@ -398,9 +399,9 @@ class HealthDialog(FramelessDialog):
         hl.addLayout(tl, 1)
         self.verdict_box = QHBoxLayout()
         hl.addLayout(self.verdict_box)
-        self.btn_refresh = QPushButton("🔄 Обновить")
+        self.btn_refresh = QPushButton(tr("🔄 Обновить"))
         self.btn_refresh.clicked.connect(self.load)
-        self.btn_copy = QPushButton("📋 Копировать отчёт")
+        self.btn_copy = QPushButton(tr("📋 Копировать отчёт"))
         self.btn_copy.setObjectName("btnSuccess")
         self.btn_copy.clicked.connect(self.copy_report)
         hl.addWidget(self.btn_refresh)
@@ -419,7 +420,7 @@ class HealthDialog(FramelessDialog):
         self.lbl_status = QLabel("")
         self.lbl_status.setObjectName("subtle")
         foot.addWidget(self.lbl_status, 1)
-        close = QPushButton("Закрыть")
+        close = QPushButton(tr("Закрыть"))
         close.clicked.connect(self.accept)
         foot.addWidget(close)
         self.body.addLayout(foot)
@@ -432,12 +433,12 @@ class HealthDialog(FramelessDialog):
         self.tiles = QGridLayout()
         self.tiles.setSpacing(10)
         lay.addLayout(self.tiles)
-        lay.addWidget(QLabel("<b>💾 Разделы</b>"))
+        lay.addWidget(QLabel(tr("<b>💾 Разделы</b>")))
         self.parts = QGridLayout()
         self.parts.setColumnStretch(2, 1)
         self.parts.setHorizontalSpacing(12)
         lay.addLayout(self.parts)
-        lay.addWidget(QLabel("<b>⚠️ Замечания</b>"))
+        lay.addWidget(QLabel(tr("<b>⚠️ Замечания</b>")))
         self.lbl_warn = QLabel("—")
         self.lbl_warn.setWordWrap(True)
         self.lbl_warn.setObjectName("specBox")
@@ -450,7 +451,7 @@ class HealthDialog(FramelessDialog):
         w = QWidget()
         lay = QHBoxLayout(w)
         left = QVBoxLayout()
-        left.addWidget(QLabel("<b>Физические диски</b>"))
+        left.addWidget(QLabel(tr("<b>Физические диски</b>")))
         self.disk_list_box = QWidget()
         self.disk_list = QVBoxLayout(self.disk_list_box)
         self.disk_list.setContentsMargins(0, 0, 0, 0)
@@ -467,7 +468,7 @@ class HealthDialog(FramelessDialog):
         left.addWidget(sc, 1)
         lay.addLayout(left, 0)
         right = QVBoxLayout()
-        self.lbl_disk_head = QLabel("Выберите диск слева")
+        self.lbl_disk_head = QLabel(tr("Выберите диск слева"))
         self.lbl_disk_head.setStyleSheet("font-weight: bold; font-size: 11pt;")
         right.addWidget(self.lbl_disk_head)
         self.lbl_disk_reasons = QLabel("")
@@ -482,8 +483,8 @@ class HealthDialog(FramelessDialog):
         for c, wd in ((0, 48), (2, 70), (3, 70), (4, 70), (5, 120)):
             self.attr_table.setColumnWidth(c, wd)
         right.addWidget(self.attr_table, 1)
-        hint = QLabel("Оценка как в CrystalDiskInfo: «Плохо» — предсказан отказ / неисправимые секторы / ресурс SSD; "
-                      "«Осторожно» — переназначенные или ожидающие секторы, износ ≥ 80 %, температура ≥ 55 °C.")
+        hint = QLabel(tr("Оценка как в CrystalDiskInfo: «Плохо» — предсказан отказ / неисправимые секторы / ресурс SSD; "
+                      "«Осторожно» — переназначенные или ожидающие секторы, износ ≥ 80 %, температура ≥ 55 °C."))
         hint.setWordWrap(True)
         hint.setObjectName("subtle")
         right.addWidget(hint)
@@ -494,27 +495,27 @@ class HealthDialog(FramelessDialog):
         w = QWidget()
         lay = QVBoxLayout(w)
         top = QHBoxLayout()
-        top.addWidget(QLabel("<b>Диск:</b>"))
+        top.addWidget(QLabel(tr("<b>Диск:</b>")))
         self.cb_drive = DrivePicker(tooltip="Том для карты: любой диск ПК (C:, D:, …); список появляется после опроса")
         self.cb_drive.addItem("C:")
         top.addWidget(self.cb_drive)
-        top.addWidget(QLabel("<b>Файлов в топе:</b>"))
+        top.addWidget(QLabel(tr("<b>Файлов в топе:</b>")))
         self.sp_top = QSpinBox()
         self.sp_top.setRange(10, 200)
         self.sp_top.setValue(40)
-        self.sp_top.setToolTip("Сколько самых крупных файлов показывать в таблице «Файлы»")
+        self.sp_top.setToolTip(tr("Сколько самых крупных файлов показывать в таблице «Файлы»"))
         top.addWidget(self.sp_top)
-        self.btn_usage = QPushButton("🗺️ Построить карту")
+        self.btn_usage = QPushButton(tr("🗺️ Построить карту"))
         self.btn_usage.setObjectName("btnInfo")
         self.btn_usage.clicked.connect(self.load_usage)
         top.addWidget(self.btn_usage)
-        self.btn_usage_stop = QPushButton("⏹ Стоп")
-        self.btn_usage_stop.setToolTip("Прервать обход диска (процесс PowerShell на вашем ПК будет остановлен)")
+        self.btn_usage_stop = QPushButton(tr("⏹ Стоп"))
+        self.btn_usage_stop.setToolTip(tr("Прервать обход диска (процесс PowerShell на вашем ПК будет остановлен)"))
         self.btn_usage_stop.setEnabled(False)
         self.btn_usage_stop.clicked.connect(self.stop_usage)
         top.addWidget(self.btn_usage_stop)
         top.addStretch()
-        self.lbl_usage = QLabel("Обход по \\\\ПК\\C$ — запускается только вручную, ПК при этом не тормозит, но ждать придётся.")
+        self.lbl_usage = QLabel(tr("Обход по \\\\ПК\\C$ — запускается только вручную, ПК при этом не тормозит, но ждать придётся."))
         self.lbl_usage.setObjectName("subtle")
         self.lbl_usage.setWordWrap(True)
         top.addWidget(self.lbl_usage, 1)
@@ -529,19 +530,19 @@ class HealthDialog(FramelessDialog):
         self.usage_tabs = QTabWidget()
         self.usage_tabs.setMinimumWidth(440)
         self.tbl_dirs = self._usage_table(["Папка", "Размер", "%", "Файлов"])
-        self.tbl_dirs.setToolTip("Двойной клик — открыть папку на ПК в Проводнике (через \\\\ПК\\C$)")
+        self.tbl_dirs.setToolTip(tr("Двойной клик — открыть папку на ПК в Проводнике (через \\\\ПК\\C$)"))
         self.tbl_dirs.itemDoubleClicked.connect(self._open_dir_row)
         self.tbl_files = self._usage_table(["Файл", "Размер"])
         self.tbl_hogs = self._usage_table(["Что", "Размер", "Файлов"])   # путь — в подсказке и в буфер по клику
-        self.tbl_hogs.setToolTip("Клик по строке — путь в буфер обмена; полный путь во всплывающей подсказке")
+        self.tbl_hogs.setToolTip(tr("Клик по строке — путь в буфер обмена; полный путь во всплывающей подсказке"))
         self.tbl_hogs.cellClicked.connect(self._copy_hog_path)
         # «Что можно почистить» — из того же обхода, что и карта (3.2.9): один том, одни цифры, никаких выдуманных
         # позиций — только пути, которые реально нашлись на этом томе (на D: без Windows корзины/Temp может и не быть).
         hogs_page = QWidget()
         hl = QVBoxLayout(hogs_page)
         hl.setContentsMargins(0, 6, 0, 0)
-        self.lbl_hogs = QLabel("Появится после построения карты: это те же данные, что на карте, только отобраны известные "
-                               "«пожиратели» места (корзина, Temp, кэши обновлений, дампы, подкачка). Ничего не удаляется.")
+        self.lbl_hogs = QLabel(tr("Появится после построения карты: это те же данные, что на карте, только отобраны известные "
+                               "«пожиратели» места (корзина, Temp, кэши обновлений, дампы, подкачка). Ничего не удаляется."))
         self.lbl_hogs.setObjectName("subtle")
         self.lbl_hogs.setWordWrap(True)
         self.lbl_hogs.setMinimumHeight(self.lbl_hogs.fontMetrics().lineSpacing() * 3 + 8)   # место под 2–3 строки текста
@@ -584,14 +585,13 @@ class HealthDialog(FramelessDialog):
         pic.setPixmap(_diagnostics_placeholder(app_palette()))
         pic.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         lay.addWidget(pic)
-        title = QLabel("Здесь пока пусто. Совсем.")
+        title = QLabel(tr("Здесь пока пусто. Совсем."))
         title.setObjectName("diagTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         lay.addWidget(title)
-        self.lbl_diag = QLabel(
-            "Диагност уже выехал, но застрял в очереди на обновление Windows.<br>"
+        self.lbl_diag = QLabel(tr("Диагност уже выехал, но застрял в очереди на обновление Windows.<br>"
             "В следующих версиях тут появятся проверки «почему тормозит», «кто съел память» и «что это за процесс с иероглифами».<br>"
-            "А пока — чайник, кнопка «Обновить» и вера в лучшее.")
+            "А пока — чайник, кнопка «Обновить» и вера в лучшее."))
         self.lbl_diag.setObjectName("diagText")
         self.lbl_diag.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.lbl_diag.setWordWrap(True)
@@ -613,7 +613,7 @@ class HealthDialog(FramelessDialog):
         fl = QGridLayout(flt)
         fl.setContentsMargins(12, 6, 12, 6)
         fl.setVerticalSpacing(6)
-        fl.addWidget(QLabel("<b>Уровни:</b>"), 0, 0)
+        fl.addWidget(QLabel(tr("<b>Уровни:</b>")), 0, 0)
         self.ev_levels: dict[int, QCheckBox] = {}
         lv_row = QHBoxLayout()
         for lvl, name in health.LEVELS.items():
@@ -623,11 +623,11 @@ class HealthDialog(FramelessDialog):
             lv_row.addWidget(cb)
         lv_row.addStretch()
         fl.addLayout(lv_row, 0, 1, 1, 5)
-        fl.addWidget(QLabel("<b>Журнал:</b>"), 1, 0)
+        fl.addWidget(QLabel(tr("<b>Журнал:</b>")), 1, 0)
         self.ev_log = QComboBox()
         self.ev_log.addItems(["System + Application", "System", "Application"])
         fl.addWidget(self.ev_log, 1, 1)
-        fl.addWidget(QLabel("с"), 1, 2)
+        fl.addWidget(QLabel(tr("с")), 1, 2)
         now = QDateTime.currentDateTime()
         self.ev_from = QDateTimeEdit(now.addDays(-1))
         self.ev_to = QDateTimeEdit(now)
@@ -636,7 +636,7 @@ class HealthDialog(FramelessDialog):
             e.setCalendarPopup(True)
             e.setMinimumWidth(168)          # 3.6.3: календарь-попап не обрезался в узкой сетке
         fl.addWidget(self.ev_from, 1, 3)
-        fl.addWidget(QLabel("по"), 1, 4)
+        fl.addWidget(QLabel(tr("по")), 1, 4)
         fl.addWidget(self.ev_to, 1, 5)
         quick = QHBoxLayout()
         for text, hours in (("1 ч", 1), ("24 ч", 24), ("7 дней", 168), ("30 дней", 720)):
@@ -645,7 +645,7 @@ class HealthDialog(FramelessDialog):
             b.clicked.connect(lambda _c, h=hours: self._events_quick(h))
             quick.addWidget(b)
         quick.addStretch()
-        self.btn_events = QPushButton("📥 Загрузить")
+        self.btn_events = QPushButton(tr("📥 Загрузить"))
         self.btn_events.setObjectName("btnPrimary")
         self.btn_events.clicked.connect(self.load_events)
         quick.addWidget(self.btn_events)
@@ -658,7 +658,7 @@ class HealthDialog(FramelessDialog):
         self.ev_tiles = QHBoxLayout()
         self.ev_tiles.setSpacing(8)
         sl.addLayout(self.ev_tiles)
-        self.lbl_ev_top = QLabel("Счётчики появятся после загрузки — считаются ровно по событиям из таблицы.")
+        self.lbl_ev_top = QLabel(tr("Счётчики появятся после загрузки — считаются ровно по событиям из таблицы."))
         self.lbl_ev_top.setObjectName("subtle")
         self.lbl_ev_top.setWordWrap(True)
         sl.addWidget(self.lbl_ev_top, 1)
@@ -674,7 +674,7 @@ class HealthDialog(FramelessDialog):
         self.tbl_events.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tbl_events.setWordWrap(False)
         lay.addWidget(self.tbl_events, 1)
-        self.lbl_events = QLabel("Нажмите «Загрузить» — журнал читается с ПК по запросу, только чтение.")
+        self.lbl_events = QLabel(tr("Нажмите «Загрузить» — журнал читается с ПК по запросу, только чтение."))
         self.lbl_events.setStyleSheet(f"color: {pal.subtext}; font-size: 9pt;")
         lay.addWidget(self.lbl_events)
         self.events_data: dict | None = None
@@ -694,14 +694,14 @@ class HealthDialog(FramelessDialog):
     def load_events(self):
         f = self.event_filter()
         if not f["levels"]:
-            self.lbl_events.setText("⚠️ Выберите хотя бы один уровень.")
+            self.lbl_events.setText(tr("⚠️ Выберите хотя бы один уровень."))
             return
         if f["start"] >= f["end"]:
-            self.lbl_events.setText("⚠️ Дата «с» должна быть раньше даты «по».")
+            self.lbl_events.setText(tr("⚠️ Дата «с» должна быть раньше даты «по»."))
             return
         # запрос ровно по фильтру пользователя: лимит в 500 событий не тратится на то, чего он не просил
         self.btn_events.setEnabled(False)
-        self.lbl_events.setText("⏳ Читаю журнал через Get-WinEvent…")
+        self.lbl_events.setText(tr("⏳ Читаю журнал через Get-WinEvent…"))
         run_in_background(self, lambda: health.get_events(self.comp, f["start"], f["end"], f["levels"], f["logs"]),
                           lambda d: self.show_events(d, f), lambda m: self.show_events({"error": m}, f))
 
@@ -714,7 +714,7 @@ class HealthDialog(FramelessDialog):
         self.tbl_events.setRowCount(0)
         if "error" in d:
             self.lbl_events.setText(f"⚠️ {d['error']}")
-            self.lbl_ev_top.setText("Счётчики недоступны — журнал не прочитан.")
+            self.lbl_ev_top.setText(tr("Счётчики недоступны — журнал не прочитан."))
             return
         flt = flt or self.event_filter()
         want = set(flt["levels"])
@@ -751,7 +751,7 @@ class HealthDialog(FramelessDialog):
 
     # ------------------------------------------------------------------ загрузка
     def load(self):
-        self.lbl_os.setText("⏳ Опрашиваю через PowerShell/CIM…")
+        self.lbl_os.setText(tr("⏳ Опрашиваю через PowerShell/CIM…"))
         self.btn_refresh.setEnabled(False)
         run_in_background(self, lambda: health.get_health(self.comp), self.show_health,
                           lambda m: self.show_health({"error": m}))
@@ -807,7 +807,7 @@ class HealthDialog(FramelessDialog):
         self.disk_cards: list[QPushButton] = []
         pal = app_palette()
         if not phys:
-            lbl = QLabel("Нет данных о физических дисках (WinRM/CIM недоступен или нет прав на root/wmi).")
+            lbl = QLabel(tr("Нет данных о физических дисках (WinRM/CIM недоступен или нет прав на root/wmi)."))
             lbl.setWordWrap(True)
             self.disk_list.addWidget(lbl)
             self.disk_list.addStretch()
@@ -919,7 +919,7 @@ class HealthDialog(FramelessDialog):
     def stop_usage(self):
         self._usage_stop = True
         self.btn_usage_stop.setEnabled(False)
-        self.lbl_usage.setText("⏹ Останавливаю обход…")
+        self.lbl_usage.setText(tr("⏹ Останавливаю обход…"))
 
     def show_usage(self, u: dict):
         self.btn_usage.setEnabled(True)
@@ -1024,4 +1024,4 @@ class HealthDialog(FramelessDialog):
             if u["hogs"]:
                 text += "\n🧹 " + "; ".join(f"{h['label']} {health.fmt_size(h['size'])}" for h in u["hogs"][:6])
         QApplication.clipboard().setText(text)
-        self.lbl_status.setText("📋 Отчёт скопирован в буфер обмена")
+        self.lbl_status.setText(tr("📋 Отчёт скопирован в буфер обмена"))

@@ -8,6 +8,7 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QCheckBox, QHBoxLayout, QHeaderView, QLabel, QPushButton, QTableWidget, QTableWidgetItem
 
 from . import access, attention, db
+from .i18n import tr  # noqa: E402
 from .config import settings
 from .widgets import FramelessDialog, MessageBox, app_palette, fit_columns, run_in_background
 
@@ -19,19 +20,19 @@ class AttentionDialog(FramelessDialog):
         super().__init__("🔔 Внимание: что требует реакции", parent, (900, 560))
         self.app = app
         # 3.9.1: пояснение для первого запуска — сводка появляется сама, это анализ домена, а не чужие действия
-        intro = QLabel("Сводка строится автоматически по данным AD и базы: ADK сам находит то, что требует "
-                       "внимания (истекающие учётки, ПК давно не в сети и т.п.). Это не список ваших действий.")
+        intro = QLabel(tr("Сводка строится автоматически по данным AD и базы: ADK сам находит то, что требует "
+                       "внимания (истекающие учётки, ПК давно не в сети и т.п.). Это не список ваших действий."))
         intro.setWordWrap(True)
         self.body.addWidget(intro)
         top = QHBoxLayout()
         self.summary = QLabel("")
         self.summary.setWordWrap(True)
         top.addWidget(self.summary, 1)
-        self.chk_low = QCheckBox("Показывать низкий приоритет")
+        self.chk_low = QCheckBox(tr("Показывать низкий приоритет"))
         self.chk_low.setChecked(True)
         self.chk_low.toggled.connect(self.render)
         top.addWidget(self.chk_low)
-        btn = QPushButton("🔄 Обновить")
+        btn = QPushButton(tr("🔄 Обновить"))
         btn.clicked.connect(self.load)
         top.addWidget(btn)
         self.body.addLayout(top)
@@ -45,19 +46,19 @@ class AttentionDialog(FramelessDialog):
         self.table.itemDoubleClicked.connect(self.open_selected)
         self.body.addWidget(self.table, 1)
         btns = QHBoxLayout()
-        self.btn_open = QPushButton("🔍 Найти в главном окне")
+        self.btn_open = QPushButton(tr("🔍 Найти в главном окне"))
         self.btn_open.clicked.connect(self.open_selected)
         # 3.9.1: «Прочитать всё» — скрыть всё показанное разом (до новых событий), не выбирая строки
-        self.btn_read_all = QPushButton("✅ Прочитать всё")
+        self.btn_read_all = QPushButton(tr("✅ Прочитать всё"))
         self.btn_read_all.clicked.connect(self.read_all)
-        self.btn_snooze = QPushButton("💤 Отложить на 7 дней")
+        self.btn_snooze = QPushButton(tr("💤 Отложить на 7 дней"))
         self.btn_snooze.clicked.connect(lambda: self.snooze(7))
-        self.btn_snooze30 = QPushButton("💤 На 30 дней")
+        self.btn_snooze30 = QPushButton(tr("💤 На 30 дней"))
         self.btn_snooze30.clicked.connect(lambda: self.snooze(30))
         for b in (self.btn_open, self.btn_read_all, self.btn_snooze, self.btn_snooze30):
             btns.addWidget(b)
         btns.addStretch()
-        close = QPushButton("Закрыть")
+        close = QPushButton(tr("Закрыть"))
         close.clicked.connect(self.accept)
         btns.addWidget(close)
         self.body.addLayout(btns)
@@ -72,7 +73,7 @@ class AttentionDialog(FramelessDialog):
             self.render()
 
     def load(self):
-        self.summary.setText("⏳ Собираю сводку (AD + инвентарь)…")
+        self.summary.setText(tr("⏳ Собираю сводку (AD + инвентарь)…"))
         run_in_background(self, lambda: attention.collect_from_settings(self.app.get_conn, settings.attention),
                           self._loaded, lambda m: self.summary.setText(f"⚠️ {m}"))
 
