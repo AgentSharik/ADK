@@ -40,7 +40,7 @@ class MassPingDialog(FramelessDialog):
         self._cancel = False
         self.status = QLabel("")
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["ПК", "IP", "Сеть", "MAC (для WoL)"])
+        self.table.setHorizontalHeaderLabels([tr("ПК"), "IP", tr("Сеть"), tr("MAC (для WoL)")])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -101,7 +101,7 @@ class MassPingDialog(FramelessDialog):
         self.result[comp] = (ip, online)
         self.table.item(r, 1).setText(ip)
         it = self.table.item(r, 2)
-        it.setText(tr("🟢 в сети") if online else "🔴 нет")
+        it.setText(tr("🟢 в сети") if online else tr("🔴 нет"))
         it.setForeground(QColor(pal.success[0] if online else pal.danger[0]))
         try:
             db.set_pc_online(comp, online)
@@ -127,7 +127,7 @@ class MassPingDialog(FramelessDialog):
         targets = [(c, db.get_mac(c)) for c, (_, o) in self.result.items() if not o and db.get_mac(c)]
         if not targets:
             return
-        if not MessageBox.question(self, "Wake-on-LAN", f"Отправить magic-пакет на {len(targets)} ПК?"):
+        if not MessageBox.question(self, "Wake-on-LAN", tr("Отправить magic-пакет на {0} ПК?").format(len(targets))):
             return
         sent = 0
         for comp, mac in targets:
@@ -152,14 +152,14 @@ def wake_single(comp: str, app, parent=None) -> None:
             return
         mac = nettools.parse_mac(text)
         if not mac:
-            MessageBox.warning(parent, "Wake-on-LAN", "Некорректный MAC-адрес.")
+            MessageBox.warning(parent, "Wake-on-LAN", tr("Некорректный MAC-адрес."))
             return
         db.save_mac(comp, mac)
     if nettools.wake(mac):
         db.log_action(app.admin_name, "wol", comp, mac)
-        MessageBox.information(parent, "Wake-on-LAN", f"Magic-пакет отправлен на {comp} ({mac}).\nПК обычно поднимается за 30–60 секунд.")
+        MessageBox.information(parent, "Wake-on-LAN", tr("Magic-пакет отправлен на {0} ({1}).\nПК обычно поднимается за 30–60 секунд.").format(comp, mac))
     else:
-        MessageBox.warning(parent, "Wake-on-LAN", "Не удалось отправить пакет (см. журнал).")
+        MessageBox.warning(parent, "Wake-on-LAN", tr("Не удалось отправить пакет (см. журнал)."))
 
 
 # ============================================================================ установленное ПО
@@ -172,10 +172,10 @@ class SoftwareDialog(FramelessDialog):
         self.tabs = QTabWidget()
         self.body.addWidget(self.tabs, 1)
         if comp:
-            self.tabs.addTab(self._build_pc_tab(), "💻 ПО")
-            self.tabs.addTab(self._build_sec_tab(), "🛡️ Обновления безопасности")
-            self.tabs.addTab(self._build_hotfix_tab(), "🩹 Обновления Windows")
-        self.tabs.addTab(self._build_fleet_tab(), "🔎 У кого установлено")
+            self.tabs.addTab(self._build_pc_tab(), tr("💻 ПО"))
+            self.tabs.addTab(self._build_sec_tab(), tr("🛡️ Обновления безопасности"))
+            self.tabs.addTab(self._build_hotfix_tab(), tr("🩹 Обновления Windows"))
+        self.tabs.addTab(self._build_fleet_tab(), tr("🔎 У кого установлено"))
         close = QPushButton(tr("Закрыть"))
         close.clicked.connect(self.accept)
         self.body.addWidget(close, alignment=Qt.AlignmentFlag.AlignRight)
@@ -237,8 +237,7 @@ class SoftwareDialog(FramelessDialog):
         top.addWidget(self.btn_fleet_poll)
         # 3.8.0: «Область» — опрос только ПК выбранной организации, с колонкой «Пользователь»
         self.btn_fleet_org = QPushButton(tr("🏢 Область"))
-        self.btn_fleet_org.setToolTip(tr("Опросить только ПК выбранной организации (как в Excel-описи)\\n"
-                                      "и показать, какой пользователь какое ПО использует"))
+        self.btn_fleet_org.setToolTip(tr("Опросить только ПК выбранной организации (как в Excel-описи)\\n" "и показать, какой пользователь какое ПО использует"))
         self.btn_fleet_org.clicked.connect(self.poll_org)
         top.addWidget(self.btn_fleet_org)
         self._org_users: dict[str, str] | None = None
@@ -272,7 +271,7 @@ class SoftwareDialog(FramelessDialog):
         items, ts = software.cached_software(self.comp)
         self._items = items
         self._apply_filter()
-        self.lbl.setText(f"Сохранённые данные от {ts}" if ts else "ПО ещё не опрашивалось — нажмите «Опросить ПК»")
+        self.lbl.setText(tr("Сохранённые данные от {0}").format(ts) if ts else tr("ПО ещё не опрашивалось — нажмите «Опросить ПК»"))
 
     def _apply_filter(self):
         f = self.filter.text().strip().casefold()
@@ -295,7 +294,8 @@ class SoftwareDialog(FramelessDialog):
             _fill(self.hot, [(h["id"], h["desc"], h["installed"]) for h in hot])
             _fill(self.sec, [(h["id"], h["desc"], h["installed"]) for h in hot if h.get("kind") == "security"])
             how = {"WinRM": "по WinRM", "WMI": "по WMI/DCOM", "RemoteRegistry": "через удалённый реестр"}.get(d.get("how", ""), "")
-            self.lbl.setText(f"Опрошено {how}: программ — {len(d['software'])}, обновлений — {len(hot)}".replace("  ", " "))
+            self.lbl.setText(tr("Опрошено {0}: программ — {1}, обновлений — {2}")
+                            .format(how, len(d["software"]), len(hot)).replace("  ", " "))
             db.log_action(self.app.admin_name, "software", self.comp, f"{len(d['software'])} программ")
 
         run_in_background(self, lambda: software.get_software(self.comp), done,
@@ -304,7 +304,7 @@ class SoftwareDialog(FramelessDialog):
     def poll_fleet(self):
         from . import fleetpoll
         self._org_users, self._org_rows, self._org_name = None, None, ""
-        self.fleet.setHorizontalHeaderLabels(["ПК", "Программа", "Версия", "Опрошен"])
+        self.fleet.setHorizontalHeaderLabels([tr("ПК"), tr("Программа"), tr("Версия"), tr("Опрошен")])
         try:
             hosts = fleetpoll.fleet_hosts(self.app.get_conn)
         except Exception as exc:  # noqa: BLE001
@@ -331,7 +331,7 @@ class SoftwareDialog(FramelessDialog):
             self.fleet_lbl.setText(tr("⚠️ В организации «{0}» не найдено ПК (нет привязок, инвентаря и userWorkstations)").format(d.choice))
             return
         self._org_users, self._org_rows, self._org_name = users, None, d.choice
-        self.fleet.setHorizontalHeaderLabels(["Пользователь", "ПК", "Программа", "Версия"])
+        self.fleet.setHorizontalHeaderLabels([tr("Пользователь"), tr("ПК"), tr("Программа"), tr("Версия")])
         self.fleet_lbl.setText(tr("🏢 «{0}»: опрашиваю {1} ПК организации…").format(d.choice, len(hosts)))
         self._start_fleet_poll(hosts)
 
@@ -363,14 +363,14 @@ class SoftwareDialog(FramelessDialog):
                     rows.append((self._org_users.get(comp, "—"), comp, s["name"], s.get("version") or ""))
             self._org_rows = rows
             _fill(self.fleet, rows)
-            self.fleet_lbl.setText(f"🏢 «{self._org_name}»: ответили {sm['ok']} ПК, не в сети {sm['skipped']}, "
-                                   f"не удалось {sm['failed']}. ПО — {len(rows)} записей; введите название для фильтра.")
+            self.fleet_lbl.setText(tr("🏢 «{0}»: ответили {1} ПК, не в сети {2}, не удалось {3}. ПО — {4} записей; введите название для фильтра.")
+                                   .format(self._org_name, sm["ok"], sm["skipped"], sm["failed"], len(rows)))
             db.log_action(getattr(self.app, "admin_name", ""), "software_fleet", self._org_name, f"{sm['ok']} ПК (область)")
             return
         self._fill_summary()
         if results:
-            self.fleet_lbl.setText(f"Опрос парка: ответили {sm['ok']} ПК, не в сети {sm['skipped']}, не удалось {sm['failed']}. "
-                                   "ПО сохранено — введите название для поиска.")
+            self.fleet_lbl.setText(tr("Опрос парка: ответили {0} ПК, не в сети {1}, не удалось {2}. ПО сохранено — введите название для поиска.")
+                                   .format(sm["ok"], sm["skipped"], sm["failed"]))
             db.log_action(getattr(self.app, "admin_name", ""), "software_fleet", "fleet", f"{sm['ok']} ПК")
 
     def on_dialog_done(self):
@@ -383,13 +383,13 @@ class SoftwareDialog(FramelessDialog):
             q = self.q.text().strip().casefold()
             rows = [r for r in self._org_rows if not q or q in r[2].casefold() or q in r[0].casefold()]
             _fill(self.fleet, rows)
-            self.fleet_lbl.setText(f"🏢 «{self._org_name}»: показано {len(rows)} из {len(self._org_rows)} записей ПО"
+            self.fleet_lbl.setText(tr("🏢 «{0}»: показано {1} из {2} записей ПО").format(self._org_name, len(rows), len(self._org_rows))
                                    + (f" по фильтру «{self.q.text().strip()}»" if q else " (фильтр пуст — всё)"))
             return
         rows = software.find_software(self.q.text())
         _fill(self.fleet, [(r["comp"], r["name"]) for r in rows])
         comps = len({r["comp"] for r in rows})
-        self.fleet_lbl.setText(f"Найдено: {len(rows)} записей · {comps} ПК" if rows else "Ничего не найдено в сохранённых данных (опросите ПК или уточните запрос)")
+        self.fleet_lbl.setText(tr("Найдено: {0} записей · {1} ПК").format(len(rows), comps) if rows else tr("Ничего не найдено в сохранённых данных (опросите ПК или уточните запрос)"))
 
 
 # ============================================================================ входы за сутки
@@ -410,8 +410,7 @@ class LogonsDialog(FramelessDialog):
         self.only_fail.toggled.connect(self._render)
         top.addWidget(self.only_fail)
         self.show_net = QCheckBox(tr("Сетевые входы (тип 3)"))
-        self.show_net.setToolTip(tr("Тип 3 — это не вход за этим ПК, а обращение к нему по сети с другого компьютера "
-                                 "(общие папки, службы). По умолчанию скрыты и не читаются с ПК — включите, чтобы увидеть."))
+        self.show_net.setToolTip(tr("Тип 3 — это не вход за этим ПК, а обращение к нему по сети с другого компьютера " "(общие папки, службы). По умолчанию скрыты и не читаются с ПК — включите, чтобы увидеть."))
         self.show_net.toggled.connect(self._net_toggled)
         top.addWidget(self.show_net)
         top.addStretch()
@@ -421,8 +420,7 @@ class LogonsDialog(FramelessDialog):
         top.addWidget(b)
         self.body.addLayout(top)
         # 3.9.0: расшифровка типов входов — вопрос «что значит вход по кэшу/пустые» больше не возникает
-        legend = QLabel(tr("<b>Типы входов:</b> Консоль — вошёл за этим ПК · Разблокировка — снял блокировку · "
-                        "RDP — удалённый рабочий стол · Вход по кэшу — пустило без сети, по сохранённым данным · "
+        legend = QLabel(tr("<b>Типы входов:</b> Консоль — вошёл за этим ПК · Разблокировка — снял блокировку · " "RDP — удалённый рабочий стол · Вход по кэшу — пустило без сети, по сохранённым данным · "
                         "«—» в IP — журнал не записал, откуда"))
         legend.setWordWrap(True)
         legend.setStyleSheet("color: %s; font-size: 8.5pt;" % app_palette().subtext)
@@ -548,7 +546,7 @@ class ComparePCDialog(FramelessDialog):
         self.t_specs = _table(["Параметр", comp_a, comp_b])
         self.t_soft = _table(["Программа", comp_a, comp_b])
         self.t_prn = _table(["Принтер", comp_a, comp_b])
-        self.tabs.addTab(self.t_specs, "💻 Характеристики")
+        self.tabs.addTab(self.t_specs, tr("💻 Характеристики"))
         soft_page = QWidget()
         sl = QVBoxLayout(soft_page)
         sl.setContentsMargins(0, 6, 0, 0)
@@ -557,10 +555,10 @@ class ComparePCDialog(FramelessDialog):
         self.lbl_soft.setWordWrap(True)
         sl.addWidget(self.lbl_soft)
         sl.addWidget(self.t_soft, 1)
-        self.tabs.addTab(soft_page, "📦 Установленное ПО")
+        self.tabs.addTab(soft_page, tr("📦 Установленное ПО"))
         self.tabs.setTabToolTip(1, "Программы снимаются с ПК прямо сейчас; если ПК недоступен — берётся последний "
                                    "сохранённый список, и в шапке написано, от какой он даты")
-        self.tabs.addTab(self.t_prn, "🖨️ Принтеры")
+        self.tabs.addTab(self.t_prn, tr("🖨️ Принтеры"))
         self.body.addWidget(self.tabs, 1)
         close = QPushButton(tr("Закрыть"))
         close.clicked.connect(self.accept)
@@ -627,7 +625,7 @@ class ComparePCDialog(FramelessDialog):
         src_a, src_b = self._data.get("soft_src", ("", ""))
         self.lbl_soft.setText(tr("Список программ снят с ПК прямо сейчас; если ПК недоступен — последний сохранённый.   ")
                               + "   ·   ".join(f"<b>{c}</b>: {t}" for c, t in ((self.a, src_a), (self.b, src_b)) if t))
-        self.lbl.setText("; ".join(errs) if errs else f"Различий в характеристиках: {n}")
+        self.lbl.setText("; ".join(errs) if errs else tr("Различий в характеристиках: {0}").format(n))
 
 
 # --------------------------------------------------------------------------- мелочи

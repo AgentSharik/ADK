@@ -86,8 +86,7 @@ class DbSetupDialog(FramelessDialog):
         self.body.setSpacing(10)
         self.body.setContentsMargins(18, 4, 18, 4)
 
-        intro = QLabel(tr("ADK хранит инвентарь парка, историю, заметки и принтеры в одном файле <b>pc_mapping.db</b>.<br>"
-            "Укажите папку, где он <b>уже лежит</b> (если ADK у вас уже установлен на другом ПК) или где его <b>создать</b>."))
+        intro = QLabel(tr("ADK хранит инвентарь парка, историю, заметки и принтеры в одном файле <b>pc_mapping.db</b>.<br>" "Укажите папку, где он <b>уже лежит</b> (если ADK у вас уже установлен на другом ПК) или где его <b>создать</b>."))
         intro.setWordWrap(True)
         self.body.addWidget(intro)
 
@@ -115,7 +114,7 @@ class DbSetupDialog(FramelessDialog):
         row = QHBoxLayout()
         row.setContentsMargins(26, 0, 0, 0)
         self.path_in = QLineEdit()
-        self.path_in.setPlaceholderText(r"например D:\ADK или \\server\share\ADK")
+        self.path_in.setPlaceholderText(tr(r"например D:\ADK или \\server\share\ADK"))
         self.path_in.setMinimumHeight(34)
         self.btn_browse = QPushButton(tr("📁 Обзор…"))
         self.btn_browse.setMinimumHeight(34)
@@ -132,8 +131,7 @@ class DbSetupDialog(FramelessDialog):
         self.lbl_found.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.body.addWidget(self.lbl_found)
 
-        hint = QLabel(tr("💡 <b>Совет.</b> Установите ADK на <b>одном</b> компьютере, а на остальных создайте ярлык на его <code>ADK.exe</code> — "
-            "база будет одна, и заполнять её нужно один раз. Если баз несколько, инвентарь и заметки у коллег будут разными."))
+        hint = QLabel(tr("💡 <b>Совет.</b> Установите ADK на <b>одном</b> компьютере, а на остальных создайте ярлык на его <code>ADK.exe</code> — " "база будет одна, и заполнять её нужно один раз. Если баз несколько, инвентарь и заметки у коллег будут разными."))
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {pal.text}; background: {pal.info[1]}; border: 1px solid {pal.info[2]}; "
                            f"border-radius: 8px; padding: 8px 10px;")
@@ -288,8 +286,7 @@ class ParkMaskDialog(FramelessDialog):
         self.body.setSpacing(10)
         self.body.setContentsMargins(18, 4, 18, 4)
 
-        intro = QLabel(tr("Выберите имена ПК, с которыми будет работать ADK — остальные машины домена ADK показывать не будет.<br>"
-            "Пишите серию как удобно: <b>PC-</b> — все ПК, начинающиеся на PC; <b>PC-0000</b> — ПК "
+        intro = QLabel(tr("Выберите имена ПК, с которыми будет работать ADK — остальные машины домена ADK показывать не будет.<br>" "Пишите серию как удобно: <b>PC-</b> — все ПК, начинающиеся на PC; <b>PC-0000</b> — ПК "
             "<b>PC-</b> ровно с четырьмя цифрами. Несколько серий — несколько полей."))
         intro.setWordWrap(True)
         self.body.addWidget(intro)
@@ -389,7 +386,7 @@ class ParkMaskDialog(FramelessDialog):
                 else:
                     rx = PCScannerWorker._mask_regex(p)
                     n = sum(1 for name in self.computer_names if rx and rx.match(name))
-                    cnt.setText(f"найдено: {n}" if n else "не найдено")
+                    cnt.setText(tr("найдено: {0}").format(n) if n else tr("не найдено"))
         if self.computer_names:
             total = 0
             for p in pats:
@@ -398,15 +395,14 @@ class ParkMaskDialog(FramelessDialog):
                     total += sum(1 for name in self.computer_names if rx and rx.match(name))
             uniq = {n for p in pats if p for n in self.computer_names
                     if PCScannerWorker._mask_regex(p) and PCScannerWorker._mask_regex(p).match(n)}
-            self.total_lbl.setText(f"В парк попадает ПК: {len(uniq)} из {len(self.computer_names)} в домене."
+            self.total_lbl.setText(tr("В парк попадает ПК: {0} из {1} в домене.").format(len(uniq), len(self.computer_names))
                                    if uniq else ("Ничего не найдено — проверьте написание." if any(pats) else ""))
 
     def save(self, *_):
         pats = self._patterns()
         if not pats:
             # 3.12.0: кнопка всегда доступна; пустой ввод — понятная подсказка вместо серой кнопки
-            self.total_lbl.setText(tr("Введите серию (например PC- или PC-0000) — или нажмите «Пропустить», "
-                                   "чтобы работать со всеми ПК домена."))
+            self.total_lbl.setText(tr("Введите серию (например PC- или PC-0000) — или нажмите «Пропустить», " "чтобы работать со всеми ПК домена."))
             return
         mask = ", ".join(pats)
         settings.host_mask = mask

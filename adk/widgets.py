@@ -526,7 +526,7 @@ def run_in_background(parent, fn: Callable, on_done: Callable, on_error: Callabl
 
     w = FunctionWorker(fn)
     w.done.connect(on_done)
-    w.error.connect(on_error or (lambda m: MessageBox.critical(parent, "Ошибка", m)))
+    w.error.connect(on_error or (lambda m: MessageBox.critical(parent, tr("Ошибка"), m)))
     workers = getattr(parent, "_bg_workers", None)
     if workers is None:
         workers = parent._bg_workers = []

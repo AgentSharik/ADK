@@ -252,7 +252,7 @@ class PingDialog(FramelessDialog):
         jh.addLayout(self.badge_box)
         jl.addLayout(jh)
         self.journal = QTableWidget(0, 6)
-        self.journal.setHorizontalHeaderLabels(["", "№", "Время", "Результат", "Отклик", "TTL"])
+        self.journal.setHorizontalHeaderLabels(["", "№", tr("Время"), tr("Результат"), tr("Отклик"), "TTL"])
         self.journal.verticalHeader().setVisible(False)
         self.journal.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.journal.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -376,7 +376,7 @@ class PingDialog(FramelessDialog):
     def _update_journal_label(self):
         n = self.journal.rowCount()
         shown = sum(1 for r in range(n) if not self.journal.isRowHidden(r))
-        self.lbl_journal.setText(f"строк: {n}" if shown == n else f"показано {shown} из {n}")
+        self.lbl_journal.setText(tr("строк: {0}").format(n) if shown == n else tr("показано {0} из {1}").format(shown, n))
 
     def _raw_line(self, d: dict, ok: bool | None):
         """Строка как в консоли; текст дублируется в self.raw для «Копировать вывод»."""
@@ -438,7 +438,7 @@ class PingDialog(FramelessDialog):
     def _set_state(self, ok: bool):
         pal = app_palette()
         self.dot.setStyleSheet(f"font-size: {20 + max(0, int(config.settings.design.get('font_size') or 10) - 10)}pt; color: {pal.solid('success' if ok else 'danger')};")
-        self.lbl_state.setText(tr("Узел отвечает") if ok else "Узел не отвечает")
+        self.lbl_state.setText(tr("Узел отвечает") if ok else tr("Узел не отвечает"))
         while self.badge_box.count():
             w = self.badge_box.takeAt(0).widget()
             if w:
@@ -476,7 +476,7 @@ class PingDialog(FramelessDialog):
     # ------------------------------------------------------------------ управление
     def toggle_pause(self):
         self._paused = not self._paused
-        self.btn_pause.setText(tr("▶ Продолжить") if self._paused else "⏸ Пауза")
+        self.btn_pause.setText(tr("▶ Продолжить") if self._paused else tr("⏸ Пауза"))
         self._log("⏸ пауза" if self._paused else "▶ продолжаем")
 
     def reset(self):

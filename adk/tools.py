@@ -67,7 +67,7 @@ class BulkOperationsDialog(FramelessDialog):
         MAX_ROWS = 400
         shown = self.users[:MAX_ROWS]
         self.table = QTableWidget(len(shown), 3)
-        self.table.setHorizontalHeaderLabels(["Логин", "ФИО", "Результат"])
+        self.table.setHorizontalHeaderLabels([tr("Логин"), tr("ФИО"), tr("Результат")])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
@@ -143,18 +143,18 @@ class BulkOperationsDialog(FramelessDialog):
             MessageBox.warning(self, tr("Недостаточно прав"), tr(access.deny_text(f"bulk_{code}")))
             return
         if not self.users:
-            MessageBox.information(self, "Массовые операции", "Нет учётных записей с данными AD.")
+            MessageBox.information(self, tr("Массовые операции"), tr("Нет учётных записей с данными AD."))
             return
         gdn, cn = "", ""
         if code in ("group_add", "group_remove"):
             items = self.groups.selectedItems()
             if not items:
-                MessageBox.warning(self, "Группа", "Выберите группу.")
+                MessageBox.warning(self, tr("Группа"), tr("Выберите группу."))
                 return
             cn = items[0].text()
             gdn = self.all_groups[cn]
         label = dict(self.OPS)[code]
-        if not MessageBox.question(self, "Подтверждение",
+        if not MessageBox.question(self, tr("Подтверждение"),
                                    f"{label}{f' «{cn}»' if cn else ''}\nдля {len(self.users)} учётных записей?"):
             return
         self.btn_run.setEnabled(False)
@@ -274,7 +274,7 @@ class NotesDialog(FramelessDialog):
 
     def delete_selected(self):
         it = self.list.currentItem()
-        if not it or not MessageBox.question(self, "Заметка", "Удалить заметку?"):
+        if not it or not MessageBox.question(self, tr("Заметка"), tr("Удалить заметку?")):
             return
         db.delete_note(it.data(Qt.ItemDataRole.UserRole))
         db.log_action(self.app.admin_name, "note_delete", self.subject, "")
@@ -350,7 +350,7 @@ class GroupCompareDialog(FramelessDialog):
             lst.addItems(items)
         for i in range(self.missing.count()):
             self.missing.item(i).setSelected(True)
-        self.status.setText(f"Добавить: {len(add)} · удалить: {len(rm)} · общих: {len(same)}" if self.ref_groups else "")
+        self.status.setText(tr("Добавить: {0} · удалить: {1} · общих: {2}").format(len(add), len(rm), len(same)) if self.ref_groups else "")
 
     def load_ref(self):
         login = self.ref.text().strip()
@@ -381,7 +381,7 @@ class GroupCompareDialog(FramelessDialog):
         if not cns:
             return
         verb = "Добавить в" if op == ad.MODIFY_ADD else "Удалить из"
-        if not MessageBox.question(self, "Подтверждение", f"{verb} {len(cns)} групп(ы)?"):
+        if not MessageBox.question(self, tr("Подтверждение"), tr("{0} {1} групп(ы)?").format(verb, len(cns))):
             return
         dn = self.target.entry_dn
         login = ad.get_ad_value(self.target, "sAMAccountName")
@@ -418,7 +418,7 @@ class HistoryDialog(FramelessDialog):
     def __init__(self, login: str, comp: str, parent=None):
         super().__init__(f"🕓 История: {login or comp}", parent, (720, 440))
         self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["ПК", "Пользователь", "IP", "С", "По"])
+        self.table.setHorizontalHeaderLabels([tr("ПК"), tr("Пользователь"), "IP", tr("С"), tr("По")])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
@@ -431,7 +431,7 @@ class HistoryDialog(FramelessDialog):
             for c, v in enumerate((h["comp"], h["login"], h["ip"], h["first_seen"], h["last_seen"])):
                 self.table.setItem(r, c, QTableWidgetItem(v))
         fit_columns(self.table)
-        self.status.setText(f"Записей: {len(rows)}" if rows else "Истории пока нет — она накапливается сканером парка")
+        self.status.setText(tr("Записей: {0}").format(len(rows)) if rows else tr("Истории пока нет — она накапливается сканером парка"))
 
 
 # ============================================================================ здоровье ПК

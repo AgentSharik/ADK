@@ -20,8 +20,7 @@ class AttentionDialog(FramelessDialog):
         super().__init__("🔔 Внимание: что требует реакции", parent, (900, 560))
         self.app = app
         # 3.9.1: пояснение для первого запуска — сводка появляется сама, это анализ домена, а не чужие действия
-        intro = QLabel(tr("Сводка строится автоматически по данным AD и базы: ADK сам находит то, что требует "
-                       "внимания (истекающие учётки, ПК давно не в сети и т.п.). Это не список ваших действий."))
+        intro = QLabel(tr("Сводка строится автоматически по данным AD и базы: ADK сам находит то, что требует " "внимания (истекающие учётки, ПК давно не в сети и т.п.). Это не список ваших действий."))
         intro.setWordWrap(True)
         self.body.addWidget(intro)
         top = QHBoxLayout()
@@ -37,7 +36,7 @@ class AttentionDialog(FramelessDialog):
         top.addWidget(btn)
         self.body.addLayout(top)
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["", "Тип", "Кто / что", "Подробности"])
+        self.table.setHorizontalHeaderLabels(["", tr("Тип"), tr("Кто / что"), tr("Подробности")])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -117,7 +116,7 @@ class AttentionDialog(FramelessDialog):
         """3.9.1: скрыть все показанные сообщения (появятся снова, когда условие сработает заново)."""
         visible = [i for i in self.items if self.chk_low.isChecked() or i["severity"] != "low"]
         if not visible:
-            MessageBox.information(self, "Внимание", "Показывать нечего — список пуст.")
+            MessageBox.information(self, tr("Внимание"), tr("Показывать нечего — список пуст."))
             return
         keys = {i["key"] for i in visible}
         for k in keys:
@@ -132,7 +131,7 @@ class AttentionDialog(FramelessDialog):
     def snooze(self, days: int):
         i = self._current()
         if not i:
-            MessageBox.information(self, "Внимание", "Выберите строку.")
+            MessageBox.information(self, tr("Внимание"), tr("Выберите строку."))
             return
         db.snooze(i["key"], days, self.app.admin_name)
         db.log_action(self.app.admin_name, "attention_snooze", i["subject"], f"{i['title']} — {days} дн.")

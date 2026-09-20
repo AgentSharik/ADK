@@ -409,11 +409,11 @@ class HealthDialog(FramelessDialog):
         self.body.addWidget(head)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._tab_overview(), "📊 Обзор")
-        self.tabs.addTab(self._tab_disks(), "💽 Диски (S.M.A.R.T.)")
-        self.tabs.addTab(self._tab_usage(), "🗺️ Карта диска")
-        self.tabs.addTab(self._tab_events(), "🚨 Ошибки")
-        self.tabs.addTab(self._tab_diagnostics(), "🩻 Диагностика")
+        self.tabs.addTab(self._tab_overview(), tr("📊 Обзор"))
+        self.tabs.addTab(self._tab_disks(), tr("💽 Диски (S.M.A.R.T.)"))
+        self.tabs.addTab(self._tab_usage(), tr("🗺️ Карта диска"))
+        self.tabs.addTab(self._tab_events(), tr("🚨 Ошибки"))
+        self.tabs.addTab(self._tab_diagnostics(), tr("🩻 Диагностика"))
         self.body.addWidget(self.tabs, 1)
 
         foot = QHBoxLayout()
@@ -475,7 +475,7 @@ class HealthDialog(FramelessDialog):
         self.lbl_disk_reasons.setWordWrap(True)
         right.addWidget(self.lbl_disk_reasons)
         self.attr_table = QTableWidget(0, 6)
-        self.attr_table.setHorizontalHeaderLabels(["ID", "Атрибут", "Текущее", "Худшее", "Порог", "RAW"])
+        self.attr_table.setHorizontalHeaderLabels(["ID", tr("Атрибут"), tr("Текущее"), tr("Худшее"), tr("Порог"), "RAW"])
         self.attr_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.attr_table.verticalHeader().setVisible(False)
         self.attr_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -483,8 +483,7 @@ class HealthDialog(FramelessDialog):
         for c, wd in ((0, 48), (2, 70), (3, 70), (4, 70), (5, 120)):
             self.attr_table.setColumnWidth(c, wd)
         right.addWidget(self.attr_table, 1)
-        hint = QLabel(tr("Оценка как в CrystalDiskInfo: «Плохо» — предсказан отказ / неисправимые секторы / ресурс SSD; "
-                      "«Осторожно» — переназначенные или ожидающие секторы, износ ≥ 80 %, температура ≥ 55 °C."))
+        hint = QLabel(tr("Оценка как в CrystalDiskInfo: «Плохо» — предсказан отказ / неисправимые секторы / ресурс SSD; " "«Осторожно» — переназначенные или ожидающие секторы, износ ≥ 80 %, температура ≥ 55 °C."))
         hint.setWordWrap(True)
         hint.setObjectName("subtle")
         right.addWidget(hint)
@@ -541,8 +540,7 @@ class HealthDialog(FramelessDialog):
         hogs_page = QWidget()
         hl = QVBoxLayout(hogs_page)
         hl.setContentsMargins(0, 6, 0, 0)
-        self.lbl_hogs = QLabel(tr("Появится после построения карты: это те же данные, что на карте, только отобраны известные "
-                               "«пожиратели» места (корзина, Temp, кэши обновлений, дампы, подкачка). Ничего не удаляется."))
+        self.lbl_hogs = QLabel(tr("Появится после построения карты: это те же данные, что на карте, только отобраны известные " "«пожиратели» места (корзина, Temp, кэши обновлений, дампы, подкачка). Ничего не удаляется."))
         self.lbl_hogs.setObjectName("subtle")
         self.lbl_hogs.setWordWrap(True)
         self.lbl_hogs.setMinimumHeight(self.lbl_hogs.fontMetrics().lineSpacing() * 3 + 8)   # место под 2–3 строки текста
@@ -550,9 +548,9 @@ class HealthDialog(FramelessDialog):
         hl.addWidget(self.lbl_hogs)
         hl.addWidget(self.tbl_hogs, 1)
         self.tbl_users = self._usage_table(["Профиль", "Размер", "Файлов"])
-        self.usage_tabs.addTab(self.tbl_dirs, "📁 Папки")
-        self.usage_tabs.addTab(self.tbl_files, "📄 Файлы")
-        self.usage_tabs.addTab(hogs_page, "🧹 Почистить")
+        self.usage_tabs.addTab(self.tbl_dirs, tr("📁 Папки"))
+        self.usage_tabs.addTab(self.tbl_files, tr("📄 Файлы"))
+        self.usage_tabs.addTab(hogs_page, tr("🧹 Почистить"))
         for i, tip in enumerate(("Папки верхнего уровня по размеру", "Самые крупные файлы тома",
                                  "Что можно почистить на этом томе — из того же обхода, что и карта; ничего не удаляется")):
             self.usage_tabs.setTabToolTip(i, tip)
@@ -589,8 +587,7 @@ class HealthDialog(FramelessDialog):
         title.setObjectName("diagTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         lay.addWidget(title)
-        self.lbl_diag = QLabel(tr("Диагност уже выехал, но застрял в очереди на обновление Windows.<br>"
-            "В следующих версиях тут появятся проверки «почему тормозит», «кто съел память» и «что это за процесс с иероглифами».<br>"
+        self.lbl_diag = QLabel(tr("Диагност уже выехал, но застрял в очереди на обновление Windows.<br>" "В следующих версиях тут появятся проверки «почему тормозит», «кто съел память» и «что это за процесс с иероглифами».<br>"
             "А пока — чайник, кнопка «Обновить» и вера в лучшее."))
         self.lbl_diag.setObjectName("diagText")
         self.lbl_diag.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -665,7 +662,7 @@ class HealthDialog(FramelessDialog):
         lay.addLayout(sl)
         # --- таблица
         self.tbl_events = QTableWidget(0, 6)
-        self.tbl_events.setHorizontalHeaderLabels(["Время", "Уровень", "Журнал", "Источник", "ID", "Сообщение"])
+        self.tbl_events.setHorizontalHeaderLabels([tr("Время"), tr("Уровень"), tr("Журнал"), tr("Источник"), "ID", tr("Сообщение")])
         hh = self.tbl_events.horizontalHeader()
         hh.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
@@ -742,12 +739,12 @@ class HealthDialog(FramelessDialog):
         period = f"{flt['start']:%d.%m %H:%M} — {flt['end']:%d.%m %H:%M}"
         if shown:
             top_src = ", ".join(f"{safe_txt(src)} ({n})" for src, n in sm["by_source"][:3])
-            self.lbl_ev_top.setText(f"По {len(shown)} событиям в таблице за {period}." +
-                                    (f" Чаще всего в критических и ошибках: {top_src}." if top_src else ""))
+            self.lbl_ev_top.setText(tr("По {0} событиям в таблице за {1}.").format(len(shown), period) +
+                                    (tr(" Чаще всего в критических и ошибках: {0}.").format(top_src) if top_src else ""))
         else:
             self.lbl_ev_top.setText(tr("✅ За {0} событий выбранных уровней нет.").format(period))
-        note = f" · {len(d['errors'])} журнал(ов) не прочитано" if d.get("errors") else ""
-        self.lbl_events.setText(f"Показано {len(shown)} из {d['summary']['total']} загруженных событий (лимит 500){note}")
+        note = tr(" · {0} журнал(ов) не прочитано").format(len(d["errors"])) if d.get("errors") else ""
+        self.lbl_events.setText(tr("Показано {0} из {1} загруженных событий (лимит 500){2}").format(len(shown), d["summary"]["total"], note))
 
     # ------------------------------------------------------------------ загрузка
     def load(self):
@@ -790,13 +787,13 @@ class HealthDialog(FramelessDialog):
         for r, d in enumerate(h["disks"]):
             name = QLabel(f"<b>{d['id']}</b> {d.get('label') or ''}")
             self.parts.addWidget(name, r, 0)
-            self.parts.addWidget(QLabel(f"{d['free_gb']} ГБ свободно из {d['total_gb']} ГБ"), r, 1)
+            self.parts.addWidget(QLabel(tr("{0} ГБ свободно из {1} ГБ").format(d["free_gb"], d["total_gb"])), r, 1)
             self.parts.addWidget(_bar(100 - d["free_pct"], warn=85, danger=90), r, 2)
             self.parts.addWidget(make_badge("мало места", "offline", pal) if d["low"] else make_badge("ок", "online", pal), r, 3)
         self.cb_drive.set_drives(h["disks"] or [{"id": "C:"}])   # все тома ПК с подсказкой «сколько свободно» — карта по любому
-        self.lbl_warn.setText("\n".join(f"• {x}" for x in h["warnings"]) if h["warnings"] else "✅ Замечаний нет")
+        self.lbl_warn.setText("\n".join(f"• {x}" for x in h["warnings"]) if h["warnings"] else tr("✅ Замечаний нет"))
         self._fill_disks(h.get("phys") or [])
-        self.lbl_status.setText(f"Опрошено: {self.comp} · {len(h['warnings'])} замечаний")
+        self.lbl_status.setText(tr("Опрошено: {0} · {1} замечаний").format(self.comp, len(h["warnings"])))
         try:
             db.log_action(self.app.admin_name, "health", self.comp, "; ".join(h.get("warnings", [])) or "ок")
         except Exception as exc:  # noqa: BLE001
@@ -933,8 +930,9 @@ class HealthDialog(FramelessDialog):
             self.lbl_usage.setText(f"⚠️ {u['error']}")
             return
         self.treemap.set_items(u["dirs"], u["total"])
-        errs = f" · недоступно папок: {u['errors']}" if u.get("errors") else ""
-        self.lbl_usage.setText(f"✅ {u['root']}: {health.fmt_size(u['total'])} в {u['total_files']} файлах{errs}. Клик по прямоугольнику — путь в буфер.")
+        errs = tr(" · недоступно папок: {0}").format(u["errors"]) if u.get("errors") else ""
+        self.lbl_usage.setText(tr("✅ {0}: {1} в {2} файлах{3}. Клик по прямоугольнику — путь в буфер.")
+                              .format(u["root"], health.fmt_size(u["total"]), u["total_files"], errs))
         self._fill(self.tbl_dirs, [(d["name"], d["size"], f"{d['pct']}%", d["files"]) for d in u["dirs"]], sizes=(1,), paths=[d["path"] for d in u["dirs"]])
         self._fill(self.tbl_files, [(f["path"], f["size"]) for f in u["files"]], sizes=(1,))
         self.show_hogs(u)
@@ -956,9 +954,10 @@ class HealthDialog(FramelessDialog):
         if not hogs:
             self.lbl_hogs.setText(tr("✅ На компьютере {0}, {1}: временных файлов, которые можно безопасно удалить, не найдено.").format(host, vol))
             return
-        share = f" — это {total / u['total'] * 100:.1f}% занятого места" if u.get("total") else ""
-        self.lbl_hogs.setText(f"🧹 На компьютере {host}, {vol}: можно освободить до {health.fmt_size(total)}{share}. "
-                              f"Ниже — что именно занимает место на этом диске ({len(hogs)} поз.). Клик по строке копирует путь.")
+        share = tr(" — это {0:.1f}% занятого места").format(total / u["total"] * 100) if u.get("total") else ""
+        self.lbl_hogs.setText(tr("🧹 На компьютере {0}, {1}: можно освободить до {2}{3}. "
+                                "Ниже — что именно занимает место на этом диске ({4} поз.). Клик по строке копирует путь.")
+                              .format(host, vol, health.fmt_size(total), share, len(hogs)))
 
     @staticmethod
     def _fill(table: QTableWidget, rows, sizes=(), paths=None):
@@ -989,7 +988,7 @@ class HealthDialog(FramelessDialog):
 
     def _copy_path(self, item: dict):
         QApplication.clipboard().setText(item["path"])
-        self.lbl_status.setText(f"📋 Скопировано: {item['path']}")
+        self.lbl_status.setText(tr("📋 Скопировано: {0}").format(item["path"]))
 
     def _tile_clicked(self, item: dict):
         """Плитка на карте → та же папка выделяется в таблице «Папки» (и путь — в буфер)."""

@@ -256,7 +256,7 @@ class ADApp(FramelessMainWindow):
         (3.5.4: дублирующий бейдж «AD: только чтение» из шапки убран — внизу и так написано)."""
         if hasattr(self, "lbl_role_status"):
             self.lbl_role_status.setText(tr(access.role_title_short()))
-            self.lbl_role_status.setToolTip(f"{access.role_summary()[1]}\n(Клик — подробнее о возможностях роли)")
+            self.lbl_role_status.setToolTip(tr("{0}\n(Клик — подробнее о возможностях роли)").format(access.role_summary()[1]))
         for b, action in getattr(self, "_modifying_buttons", []):
             b.setVisible(access.can(action))
 
@@ -299,7 +299,7 @@ class ADApp(FramelessMainWindow):
         def done(info):
             if info:
                 self.update_info = info
-                self.lbl_update.setText(f"⬆️ {tr('Доступна новая версия')} {info['version']}")
+                self.lbl_update.setText(tr("⬆️ {0} {1}").format(tr("Доступна новая версия"), info["version"]))
                 self.lbl_update.setVisible(True)
                 if self.tray:
                     self.tray.notify("ADK", f"{tr('Доступна новая версия')} {info['version']}")
@@ -315,7 +315,7 @@ class ADApp(FramelessMainWindow):
                 else:
                     subprocess.Popen(["xdg-open", loc])
             except OSError as exc:
-                MessageBox.warning(self, "Обновление", str(exc))
+                MessageBox.warning(self, tr("Обновление"), str(exc))
 
     def _build_shortcuts(self):
         self._shortcuts = []
@@ -440,8 +440,7 @@ class ADApp(FramelessMainWindow):
         self.btn_scan.clicked.connect(self.start_scan)
         self.btn_fill_stop = QPushButton(tr("⏹ Остановить наполнение"))
         self.btn_fill_stop.setObjectName("btnDanger")
-        self.btn_fill_stop.setToolTip(tr("Прервать первичное наполнение новой базы. Дозаполнить можно позже: "
-                                         "«Обновить статус сети ПК» и «Принтеры парка → Опросить парк»."))
+        self.btn_fill_stop.setToolTip(tr("Прервать первичное наполнение новой базы. Дозаполнить можно позже: " "«Обновить статус сети ПК» и «Принтеры парка → Опросить парк»."))
         self.btn_fill_stop.clicked.connect(self.stop_initial_fill)
         self.btn_fill_stop.hide()
         self.lbl_status = QLabel("")
@@ -449,7 +448,7 @@ class ADApp(FramelessMainWindow):
         self.lbl_role_status = QLabel(tr(access.role_title_short()))
         self.lbl_role_status.setObjectName("roleStatusLabel")
         self.lbl_role_status.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.lbl_role_status.setToolTip(f"{access.role_summary()[1]}\n(Клик — подробнее о возможностях роли)")
+        self.lbl_role_status.setToolTip(tr("{0}\n(Клик — подробнее о возможностях роли)").format(access.role_summary()[1]))
         self.lbl_role_status.mousePressEvent = lambda e: self.show_role_info()
         bottom.addWidget(self.btn_scan)
         bottom.addWidget(self.btn_fill_stop)
@@ -817,7 +816,7 @@ class ADApp(FramelessMainWindow):
                              "specs_custom": specs or "", "last_logon": last_logon or "Нет данных",
                              "last_seen_online": seen})
         except Exception as exc:  # noqa: BLE001
-            MessageBox.critical(self, "База данных", str(exc))
+            MessageBox.critical(self, tr("База данных"), str(exc))
         self.results = rows
         self.stack.setCurrentIndex(1)
         self.fill_table(rows)
@@ -1005,7 +1004,7 @@ class ADApp(FramelessMainWindow):
                 login.setText("—")
                 pinfo = u.get("printer") or {}
                 pkind = pinfo.get("kind") or ("network" if u.get("ip") else "")
-                conn = QTableWidgetItem(PRINTER_CONN.get(pkind, ("", "локальный"))[1])
+                conn = QTableWidgetItem(PRINTER_CONN.get(pkind, ("", tr("локальный")))[1])
                 if pkind in PRINTER_CONN:
                     conn.setIcon(icons.icon(PRINTER_CONN[pkind][0], role="text"))
                 cells = [login, fio, StatusItem("Принтер", "info"), conn, self.net_badge(u)]
@@ -1101,9 +1100,9 @@ class ADApp(FramelessMainWindow):
         else:
             self.lbl_fio.setText(f"👤 {u.get('full_fio') or u.get('fio') or login}")
             sub = " · ".join(x for x in (u.get("title"), u.get("company")) if x)
-            self.lbl_sub.setText(sub or f"Пользователь: {login}")
+            self.lbl_sub.setText(sub or tr("Пользователь: {0}").format(login))
         self.vals["login"].setText(login or "—")
-        self.vals["pc"].setText(f"{comp} ({u.get('ip', 'Не найден')})" if comp else "—")
+        self.vals["pc"].setText(tr("{0} ({1})").format(comp, u.get("ip", tr("Не найден"))) if comp else "—")
         on = bool(u.get("is_online"))
         if u.get("net_pending"):
             self.vals["status"].setText(tr("● Проверка…"))
@@ -1176,7 +1175,7 @@ class ADApp(FramelessMainWindow):
         lay.addLayout(grid)
         lay.addWidget(QLabel(tr("<b>💻 Кто подключён</b> (клик — открыть ПК):")))
         self.printer_pcs = QTableWidget(0, 4)
-        self.printer_pcs.setHorizontalHeaderLabels(["ПК", "Пользователь", "Сеть", "По умолч."])
+        self.printer_pcs.setHorizontalHeaderLabels([tr("ПК"), tr("Пользователь"), tr("Сеть"), tr("По умолч.")])
         self.printer_pcs.verticalHeader().setVisible(False)
         self.printer_pcs.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.printer_pcs.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -1187,8 +1186,7 @@ class ADApp(FramelessMainWindow):
         self.printer_pcs.setColumnWidth(3, 80)
         self.printer_pcs.itemDoubleClicked.connect(lambda it: self._open_printer_pc(it.row()))
         lay.addWidget(self.printer_pcs, 1)
-        hint = QLabel(tr("Принтеры берутся из инвентарных CSV. Доступность — TCP 9100/631/80, затем ping. «Проверка» при "
-                      "поиске по IP: порты печати 9100/631 или веб-панель принтера — значит принтер; открытые 445/3389 — "
+        hint = QLabel(tr("Принтеры берутся из инвентарных CSV. Доступность — TCP 9100/631/80, затем ping. «Проверка» при " "поиске по IP: порты печати 9100/631 или веб-панель принтера — значит принтер; открытые 445/3389 — "
                       "это уже компьютер."))
         hint.setObjectName("subtle")
         hint.setWordWrap(True)
@@ -1216,14 +1214,14 @@ class ADApp(FramelessMainWindow):
             self.pvals["status"].setText(tr("● Проверка…"))
             self.pvals["status"].setStyleSheet(f"color: {pal.subtext}; font-weight: bold;")
         else:
-            self.pvals["status"].setText(("● В сети" if on else "● Не в сети") if ip else "—")
+            self.pvals["status"].setText((tr("● В сети") if on else tr("● Не в сети")) if ip else "—")
             self.pvals["status"].setStyleSheet(f"color: {pal.success[0] if on else pal.danger[0]}; font-weight: bold;" if ip else "")
         self.btn_printer_ping.setVisible(bool(ip))
         self.btn_printer_web.setVisible(bool(ip))
         self.pvals["kind"].setText(kind)
         if g.get("discovered"):
             # 3.5.10: принтер найден прямо по адресу (в базе его не было) — честно говорим откуда модель и имя узла
-            self.pvals["port"].setText((f"узел {g['port']} · " if g.get("port") else "") + f"модель: {g.get('source', '')}")
+            self.pvals["port"].setText((tr("узел {0} · ").format(g["port"]) if g.get("port") else "") + tr("модель: {0}").format(g.get("source", "")))
             self.lbl_sub.setText(tr("Принтер · {0} · в базе не числится — найден по адресу").format(kind))
         else:
             self.pvals["port"].setText(g.get("port") or "—")
@@ -1238,20 +1236,20 @@ class ADApp(FramelessMainWindow):
             self.pvals["probe"].setText(tr("по данным инвентаря (запрос не по IP — устройство по адресу не проверялось)"))
             self.pvals["probe"].setStyleSheet("")
         elif pr.get("is_printer") is True:
-            self.pvals["probe"].setText(f"по адресу действительно принтер — {pr.get('evidence', '')}")
+            self.pvals["probe"].setText(tr("по адресу действительно принтер — {0}").format(pr.get("evidence", "")))
             self.pvals["probe"].setStyleSheet(f"color: {pal.success[0]}; font-weight: bold;")
         elif pr.get("is_printer") is False:
-            self.pvals["probe"].setText(f"внимание: по адресу сейчас НЕ принтер — {pr.get('evidence', '')}. "
-                                        "Возможно, адрес переназначен — проверьте DHCP/DNS")
+            self.pvals["probe"].setText(tr("внимание: по адресу сейчас НЕ принтер — {0}. Возможно, адрес переназначен — проверьте DHCP/DNS")
+                                        .format(pr.get("evidence", "")))
             self.pvals["probe"].setStyleSheet(f"color: {pal.danger[0]}; font-weight: bold;")
         else:
-            self.pvals["probe"].setText(f"не проверено — {pr.get('evidence', 'узел не отвечает')}")
+            self.pvals["probe"].setText(tr("не проверено — {0}").format(pr.get("evidence", tr("узел не отвечает"))))
             self.pvals["probe"].setStyleSheet(f"color: {pal.warning[0]}; font-weight: bold;")
         pcs = g.get("pcs") or []
         if g.get("discovered"):
             self.pvals["count"].setText(tr("неизвестно — ПК с этим принтером в инвентаре нет (опросите парк в «Принтеры парка»)"))
         else:
-            self.pvals["count"].setText(f"{len(pcs)} (в сети: {sum(1 for x in pcs if x['is_online'])})")
+            self.pvals["count"].setText(tr("{0} (в сети: {1})").format(len(pcs), sum(1 for x in pcs if x["is_online"])))
         self.printer_pcs.setRowCount(len(pcs))
         for r, x in enumerate(pcs):
             self.printer_pcs.setItem(r, 0, QTableWidgetItem(x["comp"]))
@@ -1331,7 +1329,7 @@ class ADApp(FramelessMainWindow):
         self.btn_live_printers.setEnabled(True)
         self.lbl_live_printers.setVisible(True)
         if "error" in r:
-            self.lbl_live_printers.setText(f"⚠️ Живой опрос не удался: {r['error']}. Показан инвентарный снимок.")
+            self.lbl_live_printers.setText(tr("⚠️ Живой опрос не удался: {0}. Показан инвентарный снимок.").format(r["error"]))
             return
         live = r.get("printers") or []
         cached = {p["name"].lower() for p in (u.get("printers") or [])}
@@ -1476,7 +1474,7 @@ class ADApp(FramelessMainWindow):
         u = self.selected()
         comp = db.clean_computer_name(u.get("comp", "")) if u else ""
         if not comp:
-            MessageBox.warning(self, "Внимание", "У выбранной строки нет ПК.")
+            MessageBox.warning(self, tr("Внимание"), tr("У выбранной строки нет ПК."))
             return
         ip = u.get("ip", "Не найден")
         target = ip if ip != "Не найден" else comp
@@ -1512,7 +1510,7 @@ class ADApp(FramelessMainWindow):
                 subprocess.Popen(argv, creationflags=CREATE_NO_WINDOW)
                 db.log_action(self.admin_name, action, comp)
         except (OSError, ValueError) as exc:
-            MessageBox.critical(self, "Ошибка", str(exc))
+            MessageBox.critical(self, tr("Ошибка"), str(exc))
 
     def open_power_menu(self, comp: str) -> None:
         """«Питание ПК» — стилизованное меню: WoL, блокировка экрана, выход, сон, перезагрузка, выключение."""
@@ -1533,7 +1531,7 @@ class ADApp(FramelessMainWindow):
     def power_action(self, action: str, comp: str, target: str) -> None:
         """Выполнить пункт меню «Питание ПК» (кроме WoL): подтверждение для необратимых, шаги по очереди, запись в журнал."""
         label = netutils.POWER_ACTIONS[action][0].split(" ", 1)[1]
-        if action in netutils.POWER_CONFIRM and not MessageBox.question(self, "Подтверждение", f"{label}: {comp}?"):
+        if action in netutils.POWER_CONFIRM and not MessageBox.question(self, tr("Подтверждение"), f"{label}: {comp}?"):
             return
         for argv in netutils.power_commands(action, target):
             subprocess.Popen(argv, creationflags=CREATE_NO_WINDOW)
@@ -1583,7 +1581,7 @@ class ADApp(FramelessMainWindow):
             self.ping_printer()
             return
         if u.get("entry") is None:
-            MessageBox.information(self, "Карточка", "Данные из AD ещё загружаются или пользователь не найден.")
+            MessageBox.information(self, tr("Карточка"), tr("Данные из AD ещё загружаются или пользователь не найден."))
             return
         comp = u.get("comp") or u.get("computer") or ""
         dlg = UserCardDialog(u["entry"], self, self, initial_comp=comp)
@@ -1684,14 +1682,14 @@ class ADApp(FramelessMainWindow):
         comps = self.selected_computers() or [db.clean_computer_name(r.get("comp", "")) for r in self.results]
         comps = [c for c in comps if c]
         if not comps:
-            MessageBox.information(self, "Массовый пинг", "Нет ПК в выделении/результатах.")
+            MessageBox.information(self, tr("Массовый пинг"), tr("Нет ПК в выделении/результатах."))
             return
         MassPingDialog(comps, self, self).exec()
 
     def compare_pcs(self):
         comps = self.selected_computers()
         if len(comps) != 2:
-            MessageBox.information(self, "Сравнение ПК", "Выделите ровно две строки с ПК (Ctrl+клик).")
+            MessageBox.information(self, tr("Сравнение ПК"), tr("Выделите ровно две строки с ПК (Ctrl+клик)."))
             return
         db.log_action(self.admin_name, "compare_pc", comps[0], comps[1])
         ComparePCDialog(comps[0], comps[1], self, self).exec()
@@ -1727,7 +1725,7 @@ class ADApp(FramelessMainWindow):
             return
         users = self.selected_users()
         if not users:
-            MessageBox.information(self, "Массовые операции", "Выделите строки (Ctrl/Shift + клик) с учётными записями AD.")
+            MessageBox.information(self, tr("Массовые операции"), tr("Выделите строки (Ctrl/Shift + клик) с учётными записями AD."))
             return
         dlg = BulkOperationsDialog(users, self, self)
         dlg.exec()
@@ -1736,7 +1734,7 @@ class ADApp(FramelessMainWindow):
 
     def export_results(self):
         if not self.results:
-            MessageBox.information(self, "Экспорт", "Нет результатов для экспорта.")
+            MessageBox.information(self, tr("Экспорт"), tr("Нет результатов для экспорта."))
             return
         path, _ = QFileDialog.getSaveFileName(self, "Экспорт результатов", f"adk_{self.search_input.text().strip()[:30] or 'results'}.xlsx",
                                               "Excel (*.xlsx);;CSV (*.csv)")
@@ -1745,7 +1743,7 @@ class ADApp(FramelessMainWindow):
         try:
             n = export.export_rows(self.results, path)
         except Exception as exc:  # noqa: BLE001
-            MessageBox.critical(self, "Экспорт", str(exc))
+            MessageBox.critical(self, tr("Экспорт"), str(exc))
             return
         db.log_action(self.admin_name, "export", self.search_input.text().strip(), f"{n} строк → {os.path.basename(path)}")
         self.lbl_status.setText(tr("📤 Экспортировано строк: {0} → {1}").format(n, path))
@@ -1792,7 +1790,7 @@ class ADApp(FramelessMainWindow):
     def compare_groups(self):
         u = self.selected()
         if not u or u.get("entry") is None:
-            MessageBox.information(self, "Группы", "Выберите пользователя с данными AD.")
+            MessageBox.information(self, tr("Группы"), tr("Выберите пользователя с данными AD."))
             return
         if self._deny("groups_sync"):
             return
@@ -1804,7 +1802,7 @@ class ADApp(FramelessMainWindow):
         i = sum(1 for k in self.action_buttons if not k.startswith("plugin:"))
         for act in self.plugin_actions:
             b = QPushButton(act.label)
-            b.setToolTip(f"Плагин: {act.name}")
+            b.setToolTip(tr("Плагин: {0}").format(act.name))
             b.clicked.connect(lambda _, a=act: self.run_plugin(a))
             if act.modifying:
                 self._modifying_buttons.append((b, "plugin_modifying"))
@@ -1840,7 +1838,7 @@ class ADApp(FramelessMainWindow):
                "fio": u.get("full_fio") or u.get("fio") or "", "admin": self.admin_name, "entry": u.get("entry"),
                "conn_factory": self.get_conn, "window": self, "mail": u.get("mail") or ""}
         if not act.enabled(ctx):
-            MessageBox.information(self, act.name, "Действие недоступно для этой строки (нужен ПК).")
+            MessageBox.information(self, act.name, tr("Действие недоступно для этой строки (нужен ПК)."))
             return
         ok, msg = plugins.run_action(act, ctx)
         self.lbl_status.setText(("✅ " if ok else "⚠️ ") + msg)

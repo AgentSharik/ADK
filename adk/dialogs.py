@@ -71,7 +71,7 @@ class LoginDialog(FramelessDialog):
         cl = QVBoxLayout(card)
         cl.setSpacing(6)
         if error_msg:
-            self.lbl_error = QLabel(safe_rich("⚠ Ошибка:", error_msg).replace("\n", "<br>"))
+            self.lbl_error = QLabel(safe_rich(tr("⚠ Ошибка:"), error_msg).replace("\n", "<br>"))
             self.lbl_error.setObjectName("loginError")
             self.lbl_error.setStyleSheet(f"color: {pal.danger[0]}; background-color: {pal.danger[1]}; "
                                          f"border: 1px solid {pal.danger[2]}; border-radius: 8px; padding: 6px 10px;")
@@ -79,7 +79,7 @@ class LoginDialog(FramelessDialog):
             cl.addWidget(self.lbl_error)
         cl.addWidget(QLabel(tr("<b>Логин</b>")))
         self.user_in = QLineEdit(saved_user or "")
-        self.user_in.setPlaceholderText(f"{settings.domain_netbios}\\login или login")
+        self.user_in.setPlaceholderText(tr("{0}\\login или login").format(settings.domain_netbios))
         self.user_in.setMinimumHeight(36)
         self.user_in.setClearButtonEnabled(True)
         cl.addWidget(self.user_in)
@@ -97,7 +97,7 @@ class LoginDialog(FramelessDialog):
         self.btn_eye.setMinimumHeight(36)
         self.btn_eye.setToolTip(tr("Показать/скрыть пароль"))
         self.btn_eye.toggled.connect(lambda on: (self.pass_in.setEchoMode(
-            QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password), self.btn_eye.setText(tr("Скрыть") if on else "Показать")))
+            QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password), self.btn_eye.setText(tr("Скрыть") if on else tr("Показать"))))
         prow.addWidget(self.pass_in, 1)
         prow.addWidget(self.btn_eye)
         cl.addLayout(prow)
@@ -167,7 +167,7 @@ class LoginDialog(FramelessDialog):
             if self.remember.isChecked():
                 if not save_credentials(self.username, p):
                     from .credentials import last_error
-                    MessageBox.warning(self, "Хранилище", "Пароль не сохранён.\nПричина: " + (last_error() or "неизвестна")
+                    MessageBox.warning(self, tr("Хранилище"), tr("Пароль не сохранён.\nПричина: ") + (last_error() or tr("неизвестна"))
                                        + "\nВход выполнен, но в следующий раз пароль придётся ввести снова.")
             else:
                 clear_credentials()
@@ -175,7 +175,7 @@ class LoginDialog(FramelessDialog):
 
         def fail(msg):
             self._busy(False)
-            MessageBox.critical(self, "Ошибка входа", msg)
+            MessageBox.critical(self, tr("Ошибка входа"), msg)
 
         run_in_background(self, bind, ok, fail)
 
@@ -198,7 +198,7 @@ class LoginDialog(FramelessDialog):
 
         def fail(msg):
             self._busy(False)
-            MessageBox.critical(self, "Ошибка SSO", msg)
+            MessageBox.critical(self, tr("Ошибка SSO"), msg)
 
         run_in_background(self, bind, ok, fail)
 
@@ -230,7 +230,7 @@ class RoleWelcomeDialog(FramelessDialog):
         cl.addWidget(lbl_text)
 
         if admin_name:
-            lbl_user = QLabel(f"<b>Пользователь:</b> {admin_name}")
+            lbl_user = QLabel(tr("<b>Пользователь:</b> {0}").format(admin_name))
             lbl_user.setObjectName("subtle")
             cl.addWidget(lbl_user)
 
@@ -317,12 +317,12 @@ class RoleInfoDialog(FramelessDialog):
         cl.addWidget(lbl_text)
 
         if admin_name:
-            lbl_user = QLabel(f"<b>Пользователь:</b> {admin_name}")
+            lbl_user = QLabel(tr("<b>Пользователь:</b> {0}").format(admin_name))
             lbl_user.setObjectName("subtle")
             cl.addWidget(lbl_user)
 
         if access.reason():
-            lbl_reason = QLabel(f"<b>Основание:</b> {access.reason()}")
+            lbl_reason = QLabel(tr("<b>Основание:</b> {0}").format(access.reason()))
             lbl_reason.setObjectName("subtle")
             lbl_reason.setWordWrap(True)
             cl.addWidget(lbl_reason)
@@ -411,7 +411,7 @@ class PluginsDialog(FramelessDialog):
         self.body.addLayout(head)
 
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Файл", "Действия (кнопки)", "Права", "Состояние"])
+        self.table.setHorizontalHeaderLabels([tr("Файл"), tr("Действия (кнопки)"), tr("Права"), tr("Состояние")])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -450,8 +450,7 @@ class PluginsDialog(FramelessDialog):
         il = QVBoxLayout(info)
         il.setSpacing(4)
         il.addWidget(QLabel(tr("<b>Как сделать свой плагин</b>")))
-        steps = QLabel(tr("1. «Создать шаблон плагина» — в папке появится <code>_template_plugin.py</code>: в нём описано всё "
-                       "(атрибуты, методы, что приходит в <code>ctx</code>, примеры).<br>"
+        steps = QLabel(tr("1. «Создать шаблон плагина» — в папке появится <code>_template_plugin.py</code>: в нём описано всё " "(атрибуты, методы, что приходит в <code>ctx</code>, примеры).<br>"
                        "2. Откройте файл, переименуйте класс, впишите своё в <code>run(ctx)</code>.<br>"
                        "3. Уберите «_» из имени файла (или нажмите «Включить») и «Перечитать» — кнопка появится в инспекторе "
                        "и в меню строки. Действия с <code>modifying = True</code> видит только роль «ПК»."))
@@ -489,14 +488,14 @@ class PluginsDialog(FramelessDialog):
             self.table.setItem(r, 1, it)
             rights = "меняет (роль «ПК»)" if any(a.modifying for a in f["actions"]) else ("только чтение" if f["actions"] else "")
             self.table.setItem(r, 2, QTableWidgetItem(rights))
-            st = QTableWidgetItem(tr("● Включён") if f["enabled"] else "○ Выключен")
+            st = QTableWidgetItem(tr("● Включён") if f["enabled"] else tr("○ Выключен"))
             st.setForeground(QColor(app_palette().success[0] if f["enabled"] else app_palette().subtext))
             st.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(r, 3, st)
         self.table.setSortingEnabled(False)
         on = sum(1 for f in self.files if f["enabled"])
-        self.status.setText(f"Файлов: {len(self.files)} · включено: {on}" if self.files else
-                            "Папка пуста — нажмите «Создать шаблон плагина».")
+        self.status.setText(tr("Файлов: {0} · включено: {1}").format(len(self.files), on) if self.files else
+                            tr("Папка пуста — нажмите «Создать шаблон плагина»."))
         self._sync_buttons()
         if self._app is not None and hasattr(self._app, "reload_plugins"):
             self._app.reload_plugins()
@@ -510,7 +509,7 @@ class PluginsDialog(FramelessDialog):
         for b in (self.btn_toggle, self.btn_edit, self.btn_delete):
             b.setEnabled(f is not None)
         if f is not None:
-            self.btn_toggle.setText(tr("Выключить") if f["enabled"] else "Включить")
+            self.btn_toggle.setText(tr("Выключить") if f["enabled"] else tr("Включить"))
             self.btn_toggle.setObjectName("btnWarning" if f["enabled"] else "btnSuccess")
             self.btn_toggle.style().unpolish(self.btn_toggle)
             self.btn_toggle.style().polish(self.btn_toggle)
@@ -520,7 +519,7 @@ class PluginsDialog(FramelessDialog):
         from . import plugins
         path = plugins.write_template(settings.plugins_dir)
         if not path:
-            MessageBox.warning(self, "Плагины", f"Не удалось создать файл в папке {settings.plugins_dir}")
+            MessageBox.warning(self, tr("Плагины"), tr("Не удалось создать файл в папке {0}").format(settings.plugins_dir))
             return
         self.reload()
         for r, f in enumerate(self.files):
@@ -536,14 +535,14 @@ class PluginsDialog(FramelessDialog):
         try:
             plugins.set_enabled(f["path"], not f["enabled"])
         except OSError as exc:
-            MessageBox.warning(self, "Плагины", f"Не удалось переименовать файл: {exc}")
+            MessageBox.warning(self, tr("Плагины"), tr("Не удалось переименовать файл: {0}").format(exc))
             return
         name = f["file"]
         self.reload()
         for r, x in enumerate(self.files):
             if x["file"].lstrip("_") == name.lstrip("_"):
                 self.table.selectRow(r)
-        self.status.setText(("Включён: " if not f["enabled"] else "Выключен: ") + name.lstrip("_"))
+        self.status.setText((tr("Включён: ") if not f["enabled"] else tr("Выключен: ")) + name.lstrip("_"))
 
     def _open_file(self):
         f = self._current()
@@ -557,12 +556,12 @@ class PluginsDialog(FramelessDialog):
         f = self._current()
         if f is None:
             return
-        if not MessageBox.question(self, "Удалить плагин", f"Удалить файл {f['file']} без возможности восстановления?"):
+        if not MessageBox.question(self, tr("Удалить плагин"), tr("Удалить файл {0} без возможности восстановления?").format(f["file"])):
             return
         try:
             os.remove(f["path"])
         except OSError as exc:
-            MessageBox.warning(self, "Плагины", f"Не удалось удалить: {exc}")
+            MessageBox.warning(self, tr("Плагины"), tr("Не удалось удалить: {0}").format(exc))
             return
         self.reload()
 
@@ -654,7 +653,7 @@ class UserCardDialog(FramelessDialog):
         b_copy.clicked.connect(self.copy_to_clipboard)
         bar.addWidget(b_copy)
         n_notes = len(db.notes_for(self.login, "user"))
-        self.btn_notes = QPushButton(f"📝 Заметки ({n_notes})" if n_notes else "📝 Заметки")
+        self.btn_notes = QPushButton(tr("📝 Заметки ({0})").format(n_notes) if n_notes else tr("📝 Заметки"))
         self.btn_notes.clicked.connect(lambda: (NotesDialog(self.login, "user", self.app, self, title=fio).exec(),
                                                 self._refresh_notes_btn()))
         bar.addWidget(self.btn_notes)
@@ -681,7 +680,7 @@ class UserCardDialog(FramelessDialog):
         bar.addWidget(self.btn_unlock)
         self._ad_widgets.append(self.btn_unlock)
         disabled = bool(self.original_uac & ACCOUNT_DISABLE_FLAG)
-        self.btn_toggle = QPushButton(tr("✅ Включить учётную запись") if disabled else "⛔ Отключить учётную запись")
+        self.btn_toggle = QPushButton(tr("✅ Включить учётную запись") if disabled else tr("⛔ Отключить учётную запись"))
         self.btn_toggle.setObjectName("btnSuccess" if disabled else "btnDanger")
         self.btn_toggle.setToolTip(tr("Включить учётную запись (UAC −= 2)") if disabled else
                                    "Отключить учётную запись — увольнение / декрет: UAC += 2" + (" и экспорт ящика в PST" if settings.pst_backup_base else ""))
@@ -693,10 +692,10 @@ class UserCardDialog(FramelessDialog):
 
         tabs = self.tabs = QTabWidget()
         self.body.addWidget(tabs, 1)
-        tabs.addTab(self._build_info_tab(), "👤 Профиль")
-        tabs.addTab(self._build_groups_tab(), "👥 Группы")
-        tabs.addTab(self._build_account_tab(), "🔐 Учётная запись")
-        tabs.addTab(self._build_specs_tab(), "💻 Характеристики ПК")
+        tabs.addTab(self._build_info_tab(), tr("👤 Профиль"))
+        tabs.addTab(self._build_groups_tab(), tr("👥 Группы"))
+        tabs.addTab(self._build_account_tab(), tr("🔐 Учётная запись"))
+        tabs.addTab(self._build_specs_tab(), tr("💻 Характеристики ПК"))
         self._apply_ad_access()
         self._load_pc_state()
 
@@ -840,7 +839,7 @@ class UserCardDialog(FramelessDialog):
             if unlock:
                 self._forget_lockout()          # галочка «Снять блокировку» — упоминание блокировки исчезает сразу
             QApplication.clipboard().setText(pwd)
-            MessageBox.information(self, "Пароль изменён",
+            MessageBox.information(self, tr("Пароль изменён"),
                                    f"Новый пароль для {self.login} скопирован в буфер обмена.\n"
                                    + ("Пользователь сменит его при следующем входе." if must_change else ""))
 
@@ -848,7 +847,7 @@ class UserCardDialog(FramelessDialog):
 
     def _refresh_notes_btn(self):
         n = len(db.notes_for(self.login, "user"))
-        self.btn_notes.setText(f"📝 Заметки ({n})" if n else "📝 Заметки")
+        self.btn_notes.setText(tr("📝 Заметки ({0})").format(n) if n else tr("📝 Заметки"))
 
     def _build_groups_tab(self) -> QWidget:
         """Две панели рядом: слева группы сотрудника, справа все группы домена с фильтром; кнопки между ними."""
@@ -918,7 +917,7 @@ class UserCardDialog(FramelessDialog):
         from . import access as _access
         if _access.can(action):
             return False
-        MessageBox.warning(self, "Недостаточно прав", _access.deny_text(action))
+        MessageBox.warning(self, tr("Недостаточно прав"), _access.deny_text(action))
         return True
 
     def _build_specs_tab(self) -> QWidget:
@@ -938,7 +937,7 @@ class UserCardDialog(FramelessDialog):
         save_pc.setVisible(_access.can("bind_pc"))
         row.addWidget(save_pc)
         self.lbl_ip = QLabel(safe_rich("IP:", "…"))
-        self.lbl_net = QLabel(safe_rich("Сеть:", "…"))
+        self.lbl_net = QLabel(safe_rich(tr("Сеть:"), "…"))
         row.addSpacing(12)
         row.addWidget(self.lbl_ip)
         row.addWidget(self.lbl_net)
@@ -950,8 +949,7 @@ class UserCardDialog(FramelessDialog):
         self.specs_tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.specs_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         lay.addWidget(self.specs_tree, 1)
-        hint = QLabel(tr("Данные из инвентарного снимка (только чтение). RMS, диски, перезагрузка, здоровье и принтеры — "
-                      "в инспекторе главного окна."))
+        hint = QLabel(tr("Данные из инвентарного снимка (только чтение). RMS, диски, перезагрузка, здоровье и принтеры — " "в инспекторе главного окна."))
         hint.setObjectName("subtle")
         hint.setWordWrap(True)
         lay.addWidget(hint)
@@ -961,8 +959,8 @@ class UserCardDialog(FramelessDialog):
     def _load_pc_state(self):
         comp = self.current_comp
         if not comp:
-            self.lbl_ip.setText(safe_rich("IP:", "ПК не привязан"))
-            self.lbl_net.setText(safe_rich("Сеть:", "—"))
+            self.lbl_ip.setText(safe_rich("IP:", tr("ПК не привязан")))
+            self.lbl_net.setText(safe_rich(tr("Сеть:"), "—"))
             return
 
         def work():
@@ -978,7 +976,7 @@ class UserCardDialog(FramelessDialog):
                 return
             self.current_ip = ip
             self.lbl_ip.setText(safe_rich("IP:", ip))
-            self.lbl_net.setText(safe_rich("Сеть:", "🟢 В сети" if online else "🔴 Не в сети"))
+            self.lbl_net.setText(safe_rich(tr("Сеть:"), tr("🟢 В сети") if online else tr("🔴 Не в сети")))
             self._populate_specs(specs)
 
         run_in_background(self, work, done, lambda m: log.warning("pc state: %s", m))
@@ -1022,7 +1020,7 @@ class UserCardDialog(FramelessDialog):
             pc = [self.current_comp] + ([self.current_ip] if self.current_ip != "Не найден" else [])
             parts.append("💻 ПК: " + " | ".join(pc))
         QApplication.clipboard().setText("\n".join(parts))
-        MessageBox.information(self, "Скопировано", "Карточка скопирована в буфер обмена.")
+        MessageBox.information(self, tr("Скопировано"), tr("Карточка скопирована в буфер обмена."))
 
     def save_changes(self):
         if self._deny("modify_user"):
@@ -1041,7 +1039,7 @@ class UserCardDialog(FramelessDialog):
         if self.skype.isChecked() != self.original_skype:
             changes["msRTCSIP-UserEnabled"] = [(ad.MODIFY_REPLACE, ["TRUE" if self.skype.isChecked() else "FALSE"])]
         if not changes:
-            MessageBox.information(self, "Без изменений", "Ничего не изменено.")
+            MessageBox.information(self, tr("Без изменений"), tr("Ничего не изменено."))
             return
 
         def work():
@@ -1053,7 +1051,7 @@ class UserCardDialog(FramelessDialog):
 
         def done(_):
             db.log_action(self.app.admin_name, "modify_user", self.login, ", ".join(changes))
-            MessageBox.information(self, "Успех", "Данные обновлены в AD.")
+            MessageBox.information(self, tr("Успех"), tr("Данные обновлены в AD."))
             self.accept()
 
         run_in_background(self, work, done)
@@ -1063,7 +1061,7 @@ class UserCardDialog(FramelessDialog):
         if self._deny("enable_user" if disabled else "disable_user"):
             return
         verb = "Включить" if disabled else "Отключить"
-        if not MessageBox.question(self, "Подтверждение", f"{verb} учётную запись {self.login}?"):
+        if not MessageBox.question(self, tr("Подтверждение"), tr("{0} учётную запись {1}?").format(verb, self.login)):
             return
 
         def work():
@@ -1087,13 +1085,13 @@ class UserCardDialog(FramelessDialog):
             except Exception as exc:  # noqa: BLE001
                 log.debug("uac local update: %s", exc)
             now_disabled = not disabled
-            self.btn_toggle.setText(tr("✅ Включить учётную запись") if now_disabled else "⛔ Отключить учётную запись")
+            self.btn_toggle.setText(tr("✅ Включить учётную запись") if now_disabled else tr("⛔ Отключить учётную запись"))
             self.btn_toggle.setObjectName("btnSuccess" if now_disabled else "btnDanger")
             self.btn_toggle.style().unpolish(self.btn_toggle)
             self.btn_toggle.style().polish(self.btn_toggle)
             self._entry_changed = True
             self.refresh_state()
-            MessageBox.information(self, "Готово", f"Учётная запись {'включена' if disabled else 'отключена'}."
+            MessageBox.information(self, tr("Готово"), tr("Учётная запись {0}.").format(tr("включена") if disabled else tr("отключена"))
                                    + (f"\n{msg}" if msg else ""))
 
         run_in_background(self, work, done)
@@ -1131,7 +1129,7 @@ class UserCardDialog(FramelessDialog):
             db.log_action(self.app.admin_name, "unlock", self.login)
             self._forget_lockout()
             # блокировка почти всегда — забытый пароль: сразу предлагаем задать новый (3.2.9)
-            if MessageBox.question(self, "Блокировка снята",
+            if MessageBox.question(self, tr("Блокировка снята"),
                                    f"Блокировка с {self.login} снята.\n\nЗадать пользователю новый пароль?"):
                 self.reset_password(after_unlock=True)
 
@@ -1220,7 +1218,7 @@ class UserCardDialog(FramelessDialog):
         if self._deny("group_remove"):
             return
         items = self.groups_list.selectedItems()
-        if not items or not MessageBox.question(self, "Подтверждение", f"Удалить из группы {items[0].text()}?"):
+        if not items or not MessageBox.question(self, tr("Подтверждение"), tr("Удалить из группы {0}?").format(items[0].text())):
             return
         cn = items[0].text()
 
@@ -1240,7 +1238,7 @@ class UserCardDialog(FramelessDialog):
         self.current_comp, self.current_ip = comp, "Не найден"
         db.log_action(self.app.admin_name, "bind_pc", self.login, comp)
         self._load_pc_state()
-        MessageBox.information(self, "Успех", "Привязка сохранена.")
+        MessageBox.information(self, tr("Успех"), tr("Привязка сохранена."))
 
 
 # ============================================================================ смена пароля
@@ -1256,8 +1254,8 @@ class ResetPasswordDialog(FramelessDialog):
         self.login = login
         self.after_unlock = after_unlock
         pal = app_palette()
-        who = QLabel(f"Логин: <b>{settings.domain_netbios + chr(92) if settings.domain_netbios else ''}{login}</b>"
-                     + (f" · {fio}" if fio else ""))
+        who = QLabel(tr("Логин: <b>{0}{1}</b>").format(settings.domain_netbios + chr(92) if settings.domain_netbios else "", login)
+                     + (tr(" · {0}").format(fio) if fio else ""))
         who.setTextFormat(Qt.TextFormat.RichText)
         self.body.addWidget(who)
 
@@ -1304,8 +1302,7 @@ class ResetPasswordDialog(FramelessDialog):
             self.unlock.setToolTip(tr("Задано сценарием «после снятия блокировки»: блокировка снимается"))
         self.body.addWidget(self.must_change)
         self.body.addWidget(self.unlock)
-        hint = QLabel(tr("Пароль показывается только здесь и нигде не сохраняется. «Копировать карточку» — текст "
-                      "с логином и паролем для передачи сотруднику; после смены пароль также попадёт в буфер обмена."))
+        hint = QLabel(tr("Пароль показывается только здесь и нигде не сохраняется. «Копировать карточку» — текст " "с логином и паролем для передачи сотруднику; после смены пароль также попадёт в буфер обмена."))
         hint.setWordWrap(True)
         hint.setObjectName("subtle")
         self.body.addWidget(hint)
@@ -1343,13 +1340,13 @@ class ResetPasswordDialog(FramelessDialog):
         pal = app_palette()
         ok = len(p) >= 8
         strong = ok and any(c.isdigit() for c in p) and any(c.isalpha() for c in p) and any(not c.isalnum() for c in p)
-        self.lbl_check.setText(tr("✔ надёжный") if strong else ("• простой" if ok else "✖ короче 8 символов"))
+        self.lbl_check.setText(tr("✔ надёжный") if strong else (tr("• простой") if ok else tr("✖ короче 8 символов")))
         self.lbl_check.setStyleSheet(f"color: {pal.success[0] if strong else pal.warning[0] if ok else pal.danger[0]}; font-weight: bold;")
         self.btn_ok.setEnabled(ok)
 
     def _accept(self):
         if len(self.password.text()) < 8:
-            MessageBox.warning(self, "Пароль", "Минимум 8 символов.")
+            MessageBox.warning(self, tr("Пароль"), tr("Минимум 8 символов."))
             return
         self.accept()
 
@@ -1389,7 +1386,7 @@ class AuditLogDialog(FramelessDialog):
         self.body.addLayout(flt)
 
         self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["Время", "Администратор", "Действие", "Объект", "Детали"])
+        self.table.setHorizontalHeaderLabels([tr("Время"), tr("Администратор"), tr("Действие"), tr("Объект"), tr("Детали")])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -1427,7 +1424,7 @@ class AuditLogDialog(FramelessDialog):
                 self.table.setItem(r, c, QTableWidgetItem(str(val or "")))
         self.table.setSortingEnabled(True)
         fit_columns(self.table, max_width=380)
-        self.status.setText(f"Записей: {len(self.rows)}" + (" (показаны первые 1000)" if len(self.rows) >= 1000 else ""))
+        self.status.setText(tr("Записей: {0}").format(len(self.rows)) + (tr(" (показаны первые 1000)") if len(self.rows) >= 1000 else ""))
 
     def export_csv(self):
         if not self.rows:
@@ -1437,7 +1434,7 @@ class AuditLogDialog(FramelessDialog):
         if not path:
             return
         self.write_csv(path)
-        MessageBox.information(self, "Экспорт", f"Сохранено: {path}")
+        MessageBox.information(self, tr("Экспорт"), tr("Сохранено: {0}").format(path))
 
     def write_csv(self, path: str) -> None:
         import csv
@@ -1474,14 +1471,12 @@ class PrintersDialog(FramelessDialog):
         # 3.5.10: живой опрос парка — принтеры берутся с самих ПК (WinRM/WMI), CSV и база не нужны
         self.btn_live = QPushButton(tr("📡 Опросить парк"))
         self.btn_live.setObjectName("btnPrimary")
-        self.btn_live.setToolTip(tr("Спросить каждый ПК в сети, какие принтеры у него установлены прямо сейчас.\n"
-                                 "Работает без инвентарных CSV; ничего не записывает, пока не нажать «Сохранить в базу»."))
+        self.btn_live.setToolTip(tr("Спросить каждый ПК в сети, какие принтеры у него установлены прямо сейчас.\n" "Работает без инвентарных CSV; ничего не записывает, пока не нажать «Сохранить в базу»."))
         self.btn_live.clicked.connect(self.poll_live)
         top.addWidget(self.btn_live)
         # 3.8.0: «Область» — опрос только ПК выбранной организации: кто какой принтер использует
         self.btn_org = QPushButton(tr("🏢 Область"))
-        self.btn_org.setToolTip(tr("Опросить принтеры только у ПК выбранной организации (как в Excel-описи).\n"
-                                "Покажет, какой принтер к какому сотруднику подключён, тип подключения и адрес."))
+        self.btn_org.setToolTip(tr("Опросить принтеры только у ПК выбранной организации (как в Excel-описи).\n" "Покажет, какой принтер к какому сотруднику подключён, тип подключения и адрес."))
         self.btn_org.clicked.connect(self.poll_org)
         top.addWidget(self.btn_org)
         self.btn_stop = QPushButton(tr("⏹ Стоп"))
@@ -1501,7 +1496,7 @@ class PrintersDialog(FramelessDialog):
         self.worker = None
 
         self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["Принтер", "Тип", "IP", "ПК", "В сети", "Компьютеры"])
+        self.table.setHorizontalHeaderLabels([tr("Принтер"), tr("Тип"), "IP", tr("ПК"), tr("В сети"), tr("Компьютеры")])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -1510,8 +1505,7 @@ class PrintersDialog(FramelessDialog):
             self.table.setColumnWidth(i, wd)
         self.table.itemDoubleClicked.connect(lambda _: self.open_owners())
         self.body.addWidget(self.table, 1)
-        hint = QLabel(tr("Данные — из инвентарных CSV (обновляются сканером и при открытии карточки). "
-                      "Виртуальные принтеры (PDF, XPS, OneNote, факс) исключены. Двойной клик — кто подключён."))
+        hint = QLabel(tr("Данные — из инвентарных CSV (обновляются сканером и при открытии карточки). " "Виртуальные принтеры (PDF, XPS, OneNote, факс) исключены. Двойной клик — кто подключён."))
         hint.setWordWrap(True)
         self.body.addWidget(hint)
         self.status = QLabel("")
@@ -1639,8 +1633,8 @@ class PrintersDialog(FramelessDialog):
         self.reload()
         if results:
             sm = fleetpoll.summarize(results)
-            self.status.setText(f"{self.status.text()} · ответили {sm['ok']} ПК, не в сети {sm['skipped']}, "
-                                f"не удалось опросить {sm['failed']}")
+            self.status.setText(tr("{0} · ответили {1} ПК, не в сети {2}, не удалось опросить {3}")
+                                .format(self.status.text(), sm["ok"], sm["skipped"], sm["failed"]))
 
     def save_live(self):
         n = 0
@@ -1680,7 +1674,7 @@ class PrintersDialog(FramelessDialog):
         if not path:
             return
         self.write_csv(path)
-        MessageBox.information(self, "Экспорт", f"Сохранено: {path}")
+        MessageBox.information(self, tr("Экспорт"), tr("Сохранено: {0}").format(path))
 
     def write_csv(self, path: str) -> None:
         import csv
@@ -1697,7 +1691,7 @@ class GroupMembersDialog(FramelessDialog):
     def __init__(self, group_dn: str, group_name: str, app, parent=None):
         super().__init__(f"👥 Участники группы: {group_name}", parent, (680, 480))
         self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["Логин", "Имя", "Почта"])
+        self.table.setHorizontalHeaderLabels([tr("Логин"), tr("Имя"), tr("Почта")])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setVisible(False)          # как во всех таблицах ADK — без белой полосы номеров
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -1791,7 +1785,7 @@ class RegisterUserDialog(FramelessDialog):
         self.btn_eye.setCheckable(True)
         self.btn_eye.setToolTip(tr("Показать/скрыть пароль"))
         self.btn_eye.toggled.connect(lambda on: (self.password.setEchoMode(
-            QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password), self.btn_eye.setText(tr("Скрыть") if on else "Показать")))
+            QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password), self.btn_eye.setText(tr("Скрыть") if on else tr("Показать"))))
         self.btn_eye.setChecked(True)
         prow.addWidget(self.password, 1)
         prow.addWidget(self.btn_eye)
@@ -1924,7 +1918,7 @@ class RegisterUserDialog(FramelessDialog):
         s, n, p = self.surname.text().strip(), self.name.text().strip(), self.patronymic.text().strip()
         login, pwd = self.login.text().strip(), self.password.text()
         fio = " ".join(x for x in (s, n, p) if x)
-        self.pv_fio.setText(f"👤 {fio}" if fio else "👤 Новый сотрудник")
+        self.pv_fio.setText(tr("👤 {0}").format(fio) if fio else tr("👤 Новый сотрудник"))
         title, dept = self.combos["title"].currentText().strip(), self.combos["department"].currentText().strip()
         self.pv_title.setText(" · ".join(x for x in (title, dept, self.combos["company"].currentText().strip()) if x) or "—")
         self.pv_rows["login"].setText(f"{settings.domain_netbios}\\{login}" if login and settings.domain_netbios else (login or "—"))
@@ -1945,7 +1939,7 @@ class RegisterUserDialog(FramelessDialog):
             lb.setText(("✅ " if state[key] else "○ ") + text)
             lb.setStyleSheet(f"color: {ok_fg if state[key] else bad_fg};")
         self.btn_create.setEnabled(all(state.values()))
-        self.btn_create.setToolTip("" if all(state.values()) else "Заполните пункты чек-листа")
+        self.btn_create.setToolTip("" if all(state.values()) else tr("Заполните пункты чек-листа"))
 
     # --- шаблоны (3.1)
     def apply_template(self, *_):
@@ -1977,7 +1971,7 @@ class RegisterUserDialog(FramelessDialog):
 
     def delete_template(self):
         name = self.cb_template.currentData()
-        if not name or not MessageBox.question(self, "Шаблон", f"Удалить шаблон «{name}»?"):
+        if not name or not MessageBox.question(self, tr("Шаблон"), tr("Удалить шаблон «{0}»?").format(name)):
             return
         self.templates.pop(name, None)
         self._templates_mod.save(self.templates)
@@ -2027,7 +2021,7 @@ class RegisterUserDialog(FramelessDialog):
 
         def done(vals):
             if not vals:
-                MessageBox.warning(self, "Внимание", "Пользователь не найден.")
+                MessageBox.warning(self, tr("Внимание"), tr("Пользователь не найден."))
                 return
             for a, v in vals["attrs"].items():
                 self.combos[a].setEditText(v)
@@ -2041,27 +2035,27 @@ class RegisterUserDialog(FramelessDialog):
     def generate(self):
         s, n = self.surname.text().strip(), self.name.text().strip()
         if not s or not n:
-            MessageBox.warning(self, "Внимание", "Заполните фамилию и имя.")
+            MessageBox.warning(self, tr("Внимание"), tr("Заполните фамилию и имя."))
             return
         try:
             self.login.setText(ad.sanitize_sam_account_name(f"{ad.transliterate(s)}_{ad.transliterate(n)[0]}"))
         except ValueError as exc:
-            MessageBox.warning(self, "Внимание", str(exc))
+            MessageBox.warning(self, tr("Внимание"), str(exc))
             return
         self.password.setText(ad.generate_secure_password())
 
     def create(self):
         from . import access as _access
         if not _access.can("create_user"):
-            MessageBox.warning(self, "Недостаточно прав", _access.deny_text("create_user"))
+            MessageBox.warning(self, tr("Недостаточно прав"), _access.deny_text("create_user"))
             return
         s, n, p = self.surname.text().strip(), self.name.text().strip(), self.patronymic.text().strip()
         login, pwd = self.login.text().strip(), self.password.text()
         if not (s and n and login and pwd):
-            MessageBox.warning(self, "Внимание", "Заполните фамилию, имя, логин и пароль.")
+            MessageBox.warning(self, tr("Внимание"), tr("Заполните фамилию, имя, логин и пароль."))
             return
         if not settings.use_ssl:
-            MessageBox.critical(self, "Требуется LDAPS",
+            MessageBox.critical(self, tr("Требуется LDAPS"),
                                 "AD принимает пароль только по защищённому каналу. Включите use_ssl в config.ini.")
             return
         extra = {a: cb.currentText() for a, cb in self.combos.items()}
@@ -2092,7 +2086,7 @@ class RegisterUserDialog(FramelessDialog):
                 msg += f"\nГруппы: {', '.join(ad.dn_to_cn(g) for g in ok)}"
             if bad:
                 msg += f"\n⚠️ Не удалось добавить: {', '.join(ad.dn_to_cn(g) for g in bad)}"
-            MessageBox.information(self, "Пользователь создан", msg)
+            MessageBox.information(self, tr("Пользователь создан"), msg)
             self.accept()
 
         run_in_background(self, work, done)
@@ -2278,9 +2272,9 @@ class DesignSettingsDialog(FramelessDialog):
             self._c1 = m[0]
 
         tabs = self.tabs = QTabWidget()
-        tabs.addTab(self._tab_theme(), "🎨 Тема")
-        tabs.addTab(self._tab_font(), "🔤 Шрифт")
-        tabs.addTab(self._tab_ui(), "⚙️ Интерфейс")
+        tabs.addTab(self._tab_theme(), tr("🎨 Тема"))
+        tabs.addTab(self._tab_font(), tr("🔤 Шрифт"))
+        tabs.addTab(self._tab_ui(), tr("⚙️ Интерфейс"))
         self.body.addWidget(tabs, 1)
         foot = QHBoxLayout()
         self.lbl_state = QLabel(tr("Изменения применяются сразу и сохраняются в config.ini"))
@@ -2462,8 +2456,7 @@ class DesignSettingsDialog(FramelessDialog):
         uf.addRow("Язык:", self.lang)
         uf.addRow(self.chk_tray)
         uf.addRow("Клавиши вызова ADK:", hk_row)
-        hk_hint = QLabel(tr("Кликните в поле и нажмите сочетание — оно запишется само (Enter или «Сохранить» применяет). "
-                         "Работает из любой программы: разворачивает ADK и ставит курсор в поиск. Esc — выключить."))
+        hk_hint = QLabel(tr("Кликните в поле и нажмите сочетание — оно запишется само (Enter или «Сохранить» применяет). " "Работает из любой программы: разворачивает ADK и ставит курсор в поиск. Esc — выключить."))
         hk_hint.setObjectName("subtle")
         hk_hint.setWordWrap(True)
         uf.addRow("", hk_hint)
@@ -2487,7 +2480,7 @@ class DesignSettingsDialog(FramelessDialog):
         from .tray import parse_hotkey
         hk = self.hotkey.text().strip()
         if hk and parse_hotkey(hk) is None:
-            MessageBox.warning(self, "Горячая клавиша", "Формат: Ctrl+Shift+A, Alt+F9, Win+Space…")
+            MessageBox.warning(self, tr("Горячая клавиша"), tr("Формат: Ctrl+Shift+A, Alt+F9, Win+Space…"))
             return
         lang = self.lang.currentData()
         settings.save_section("UI", {"language": lang, "minimize_to_tray": str(self.chk_tray.isChecked()).lower(),
@@ -2504,12 +2497,12 @@ class DesignSettingsDialog(FramelessDialog):
         from .tray import parse_hotkey
         hk = self.hotkey.text().strip()
         if hk and parse_hotkey(hk) is None:
-            MessageBox.warning(self, "Горячая клавиша", "Формат: Ctrl+Shift+A, Alt+F9, Win+Space…")
+            MessageBox.warning(self, tr("Горячая клавиша"), tr("Формат: Ctrl+Shift+A, Alt+F9, Win+Space…"))
             return
         settings.save_section("UI", {"global_hotkey": hk})
         settings.global_hotkey = hk
         self.app.reapply_hotkey()
-        self.lbl_state.setText(tr("✅ Горячая клавиша сохранена") if hk else "✅ Горячая клавиша выключена")
+        self.lbl_state.setText(tr("✅ Горячая клавиша сохранена") if hk else tr("✅ Горячая клавиша выключена"))
 
     def reset_login_method(self):
         settings.save_section("UI", {"login_method": ""})

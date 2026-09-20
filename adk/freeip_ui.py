@@ -103,7 +103,7 @@ class SubnetMap(QWidget):
             self.setToolTip("")
         else:
             st = self.status.get(h)
-            self.setToolTip(f".{h} — {CELL[st][0] if st else 'не проверялся'}")
+            self.setToolTip(tr(".{0} — {1}").format(h, CELL[st][0] if st else tr("не проверялся")))
 
     def mousePressEvent(self, e):  # noqa: N802
         h = self._host_at(e.position().x(), e.position().y())
@@ -251,8 +251,7 @@ class FreeIPDialog(FramelessDialog):
         self.legend_box.setLayout(legend)
         row_map.addWidget(self.legend_box, 1, Qt.AlignmentFlag.AlignTop)
         ml.addLayout(row_map)
-        hint_map = QLabel(tr("Проверка бежит по порядку: статус каждой ячейки появляется после её проверки. "
-            "<b>«Занят ПК парка»</b> — адрес записан за компьютером в базе ADK (учёт по последнему скану; "
+        hint_map = QLabel(tr("Проверка бежит по порядку: статус каждой ячейки появляется после её проверки. " "<b>«Занят ПК парка»</b> — адрес записан за компьютером в базе ADK (учёт по последнему скану; "
             "сам ПК может быть и выключен). <b>«Отвечает на ping»</b> — устройство отвечает прямо сейчас "
             "(живая проверка; ответить может любой прибор — принтер, камера, телефон, не только ПК)."))
         hint_map.setWordWrap(True)
@@ -317,7 +316,7 @@ class FreeIPDialog(FramelessDialog):
         trow.addWidget(self.btn_copy_all)
         right.addLayout(trow)
         self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["Адрес", "Время", "DHCP"])
+        self.table.setHorizontalHeaderLabels([tr("Адрес"), tr("Время"), "DHCP"])
         hh = self.table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch if not settings.dhcp_servers else QHeaderView.ResizeMode.ResizeToContents)
@@ -335,8 +334,7 @@ class FreeIPDialog(FramelessDialog):
         self.status.setObjectName("subtle")
         dhcp_note = (f"Сверяется с DHCP: {', '.join(settings.dhcp_servers)} (аренды, резервирования, исключения)."
                      if settings.dhcp_servers else "Сверка с DHCP выключена — укажите серверы в [Scanner] dhcp_servers.")
-        self.status.setToolTip(tr("Свободным считается адрес, который не занят ни одним ПК по последнему сканированию, "
-                               "на который сейчас никто не отвечает на ping и у которого нет записи в DNS (PTR). ") + dhcp_note)
+        self.status.setToolTip(tr("Свободным считается адрес, который не занят ни одним ПК по последнему сканированию, " "на который сейчас никто не отвечает на ping и у которого нет записи в DNS (PTR). ") + dhcp_note)
         self.lbl_map.setToolTip(self.status.toolTip())
         self.body.addWidget(self.status)
 
@@ -456,7 +454,7 @@ class FreeIPDialog(FramelessDialog):
             self.table.insertRow(r)
             self.table.setItem(r, 0, QTableWidgetItem(ip))
             self.table.setItem(r, 1, QTableWidgetItem(f"{datetime.now():%H:%M:%S}"))
-            self.table.setItem(r, 2, QTableWidgetItem(f"{DHCP_ICON.get(st, '❌')} {info.get('text', 'не сверялось')}"))
+            self.table.setItem(r, 2, QTableWidgetItem(tr("{0} {1}").format(DHCP_ICON.get(st, "❌"), info.get("text", tr("не сверялось")))))
             self.btn_copy_all.setEnabled(True)
 
     def on_dialog_done(self):

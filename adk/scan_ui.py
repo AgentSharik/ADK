@@ -459,7 +459,7 @@ class FullScanDialog(FramelessDialog):
         for key in self._planned:
             head, val = self._rows.get(key, (None, None))
             if val is not None and not val.text().startswith("✅"):
-                val.setText(val.text() + " — остановлено" if summary.get("stopped") else val.text())
+                val.setText(val.text() + tr(" — остановлено") if summary.get("stopped") else val.text())
         text = full_summary_text(summary)
         self.lbl_step.setText(text)
         self.lbl_host.setText("")

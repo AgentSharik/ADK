@@ -220,8 +220,8 @@ class InventoryDialog(FramelessDialog):
         for t, v in (("СОТРУДНИКОВ", str(len(rows))), ("С ПК", str(with_pc)), ("БЕЗ ПК", str(len(rows) - with_pc)),
                      ("В СЕТИ", str(online)), ("ВЕРСИЙ ОС", str(len(oses)))):
             self.tiles.addWidget(_tile(t, v))
-        self.status.setText(f"Предпросмотр: {len(rows)} строк, {len(self.columns())} колонок. "
-                            "Данные из AD, инвентаря и CSV — ничего не записано.")
+        self.status.setText(tr("Предпросмотр: {0} строк, {1} колонок. Данные из AD, инвентаря и CSV — ничего не записано.")
+                            .format(len(rows), len(self.columns())))
 
     def _fill_table(self):
         cols = self.columns()
@@ -257,7 +257,7 @@ class InventoryDialog(FramelessDialog):
 
     def generate(self):
         if not self.rows or not self.columns():
-            MessageBox.warning(self, "Внимание", "Сначала сделайте предпросмотр и выберите хотя бы одну колонку.")
+            MessageBox.warning(self, tr("Внимание"), tr("Сначала сделайте предпросмотр и выберите хотя бы одну колонку."))
             return
         if not self.out_dir:
             self.choose_dir()
@@ -277,7 +277,7 @@ class InventoryDialog(FramelessDialog):
         self.btn_go.setEnabled(True)
         if not ok:
             self.status.setText(tr("⚠️ {0}").format(msg))
-            MessageBox.critical(self, "Опись", msg)
+            MessageBox.critical(self, tr("Опись"), msg)
             return
         self.status.setText(tr("✅ Сохранено: {0}").format(msg))
         if self.cb_open.isChecked() and os.name == "nt":
@@ -285,7 +285,7 @@ class InventoryDialog(FramelessDialog):
                 subprocess.Popen(["explorer", "/select,", msg], creationflags=CREATE_NO_WINDOW)
             except OSError:
                 pass
-        MessageBox.information(self, "Опись", f"Опись сохранена:\n{msg}")
+        MessageBox.information(self, tr("Опись"), tr("Опись сохранена:\n{0}").format(msg))
 
     def on_dialog_done(self):
         if self.worker:
