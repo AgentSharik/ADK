@@ -9,6 +9,37 @@ from __future__ import annotations
 _LANG = "ru"
 
 EN: dict[str, str] = {
+    # главное окно — добор 3.9.x
+    "Ctrl+F — фокус, Esc — очистить, Enter — искать": "Ctrl+F — focus, Esc — clear, Enter — search",
+    "Плагины и модули автоматизации ADK": "ADK plugins and automation modules",
+    "🔔 Внимание: сводка собирается…": "🔔 Attention: building the summary…",
+    "Открыть": "Open",
+    "Разбудить (WoL), заблокировать экран, выйти из пользователя, спящий режим, перезагрузить, выключить":
+        "Wake (WoL), lock screen, log off, sleep, restart, shut down",
+    "📡 Опросить принтеры сейчас": "📡 Query printers now",
+    "Спросить ПК напрямую (CIM Win32_Printer), без записи: инвентарь и БД не меняются.":
+        "Ask the PC directly (CIM Win32_Printer), read-only: inventory and DB are not changed.",
+    "🧬 Группы как у…": "🧬 Groups like…", "Подключение": "Connection",
+    "Пользователь не залогинен": "No user logged on", "● Проверка…": "● Checking…",
+    "ПК не привязан": "No PC linked", "🌐 Веб-панель": "🌐 Web panel",
+    "<b>💻 Кто подключён</b> (клик — открыть ПК):": "<b>💻 Who is connected</b> (click — open the PC):",
+    "— (не сетевой)": "— (not network)", "IP не указан в инвентаре": "No IP in the inventory",
+    "не сетевой — проверка по IP не применима": "not a network printer — IP check is not applicable",
+    "проверяется…": "checking…",
+    "по данным инвентаря (запрос не по IP — устройство по адресу не проверялось)":
+        "from inventory data (not queried by IP — the device at the address was not checked)",
+    "неизвестно — ПК с этим принтером в инвентаре нет (опросите парк в «Принтеры парка»)":
+        "unknown — no PC with this printer in the inventory (run the fleet query in “Fleet printers”)",
+    "нет (или CSV не собран)": "none (or CSV not collected)",
+    "⏳ Опрашиваю ПК напрямую…": "⏳ Querying the PC directly…",
+    "📋 Карточка принтера скопирована": "📋 Printer card copied",
+    "● В сети": "● Online", "● Не в сети": "● Offline",
+    "⏹ Остановить наполнение": "⏹ Stop filling", "📁 Диск…": "📁 Drive…", "⏻ Питание ПК": "⏻ PC power",
+    "🔄 Полный опрос парка: подготовка…": "🔄 Full fleet scan: preparing…", "🔄 Полный опрос: ": "🔄 Full scan: ",
+    "🔄 ": "🔄 ", "🗄️ Новая база: первичное наполнение…": "🗄️ New database: initial fill…",
+    "⏹ Останавливаю наполнение — начатые ПК дорабатывают…": "⏹ Stopping the fill — started PCs finish first…",
+    "⏹ Останавливаю опрос — начатые ПК дорабатывают…": "⏹ Stopping the scan — started PCs finish first…",
+    "ADK: событие журнала": "ADK: audit log event",
     # главное окно
     "Найти": "Find", "🎨 Дизайн": "⚙️ Settings", "⚙️ Настройки": "⚙️ Settings", "🧩 Плагины": "🧩 Plugins", "📤 Экспорт": "📤 Export",
     "📦 Архивы (все ПК пользователя)": "📦 Archives (all user PCs)", "🚷 Отключённые учётки": "🚷 Disabled accounts",

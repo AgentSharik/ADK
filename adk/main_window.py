@@ -324,7 +324,7 @@ class ADApp(FramelessMainWindow):
             sc.setContext(Qt.ShortcutContext.WindowShortcut)
             sc.activated.connect(getattr(self, method))
             self._shortcuts.append(sc)
-        self.search_input.setToolTip("Ctrl+F — фокус, Esc — очистить, Enter — искать")
+        self.search_input.setToolTip(tr("Ctrl+F — фокус, Esc — очистить, Enter — искать"))
 
     def focus_search(self):
         self.search_input.setFocus()
@@ -417,7 +417,7 @@ class ADApp(FramelessMainWindow):
         self.btn_settings = QPushButton(tr("⚙️ Настройки"))
         self.btn_settings.clicked.connect(lambda: DesignSettingsDialog(self, self).exec())
         self.btn_plugins = QPushButton(tr("🧩 Плагины"))          # 3.9.1: атрибут окна — retranslate меняет язык и ей
-        self.btn_plugins.setToolTip("Плагины и модули автоматизации ADK")
+        self.btn_plugins.setToolTip(tr("Плагины и модули автоматизации ADK"))
         self.btn_plugins.clicked.connect(lambda: PluginsDialog(self).exec())
         row2.addWidget(self.btn_plugins)
         row2.addWidget(self.btn_settings)
@@ -472,11 +472,11 @@ class ADApp(FramelessMainWindow):
         self.attention_card.setCursor(Qt.CursorShape.PointingHandCursor)
         self.attention_card.mousePressEvent = lambda e: self.show_attention()  # type: ignore[method-assign]
         arow = QHBoxLayout(self.attention_card)
-        self.lbl_attention = QLabel("🔔 Внимание: сводка собирается…")
+        self.lbl_attention = QLabel(tr("🔔 Внимание: сводка собирается…"))
         self.lbl_attention.setStyleSheet("background: transparent; border: none; font-weight: bold;")
         self.lbl_attention.setWordWrap(True)
         arow.addWidget(self.lbl_attention, 1)
-        b_att = QPushButton("Открыть")
+        b_att = QPushButton(tr("Открыть"))
         b_att.setObjectName("historyBtn")
         b_att.clicked.connect(self.show_attention)
         arow.addWidget(b_att)
@@ -550,10 +550,10 @@ class ADApp(FramelessMainWindow):
         insp.setMinimumWidth(440)
         il = QVBoxLayout(insp)
         head = QHBoxLayout()
-        self.lbl_fio = QLabel("👤 Выберите сотрудника")
+        self.lbl_fio = QLabel(tr("👤 Выберите сотрудника"))
         self.lbl_fio.setStyleSheet("font-size: 13pt; font-weight: bold;")
         self.lbl_fio.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.btn_copy = QPushButton("📋 Копировать")
+        self.btn_copy = QPushButton(tr("📋 Копировать"))
         self.btn_copy.setObjectName("btnSuccess")
         self.btn_copy.clicked.connect(self.copy_card)
         head.addWidget(self.lbl_fio)
@@ -587,7 +587,7 @@ class ADApp(FramelessMainWindow):
                 box = QHBoxLayout()
                 box.setContentsMargins(0, 0, 0, 0)
                 box.addWidget(v)
-                self.btn_ping = QPushButton("📡 Пинг")
+                self.btn_ping = QPushButton(tr("📡 Пинг"))
                 self.btn_ping.setObjectName("btnInfo")
                 self.btn_ping.setMinimumWidth(110)
                 self.btn_ping.clicked.connect(self.ping_selected)
@@ -610,7 +610,7 @@ class ADApp(FramelessMainWindow):
             if name:
                 b.setObjectName(name)
             if action == "power":
-                b.setToolTip("Разбудить (WoL), заблокировать экран, выйти из пользователя, спящий режим, перезагрузить, выключить")
+                b.setToolTip(tr("Разбудить (WoL), заблокировать экран, выйти из пользователя, спящий режим, перезагрузить, выключить"))
             b.clicked.connect(lambda _, a=action: self.remote_action(a))
             self.action_buttons[action] = b
             if access.action_class(action):
@@ -624,11 +624,11 @@ class ADApp(FramelessMainWindow):
         self.printers_flow = FlowLayout(self.printers_box)
         dl.addWidget(self.printers_box)
         # кнопка живого опроса — отдельной строкой под бейджами: в заголовке она не помещалась по ширине панели
-        self.btn_live_printers = QPushButton("📡 Опросить принтеры сейчас")
+        self.btn_live_printers = QPushButton(tr("📡 Опросить принтеры сейчас"))
         self.btn_live_printers.setObjectName("historyBtn")
         self.btn_live_printers.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.btn_live_printers.setMinimumWidth(120)   # не распирает панель инспектора длинной подписью
-        self.btn_live_printers.setToolTip("Спросить ПК напрямую (CIM Win32_Printer), без записи: инвентарь и БД не меняются.")
+        self.btn_live_printers.setToolTip(tr("Спросить ПК напрямую (CIM Win32_Printer), без записи: инвентарь и БД не меняются."))
         self.btn_live_printers.clicked.connect(self.live_printers)
         dl.addWidget(self.btn_live_printers)
         self.lbl_live_printers = QLabel("")
@@ -658,9 +658,9 @@ class ADApp(FramelessMainWindow):
         full.clicked.connect(self.open_card)
         dl.addWidget(full)
         extra = QHBoxLayout()
-        self.btn_history = QPushButton("🕓 История")
+        self.btn_history = QPushButton(tr("🕓 История"))
         self.btn_history.clicked.connect(self.history_selected)
-        self.btn_compare = QPushButton("🧬 Группы как у…")
+        self.btn_compare = QPushButton(tr("🧬 Группы как у…"))
         self.btn_compare.clicked.connect(self.compare_groups)
         self._modifying_buttons.append((self.btn_compare, "groups_sync"))
         extra.addWidget(self.btn_history)
@@ -901,7 +901,7 @@ class ADApp(FramelessMainWindow):
         if len(q) < 2 or q.startswith("["):
             return
         self._cancel_search()
-        self.lbl_status.setText("🔍 Поиск…")
+        self.lbl_status.setText(tr("🔍 Поиск…"))
         w = SearchWorker(self.get_conn, q, self.chk_archive.isChecked(), self.chk_disabled.isChecked(), parent=self)
         w.results_ready.connect(self.on_results)
         w.net_ready.connect(self.on_net_ready)
@@ -949,14 +949,14 @@ class ADApp(FramelessMainWindow):
         if u.get("kind") == "printer":
             if not ((u.get("printer") or {}).get("ip")):
                 return StatusItem("—", "checking")  # USB/локальный принтер: сетевого статуса у него нет (3.5.6)
-            return StatusItem("● В сети" if u.get("is_online") else "● Не в сети", "online" if u.get("is_online") else "offline")
+            return StatusItem(tr("● В сети") if u.get("is_online") else tr("● Не в сети"), "online" if u.get("is_online") else "offline")
         # 3.5.10: в строках поиска ПК лежит в ключе «comp», а IP без ПК = «Не найден» — раньше проверялись другие ключи,
         # и у сотрудника без ПК горело красное «Не в сети» вместо нейтрального прочерка
         comp = (u.get("comp") or u.get("computer_name") or "").strip()
         ip = (u.get("ip_address") or u.get("ip") or "").strip()
         if (not comp or comp == "—") and ip in ("", "Не найден", "Не указан", "—"):
             return StatusItem("—", "checking")      # У сотрудника нет ПК и IP — сети нет, нейтральный прочерк
-        return StatusItem("● В сети" if u.get("is_online") else "● Не в сети", "online" if u.get("is_online") else "offline")
+        return StatusItem(tr("● В сети") if u.get("is_online") else tr("● Не в сети"), "online" if u.get("is_online") else "offline")
 
     def on_net_ready(self, net: dict, query: str) -> None:
         """Второй шаг поиска (3.5.4): пришли DNS/доступность — обновляем IP, бейджи «Сеть» и инспектор,
@@ -1025,7 +1025,7 @@ class ADApp(FramelessMainWindow):
         self.table.setSortingEnabled(True)
         # найден принтер (по IP показывается только он) — столбец «Имя ПК» становится «Подключение»
         only_printers = bool(rows) and all(x.get("kind") == "printer" for x in rows)
-        self.table.horizontalHeaderItem(COL_PC).setText("Подключение" if only_printers else COLUMNS[COL_PC])
+        self.table.horizontalHeaderItem(COL_PC).setText(tr("Подключение") if only_printers else COLUMNS[COL_PC])
         self._apply_printer_columns(only_printers)
         fit_columns(self.table, max_width=280, min_width=70, wrap=False, stretch_last=True)
         self.table.setUpdatesEnabled(True)
@@ -1033,8 +1033,8 @@ class ADApp(FramelessMainWindow):
             self._shown = None
             self.select_row(0)
         else:
-            self.lbl_fio.setText("❌ Ничего не найдено")
-            self.lbl_sub.setText("Измените запрос")
+            self.lbl_fio.setText(tr("❌ Ничего не найдено"))
+            self.lbl_sub.setText(tr("Измените запрос"))
             self.details.setVisible(False)
             self._set_header_actions_visible(False)   # копировать нечего — кнопка рядом с «Ничего не найдено» сбивала с толку
 
@@ -1097,7 +1097,7 @@ class ADApp(FramelessMainWindow):
             self._enrich_from_ad(u)
         if not login or login == "—":
             self.lbl_fio.setText(f"💻 {comp} (свободный ПК)")
-            self.lbl_sub.setText("Пользователь не залогинен")
+            self.lbl_sub.setText(tr("Пользователь не залогинен"))
         else:
             self.lbl_fio.setText(f"👤 {u.get('full_fio') or u.get('fio') or login}")
             sub = " · ".join(x for x in (u.get("title"), u.get("company")) if x)
@@ -1106,10 +1106,10 @@ class ADApp(FramelessMainWindow):
         self.vals["pc"].setText(f"{comp} ({u.get('ip', 'Не найден')})" if comp else "—")
         on = bool(u.get("is_online"))
         if u.get("net_pending"):
-            self.vals["status"].setText("● Проверка…")
+            self.vals["status"].setText(tr("● Проверка…"))
             self.vals["status"].setStyleSheet(f"color: {pal.subtext}; font-weight: bold;")
         else:
-            self.vals["status"].setText("● В сети" if on else "● Не в сети")
+            self.vals["status"].setText(tr("● В сети") if on else tr("● Не в сети"))
             self.vals["status"].setStyleSheet(f"color: {pal.success[0] if on else pal.danger[0]}; font-weight: bold;")
         self.btn_ping.setVisible(bool(comp))
         phones = [p for p in (u.get("phone"), f"(IP: {u['ip_phone']})" if u.get("ip_phone") else "") if p]
@@ -1140,7 +1140,7 @@ class ADApp(FramelessMainWindow):
                               lambda s: self.lbl_specs.setText(s) if self.selected() is u else None,
                               lambda m: log.debug("specs: %s", m))
         else:
-            self.lbl_specs.setText("ПК не привязан")
+            self.lbl_specs.setText(tr("ПК не привязан"))
 
     def _build_printer_pane(self) -> QWidget:
         """Инспектор для строки-принтера: адрес, доступность, кто подключён (клик по ПК — поиск)."""
@@ -1162,11 +1162,11 @@ class ADApp(FramelessMainWindow):
                 box = QHBoxLayout()
                 box.setContentsMargins(0, 0, 0, 0)
                 box.addWidget(v)
-                self.btn_printer_ping = QPushButton("📡 Пинг")
+                self.btn_printer_ping = QPushButton(tr("📡 Пинг"))
                 self.btn_printer_ping.setObjectName("btnInfo")
                 self.btn_printer_ping.clicked.connect(self.ping_printer)
                 box.addWidget(self.btn_printer_ping)
-                self.btn_printer_web = QPushButton("🌐 Веб-панель")
+                self.btn_printer_web = QPushButton(tr("🌐 Веб-панель"))
                 self.btn_printer_web.clicked.connect(self.open_printer_web)
                 box.addWidget(self.btn_printer_web)
                 box.addStretch()
@@ -1174,7 +1174,7 @@ class ADApp(FramelessMainWindow):
             else:
                 grid.addWidget(v, r, 1)
         lay.addLayout(grid)
-        lay.addWidget(QLabel("<b>💻 Кто подключён</b> (клик — открыть ПК):"))
+        lay.addWidget(QLabel(tr("<b>💻 Кто подключён</b> (клик — открыть ПК):")))
         self.printer_pcs = QTableWidget(0, 4)
         self.printer_pcs.setHorizontalHeaderLabels(["ПК", "Пользователь", "Сеть", "По умолч."])
         self.printer_pcs.verticalHeader().setVisible(False)
@@ -1208,12 +1208,12 @@ class ADApp(FramelessMainWindow):
         if ip:
             self.pvals["ip"].setText(ip)
         elif g.get("kind") in ("usb", "local"):
-            self.pvals["ip"].setText("— (не сетевой)")
+            self.pvals["ip"].setText(tr("— (не сетевой)"))
         else:
-            self.pvals["ip"].setText("IP не указан в инвентаре")
+            self.pvals["ip"].setText(tr("IP не указан в инвентаре"))
         on = bool(u.get("is_online"))
         if ip and u.get("net_pending"):
-            self.pvals["status"].setText("● Проверка…")
+            self.pvals["status"].setText(tr("● Проверка…"))
             self.pvals["status"].setStyleSheet(f"color: {pal.subtext}; font-weight: bold;")
         else:
             self.pvals["status"].setText(("● В сети" if on else "● Не в сети") if ip else "—")
@@ -1229,13 +1229,13 @@ class ADApp(FramelessMainWindow):
             self.pvals["port"].setText(g.get("port") or "—")
         pr = u.get("probe")
         if not ip:
-            self.pvals["probe"].setText("не сетевой — проверка по IP не применима")
+            self.pvals["probe"].setText(tr("не сетевой — проверка по IP не применима"))
             self.pvals["probe"].setStyleSheet("")
         elif u.get("net_pending"):
-            self.pvals["probe"].setText("проверяется…")
+            self.pvals["probe"].setText(tr("проверяется…"))
             self.pvals["probe"].setStyleSheet(f"color: {pal.subtext};")
         elif not pr:
-            self.pvals["probe"].setText("по данным инвентаря (запрос не по IP — устройство по адресу не проверялось)")
+            self.pvals["probe"].setText(tr("по данным инвентаря (запрос не по IP — устройство по адресу не проверялось)"))
             self.pvals["probe"].setStyleSheet("")
         elif pr.get("is_printer") is True:
             self.pvals["probe"].setText(f"по адресу действительно принтер — {pr.get('evidence', '')}")
@@ -1249,7 +1249,7 @@ class ADApp(FramelessMainWindow):
             self.pvals["probe"].setStyleSheet(f"color: {pal.warning[0]}; font-weight: bold;")
         pcs = g.get("pcs") or []
         if g.get("discovered"):
-            self.pvals["count"].setText("неизвестно — ПК с этим принтером в инвентаре нет (опросите парк в «Принтеры парка»)")
+            self.pvals["count"].setText(tr("неизвестно — ПК с этим принтером в инвентаре нет (опросите парк в «Принтеры парка»)"))
         else:
             self.pvals["count"].setText(f"{len(pcs)} (в сети: {sum(1 for x in pcs if x['is_online'])})")
         self.printer_pcs.setRowCount(len(pcs))
@@ -1300,7 +1300,7 @@ class ADApp(FramelessMainWindow):
                               lambda m: log.debug("printers: %s", m))
             return
         if not printers:
-            self.printers_flow.addWidget(QLabel("нет (или CSV не собран)"))
+            self.printers_flow.addWidget(QLabel(tr("нет (или CSV не собран)")))
             return
         pal = app_palette()
         kind_badge = {"network": "info", "shared": "info", "usb": "warning", "local": "neutral"}
@@ -1322,7 +1322,7 @@ class ADApp(FramelessMainWindow):
             return
         self.btn_live_printers.setEnabled(False)
         self.lbl_live_printers.setVisible(True)
-        self.lbl_live_printers.setText("⏳ Опрашиваю ПК напрямую…")
+        self.lbl_live_printers.setText(tr("⏳ Опрашиваю ПК напрямую…"))
         run_in_background(self, lambda: netutils.get_live_printers(comp),
                           lambda r: self._show_live_printers(u, comp, r) if self.selected() is u else self.btn_live_printers.setEnabled(True),
                           lambda m: self._show_live_printers(u, comp, {"error": m}))
@@ -1443,7 +1443,7 @@ class ADApp(FramelessMainWindow):
             text = "\n".join([f"🖨️ {g.get('name')}" + (f" · {g['ip']}" if g.get("ip") else ""),
                               f"Подключено ПК: {len(pcs)}: " + ", ".join(f"{x['comp']} ({x['user'] or '—'})" for x in pcs)])
             QApplication.clipboard().setText(text)
-            self.lbl_status.setText("📋 Карточка принтера скопирована")
+            self.lbl_status.setText(tr("📋 Карточка принтера скопирована"))
             return
         lines = [f"👤 {u.get('full_fio') or u.get('fio')}"]
         loc = ", ".join(x for x in (u.get("address"), _office_label(u.get("office"))) if x)
@@ -1464,7 +1464,7 @@ class ADApp(FramelessMainWindow):
         if printers:
             lines.append("🖨️ " + "; ".join(netutils.printer_label(p) for p in printers))
         QApplication.clipboard().setText("\n".join(lines))
-        self.lbl_status.setText("📋 Карточка скопирована")
+        self.lbl_status.setText(tr("📋 Карточка скопирована"))
 
     def ping_selected(self):
         u = self.selected()

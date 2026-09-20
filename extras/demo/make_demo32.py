@@ -633,7 +633,7 @@ _logons_data = _logons.parse_events_json(json.dumps([
     {"ts": _lg(9, 10), "id": 4624, "user": "ivanov", "domain": "CORP", "type": "2", "ip": ""},
     {"ts": _lg(22, 45), "id": 4624, "user": "ivanov", "domain": "CORP", "type": "11", "ip": ""},
 ]))
-_logons.get_logons = lambda host, hours=24, timeout=90: _logons_data
+_logons.get_logons = lambda host, hours=24, timeout=90, include_net=True: _logons_data   # 3.9.x: include_net в сигнатуре
 
 
 def title_card(lines, hold_sec=3.0):
