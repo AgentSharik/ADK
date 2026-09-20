@@ -2018,28 +2018,34 @@ class ADApp(FramelessMainWindow):
 
     # ------------------------------------------------------------------ закрытие
     def closeEvent(self, event):  # noqa: N802
-        # 3.6.3: крестик полностью закрывает приложение (раньше уходил в трей и «висел» в диспетчере задач)
+        # 3.6.3: крестик полностью закрывает приложение (раньше уходил в трей и «висел» в диспетчере задач).
+        # 3.12.1: выход стал быстрым. Раньше аренда базы отпускалась синхронно (сетевая база могла
+        # держать закрытие по 10+ секунд), а каждый поток ждал по 3 с отдельно — окно «подвисало».
         self.qsettings.setValue("geometry", self.saveGeometry())
         if self.hotkey:
             self.hotkey.unregister()
         if self.tray:
             self.tray.hide()
-        self.scan_timer.stop()
-        self.backup_timer.stop()
-        with contextlib.suppress(Exception):
-            db.scan_lease_release(self.scan_owner)
-        self.debounce.stop()
-        if hasattr(self, "attention_timer"):
-            self.attention_timer.stop()
-        for w in [self.scanner, *self._threads, *getattr(self, "_bg_workers", []),
-                  getattr(getattr(self, "full_dialog", None), "worker", None),
-                  getattr(self, "full_worker", None)]:
-            if w is not None and w.isRunning():
-                w.cancel()
-        for w in [self.scanner, *self._threads, *getattr(self, "_bg_workers", []),
-                  getattr(getattr(self, "full_dialog", None), "worker", None)]:
-            if w is not None and w.isRunning():
-                w.wait(3000)
+        for t in (self.scan_timer, self.backup_timer, self.debounce, getattr(self, "attention_timer", None)):
+            if t is not None:
+                t.stop()
+        # аренду отпускаем в фоне: сетевая база не должна задерживать закрытие окна;
+        # не успеет — не страшно, аренда истекает сама по своему сроку
+        import threading
+
+        def _release_lease():
+            with contextlib.suppress(Exception):
+                db.scan_lease_release(self.scan_owner)
+        threading.Thread(target=_release_lease, daemon=True).start()
+        workers = [w for w in [self.scanner, *self._threads, *getattr(self, "_bg_workers", []),
+                               getattr(getattr(self, "full_dialog", None), "worker", None),
+                               getattr(self, "full_worker", None)]
+                   if w is not None and w.isRunning()]
+        for w in workers:
+            w.cancel()
+        deadline = time.monotonic() + 2.0              # общий бюджет на все потоки, не по 3 с на каждый
+        for w in workers:
+            w.wait(max(0, int((deadline - time.monotonic()) * 1000)))
         event.accept()
         # 3.9.1: главное. При включённом трее setQuitOnLastWindowClosed(False) — окно закрывалось,
         # а цикл событий продолжал жить: процесс оставался в диспетчере задач без окна. По правилу

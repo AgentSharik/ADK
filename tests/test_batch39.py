@@ -313,3 +313,39 @@ def test_enrich_with_dc_logons_swallows_errors(monkeypatch):
                         lambda dc: (_ for _ in ()).throw(RuntimeError("журнал закрыт")))
     res = workers.enrich_with_dc_logons([{"Hostname": "PC-1", "User": ""}])
     assert res[0]["User"] == ""                             # ошибка чтения — шаг пропущен, не упал скан
+
+
+# ------------------------------------------------------------------ 3.12.1: быстрый выход по крестику
+def test_close_event_total_wait_budget(qapp, monkeypatch):
+    """Бюджет на ожидание потоков — общий (~2 с), а не по 3 с на каждый: окно не должно подвисать."""
+    import threading
+    import adk.main_window as mw
+    from adk.main_window import ADApp
+
+    waits: list[int] = []
+
+    class StuckWorker:                                  # «поток», который никогда не заканчивается
+        def isRunning(self):
+            return True
+
+        def cancel(self):
+            pass
+
+        def wait(self, ms):
+            waits.append(ms)
+
+    released = threading.Event()
+
+    def fake_release(owner):                            # аренда отпускается в фоне, не блокируя закрытие
+        released.set()
+
+    monkeypatch.setattr(mw.db, "scan_lease_release", fake_release)
+    w = ADApp("admin", "x")
+    w.scanner = StuckWorker()
+    w._threads = [StuckWorker(), StuckWorker(), StuckWorker()]
+    w._bg_workers = [StuckWorker()]
+    w.close()
+    assert len(waits) == 5                              # все живые потоки получили wait()
+    assert all(0 <= ms <= 2000 for ms in waits), waits  # и каждый — в пределах общего бюджета
+    assert released.wait(2)                             # аренда отпущена (в фоне)
+    w.deleteLater()
