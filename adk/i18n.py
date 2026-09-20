@@ -9,6 +9,14 @@ from __future__ import annotations
 _LANG = "ru"
 
 EN: dict[str, str] = {
+    # слой 3b: аварийные MessageBox из __main__.py
+    "Внутренняя ошибка": "Internal error",
+    "{0}: {1}\nПодробности — в журнале.": "{0}: {1}\nDetails — in the log.",
+    "\n\nПоследняя резервная копия: {0}": "\n\nLatest backup: {0}",
+    "Соединение с базой признано зависшим": "Database connection considered hung",
+    "\n\nПодробности: {0}{1}": "\n\nDetails: {0}{1}",
+    "Не удалось открыть {0}:\n{1}": "Could not open {0}:\n{1}",
+    "Запрос к базе ADK выполнялся дольше минуты и был прерван. Ваше соединение с базой признано зависшим — вы отрезаны от базы до следующего запуска программы, ADK сейчас закроется.\n\nЕсли проблема повторится, сначала обратитесь к вашим системным администраторам.\nЕсли вы администратор: переименуйте файл базы (например, pc_mapping.db → pc_mapping.old.db) и запустите ADK заново — база будет создана и заполнена повторно; прежние данные лежат в папке backups рядом с базой.\nЕсли не помогло — обратитесь к администратору ПО.": "An ADK database query ran longer than a minute and was aborted. Your database connection is considered hung — you are cut off from the database until the next program start; ADK will now close.\n\nIf the problem repeats, contact your system administrators first.\nIf you are the administrator: rename the database file (e.g. pc_mapping.db → pc_mapping.old.db) and start ADK again — the database will be recreated and refilled; the previous data is in the backups folder next to the database.\nIf that does not help — contact the software administrator.",
     # слой 3: списки заголовков, MessageBox, длинные тексты, сложные f-строки
     " (показаны первые 1000)": " (first 1000 shown)",
     " · {0}": " · {0}",
