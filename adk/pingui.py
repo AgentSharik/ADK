@@ -455,13 +455,13 @@ class PingDialog(FramelessDialog):
         loss = (self.sent - self.recv) / self.sent * 100 if self.sent else 0.0
         self.stat["sent"].setText(str(self.sent))
         self.stat["recv"].setText(str(self.recv))
-        self.stat["loss"].setText(f"{loss:.0f}%")
+        self.stat["loss"].setText(tr("{0:.0f}%").format(loss))
         _fs2 = max(0, int(config.settings.design.get("font_size") or 10) - 10)
         self.stat["loss"].setStyleSheet(f"font-size: {11 + _fs2}pt; font-weight: bold; color: {pal.danger[0] if loss >= 10 else pal.warning[0] if loss > 0 else pal.text};")
         if self.times:
             self.stat["min"].setText("<1" if min(self.times) < 1 else f"{min(self.times):.0f}")   # 0,5 = «меньше мс», а не 0
-            self.stat["avg"].setText(f"{statistics.fmean(self.times):.1f}")
-            self.stat["max"].setText(f"{max(self.times):.0f}")
+            self.stat["avg"].setText(tr("{0:.1f}").format(statistics.fmean(self.times)))
+            self.stat["max"].setText(tr("{0:.0f}").format(max(self.times)))
             self.stat["jit"].setText(f"{statistics.pstdev(self.times):.1f}" if len(self.times) > 1 else "0")
         else:
             for k in ("min", "avg", "max", "jit"):

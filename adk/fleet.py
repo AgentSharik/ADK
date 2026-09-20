@@ -80,7 +80,7 @@ class MassPingDialog(FramelessDialog):
             for c, v in enumerate((h, "…", "⏳", db.get_mac(h) or "—")):
                 self.table.setItem(r, c, QTableWidgetItem(v))
         fit_columns(self.table, wrap=False)
-        self.status.setText(f"Опрос {len(self.hosts)} ПК…")
+        self.status.setText(tr("Опрос {0} ПК…").format(len(self.hosts)))
         self.btn_wol.setEnabled(False)
         self.btn_again.setEnabled(False)
 
@@ -117,7 +117,7 @@ class MassPingDialog(FramelessDialog):
         off = [c for c, (_, o) in self.result.items() if not o]
         wakeable = [c for c in off if db.get_mac(c)]
         fit_columns(self.table, wrap=False)
-        self.status.setText(f"В сети: {on} · не в сети: {len(off)} · можно разбудить: {len(wakeable)}")
+        self.status.setText(tr("В сети: {0} · не в сети: {1} · можно разбудить: {2}").format(on, len(off), len(wakeable)))
         self.btn_wol.setEnabled(bool(wakeable) and access.can("wol"))
         self.btn_again.setEnabled(True)
         if hasattr(self.app, "refresh_dashboard"):
@@ -134,7 +134,7 @@ class MassPingDialog(FramelessDialog):
             if nettools.wake(mac):
                 sent += 1
                 db.log_action(self.app.admin_name, "wol", comp, mac)
-        self.status.setText(f"⚡ WoL отправлен: {sent} из {len(targets)}. Повторите пинг через 30–60 секунд.")
+        self.status.setText(tr("⚡ WoL отправлен: {0} из {1}. Повторите пинг через 30–60 секунд.").format(sent, len(targets)))
 
     def on_dialog_done(self):
         self._cancel = True
@@ -299,7 +299,7 @@ class SoftwareDialog(FramelessDialog):
             db.log_action(self.app.admin_name, "software", self.comp, f"{len(d['software'])} программ")
 
         run_in_background(self, lambda: software.get_software(self.comp), done,
-                          lambda m: (self.btn_poll.setEnabled(True), self.lbl.setText(f"⚠️ {m}")))
+                          lambda m: (self.btn_poll.setEnabled(True), self.lbl.setText(tr("⚠️ {0}").format(m))))
 
     def poll_fleet(self):
         from . import fleetpoll
@@ -308,7 +308,7 @@ class SoftwareDialog(FramelessDialog):
         try:
             hosts = fleetpoll.fleet_hosts(self.app.get_conn)
         except Exception as exc:  # noqa: BLE001
-            self.fleet_lbl.setText(f"⚠️ Список ПК не получен: {exc}")
+            self.fleet_lbl.setText(tr("⚠️ Список ПК не получен: {0}").format(exc))
             return
         if not hosts:
             self.fleet_lbl.setText(tr("⚠️ ПК для опроса не найдены: инвентарь пуст и AD не вернул рабочих станций"))
@@ -325,14 +325,14 @@ class SoftwareDialog(FramelessDialog):
         try:
             hosts, users = fleetpoll.org_computers(self.app.get_conn, d.choice)
         except Exception as exc:  # noqa: BLE001
-            self.fleet_lbl.setText(f"⚠️ Список ПК организации не получен: {exc}")
+            self.fleet_lbl.setText(tr("⚠️ Список ПК организации не получен: {0}").format(exc))
             return
         if not hosts:
-            self.fleet_lbl.setText(f"⚠️ В организации «{d.choice}» не найдено ПК (нет привязок, инвентаря и userWorkstations)")
+            self.fleet_lbl.setText(tr("⚠️ В организации «{0}» не найдено ПК (нет привязок, инвентаря и userWorkstations)").format(d.choice))
             return
         self._org_users, self._org_rows, self._org_name = users, None, d.choice
         self.fleet.setHorizontalHeaderLabels(["Пользователь", "ПК", "Программа", "Версия"])
-        self.fleet_lbl.setText(f"🏢 «{d.choice}»: опрашиваю {len(hosts)} ПК организации…")
+        self.fleet_lbl.setText(tr("🏢 «{0}»: опрашиваю {1} ПК организации…").format(d.choice, len(hosts)))
         self._start_fleet_poll(hosts)
 
     def _start_fleet_poll(self, hosts: list[str]):
@@ -341,12 +341,12 @@ class SoftwareDialog(FramelessDialog):
         self.btn_fleet_org.setEnabled(False)
         self.btn_fleet_stop.setEnabled(True)
         if not self._org_users:
-            self.fleet_lbl.setText(f"⏳ Опрашиваю {len(hosts)} ПК…")
+            self.fleet_lbl.setText(tr("⏳ Опрашиваю {0} ПК…").format(len(hosts)))
         self.fleet_worker = fleetpoll.FleetPollWorker(hosts, fleetpoll.software_live, parent=self)
         self.fleet_worker.progress.connect(lambda i, n, h: self.fleet_lbl.setText(
             (f"🏢 «{self._org_name}»: " if self._org_users else "") + f"⏳ Опрошено {i} из {n} ПК · {h}"))
         self.fleet_worker.finished_poll.connect(self._fleet_done)
-        self.fleet_worker.error.connect(lambda m: (self._fleet_done({}), self.fleet_lbl.setText(f"⚠️ {m}")))
+        self.fleet_worker.error.connect(lambda m: (self._fleet_done({}), self.fleet_lbl.setText(tr("⚠️ {0}").format(m))))
         self.fleet_worker.start()
 
     def _fleet_done(self, results: dict):
@@ -446,7 +446,7 @@ class LogonsDialog(FramelessDialog):
         self.summary.setText(tr("⏳ Читаю журнал Security на ПК (Get-WinEvent, до 1–2 минут на большом журнале)…") + hint)
         hours = int(self.hours.currentData())
         run_in_background(self, lambda: logons.get_logons(self.comp, hours, include_net=include),
-                          self._done, lambda m: self.summary.setText(f"⚠️ {m}"))
+                          self._done, lambda m: self.summary.setText(tr("⚠️ {0}").format(m)))
 
     def _done(self, d: dict):
         self._data = d
@@ -566,7 +566,7 @@ class ComparePCDialog(FramelessDialog):
         close.clicked.connect(self.accept)
         self.body.addWidget(close, alignment=Qt.AlignmentFlag.AlignRight)
         self._data = None
-        run_in_background(self, self._load, self._loaded, lambda m: self.lbl.setText(f"⚠️ {m}"))
+        run_in_background(self, self._load, self._loaded, lambda m: self.lbl.setText(tr("⚠️ {0}").format(m)))
 
     @staticmethod
     def _software_live_or_cached(host: str) -> tuple[list[str], str]:

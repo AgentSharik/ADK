@@ -285,7 +285,7 @@ class FullScanWorker(BaseWorker):
                 self.finished_full.emit(s)
                 return
             if hosts_online:
-                self.step_text.emit(f"Принтеры: опрашиваю {len(hosts_online)} ПК в сети…")
+                self.step_text.emit(tr("Принтеры: опрашиваю {0} ПК в сети…").format(len(hosts_online)))
                 res = fleetpoll.poll_fleet(
                     hosts_online, fleetpoll.printers_live,
                     progress=lambda i, n, h: self.unit.emit("printers", i, h),
@@ -297,7 +297,7 @@ class FullScanWorker(BaseWorker):
                         s["printers"] += len(r["printers"])
                 if self.cancelled:
                     s["stopped"] = True
-                self.step_text.emit(f"Программы: опрашиваю {len(hosts_online)} ПК в сети…")
+                self.step_text.emit(tr("Программы: опрашиваю {0} ПК в сети…").format(len(hosts_online)))
                 res = fleetpoll.poll_fleet(
                     hosts_online, fleetpoll.software_live,
                     progress=lambda i, n, h: self.unit.emit("software", i, h),
@@ -316,7 +316,7 @@ class FullScanWorker(BaseWorker):
                     todo = [h for h in hosts_online if h not in fresh]
                     self.plan.emit("specs", len(todo))
                     if todo:
-                        self.step_text.emit(f"Характеристики: опрашиваю {len(todo)} ПК (остальные свежие)…")
+                        self.step_text.emit(tr("Характеристики: опрашиваю {0} ПК (остальные свежие)…").format(len(todo)))
                         res = fleetpoll.poll_fleet(
                             todo, fleetpoll.specs_live,
                             progress=lambda i, n, h: self.unit.emit("specs", i, h),
@@ -412,7 +412,7 @@ class FullScanDialog(FramelessDialog):
         self.worker.unit.connect(self._on_unit)
         self.worker.step_text.connect(self.lbl_step.setText)
         self.worker.finished_full.connect(self._on_done)
-        self.worker.error.connect(lambda m: self.lbl_step.setText(f"⚠️ {m}"))
+        self.worker.error.connect(lambda m: self.lbl_step.setText(tr("⚠️ {0}").format(m)))
         self.worker.start()
 
     # ---- прогресс
@@ -439,7 +439,7 @@ class FullScanDialog(FramelessDialog):
             val.setText(f"✓ {done}/{total} ({pct})" + (f" · {host}" if host else ""))
             if done >= total > 0:
                 pal = app_palette()
-                val.setText(f"✅ готово: {done} из {total} (100%)")
+                val.setText(tr("✅ готово: {0} из {1} (100%)").format(done, total))
                 val.setStyleSheet(f"color: {pal.title_accent}; font-size: 9pt; background: transparent;")
         self.lbl_host.setText(host if host and "/" not in host else "")
         self._refresh_donut()

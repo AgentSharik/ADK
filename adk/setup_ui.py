@@ -184,11 +184,11 @@ class DbSetupDialog(FramelessDialog):
         if os.path.exists(path) and os.path.getsize(path) > 0:
             if db_has_inventory(path):
                 self.is_new = False
-                self.lbl_found.setText(f"✅ База найдена: {describe_db(path)}. ADK будет использовать её как есть.{net}")
+                self.lbl_found.setText(tr("✅ База найдена: {0}. ADK будет использовать её как есть.{1}").format(describe_db(path), net))
                 self.btn_ok.setText(tr("Использовать эту базу"))
             else:
                 self.is_new = True
-                self.lbl_found.setText(f"ℹ️ Файл есть, но инвентарь в нём пуст — после входа ADK заполнит его: опросит домен и ПК.{net}")
+                self.lbl_found.setText(tr("ℹ️ Файл есть, но инвентарь в нём пуст — после входа ADK заполнит его: опросит домен и ПК.{0}").format(net))
                 self.btn_ok.setText(tr("Продолжить"))
         else:
             self.is_new = True
@@ -215,7 +215,7 @@ class DbSetupDialog(FramelessDialog):
                 fh.write("ok")
             os.remove(probe)
         except OSError as exc:
-            self.lbl_found.setText(f"⚠️ В эту папку нельзя писать: {exc}")
+            self.lbl_found.setText(tr("⚠️ В эту папку нельзя писать: {0}").format(exc))
             return
         self.db_path = path
         settings.save_section("Paths", {"db_path": path, "db_ready": "true"})
@@ -248,10 +248,10 @@ class InitialFillWorker(BaseWorker):
                 self.progress.emit("🗄️ Шаг 2 из 2 пропущен: ПК в сети не найдено — принтеры можно опросить позже («Принтеры парка»)")
                 self.finished_fill.emit(summary)
                 return
-            self.progress.emit(f"🗄️ Шаг 2 из 2 — принтеры с {len(hosts)} ПК в сети…")
+            self.progress.emit(tr("🗄️ Шаг 2 из 2 — принтеры с {0} ПК в сети…").format(len(hosts)))
             results = fleetpoll.poll_fleet(
                 hosts, fleetpoll.printers_live,
-                progress=lambda i, n, h: self.progress.emit(f"🖨️ Принтеры: {i}/{n} · {h}"),
+                progress=lambda i, n, h: self.progress.emit(tr("🖨️ Принтеры: {0}/{1} · {2}").format(i, n, h)),
                 cancelled=lambda: self.cancelled)
             for comp, r in results.items():
                 if "printers" in r:

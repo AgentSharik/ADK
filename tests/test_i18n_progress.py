@@ -65,3 +65,23 @@ def test_translate_smoke_en():
         assert i18n.tr("такой строки нет — останется русской") == "такой строки нет — останется русской"
     finally:
         i18n.set_language(old)
+
+
+def test_placeholders_match():
+    """У каждого шаблона {N} перевод содержит те же плейсхолдеры — иначе .format() упадёт в EN."""
+    import re as _re
+
+    def ph(s: str) -> list[str]:
+        return sorted(_re.findall(r"\{\d+(?::[^}]*)?\}", s))
+
+    bad = [(k[:50], v[:50]) for k, v in EN.items() if ph(k) != ph(v)]
+    assert not bad, bad
+
+
+def test_fstring_templates_translated():
+    """Ключевые сообщения прогресса переведены как шаблоны (f-строки стали tr(...).format(...))."""
+    must = ["⚡ Опрос {0} ПК (DNS, ping, журналы входов)…", "⚡ Опрос ПК: {0}/{1}",
+            "⏳ Парк сканирует {0} (до {1}) — база общая, повторный опрос не нужен",
+            "Принтеры: опрашиваю {0} ПК в сети…", "Найдено: {0}", "Готово: {0}/{1} успешно"]
+    for m in must:
+        assert m in EN, m

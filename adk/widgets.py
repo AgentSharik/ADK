@@ -857,11 +857,11 @@ class OrgPickerDialog(FramelessDialog):
             finally:
                 conn.unbind()
 
-        run_in_background(self, load, self._loaded, lambda m: self.lbl.setText(f"⚠️ {m}"))
+        run_in_background(self, load, self._loaded, lambda m: self.lbl.setText(tr("⚠️ {0}").format(m)))
 
     def _loaded(self, items: list[str]):
         self.companies = sorted({c for c in items if c and c.strip()}, key=str.casefold)
-        self.lbl.setText(f"Организаций: {len(self.companies)}")
+        self.lbl.setText(tr("Организаций: {0}").format(len(self.companies)))
         self._apply("")
 
     def _apply(self, text: str):

@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .widgets import FramelessDialog, app_palette
+from .i18n import tr  # noqa: E402
 
 PRESETS = [
     "#007AFF", "#34C759", "#5856D6", "#FF9500", "#FF2D55", "#AF52DE", "#FF3B30", "#5AC8FA", "#FFCC00", "#8E8E93",
@@ -298,8 +299,8 @@ class ColorPickerDialog(FramelessDialog):
                                        f"border-right: none; border-top-left-radius: 8px; border-bottom-left-radius: 8px; font-weight: bold;")
             self.lbl_new.setStyleSheet(f"background-color: {c.name()}; color: {ink_new}; border: 1.5px solid {pal.border};"
                                        f"border-top-right-radius: 8px; border-bottom-right-radius: 8px; font-weight: bold;")
-            self.lbl_old.setText(f"было\n{self.initial.name().upper()}")
-            self.lbl_new.setText(f"стало\n{c.name().upper()}")
+            self.lbl_old.setText(tr("было\n{0}").format(self.initial.name().upper()))
+            self.lbl_new.setText(tr("стало\n{0}").format(c.name().upper()))
             h, s, v = _hsv(c)
             self.lbl_info.setText(f"H {round(h * 360)}°  S {round(s * 100)}%  V {round(v * 100)}%  ·  "
                                   f"{'тёмный' if c.lightnessF() < 0.5 else 'светлый'}")

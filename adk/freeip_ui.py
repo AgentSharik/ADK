@@ -364,7 +364,7 @@ class FreeIPDialog(FramelessDialog):
     def _copy(self):
         if self.found:
             QApplication.clipboard().setText(self.found)
-            self.status.setText(f"Скопировано: {self.found}")
+            self.status.setText(tr("Скопировано: {0}").format(self.found))
 
     # ------------------------------------------------------------------ поиск
     def search(self):
@@ -401,7 +401,7 @@ class FreeIPDialog(FramelessDialog):
     def on_error(self, msg: str):
         self.map.set_checking(None)
         self.lbl_ip.setText("—")
-        self.status.setText(f"⚠️ {msg}")
+        self.status.setText(tr("⚠️ {0}").format(msg))
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
 
@@ -445,11 +445,11 @@ class FreeIPDialog(FramelessDialog):
             txt = "адрес не выдан" if txt == "не выдан DHCP" else txt
             dhcp_txt = f"DHCP: {txt}" + (f" ({info['detail']})" if info.get("detail") else "")
             dhcp_txt = dhcp_txt.replace("DHCP: DHCP", "DHCP:")
-            self.lbl_dhcp.setText(f"{icon} {dhcp_txt}")
+            self.lbl_dhcp.setText(tr("{0} {1}").format(icon, dhcp_txt))
         else:
             self.lbl_dhcp.setText("")
         self._set_checks(checks)
-        self.status.setText(f"Готово: {ip}. Следующий поиск начнётся с .{min(254, host + 1)}.")
+        self.status.setText(tr("Готово: {0}. Следующий поиск начнётся с .{1}.").format(ip, min(254, host + 1)))
         if ip not in self.history:
             self.history.append(ip)
             r = self.table.rowCount()

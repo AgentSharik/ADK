@@ -157,9 +157,9 @@ class InventoryDialog(FramelessDialog):
         def done(items):
             self.companies = items
             self._apply_filter("")
-            self.lbl_companies.setText(f"Организаций: {len(items)}")
+            self.lbl_companies.setText(tr("Организаций: {0}").format(len(items)))
 
-        run_in_background(self, load, done, lambda m: self.lbl_companies.setText(f"⚠️ {m}"))
+        run_in_background(self, load, done, lambda m: self.lbl_companies.setText(tr("⚠️ {0}").format(m)))
 
     # ------------------------------------------------------------------ шаг 1
     def _apply_filter(self, text: str):
@@ -187,7 +187,7 @@ class InventoryDialog(FramelessDialog):
         self.rows = []
         self.btn_go.setEnabled(False)
         self.btn_preview.setEnabled(False)
-        self.lbl_title.setText(f"<b>2. Что попадёт в файл</b> — {company}")
+        self.lbl_title.setText(tr("<b>2. Что попадёт в файл</b> — {0}").format(company))
         self.status.setText(tr("⏳ Собираю данные…"))
         self.worker = InventoryWorker(self.app.get_conn, company, "", parent=self, preview=True)
         self.worker.progress.connect(self.status.setText)
@@ -197,7 +197,7 @@ class InventoryDialog(FramelessDialog):
 
     def _fail(self, msg: str):
         self.btn_preview.setEnabled(True)
-        self.status.setText(f"⚠️ {msg}")
+        self.status.setText(tr("⚠️ {0}").format(msg))
 
     def columns(self) -> tuple[str, ...]:
         return tuple(k for k, _l in INVENTORY_COLUMNS if self.checks[k].isChecked())
@@ -253,7 +253,7 @@ class InventoryDialog(FramelessDialog):
         path = QFileDialog.getExistingDirectory(self, "Папка для описи")
         if path:
             self.out_dir = path
-            self.btn_dir.setText(f"📁 {os.path.basename(path) or path}")
+            self.btn_dir.setText(tr("📁 {0}").format(os.path.basename(path) or path))
 
     def generate(self):
         if not self.rows or not self.columns():
@@ -276,10 +276,10 @@ class InventoryDialog(FramelessDialog):
     def _done(self, ok: bool, msg: str):
         self.btn_go.setEnabled(True)
         if not ok:
-            self.status.setText(f"⚠️ {msg}")
+            self.status.setText(tr("⚠️ {0}").format(msg))
             MessageBox.critical(self, "Опись", msg)
             return
-        self.status.setText(f"✅ Сохранено: {msg}")
+        self.status.setText(tr("✅ Сохранено: {0}").format(msg))
         if self.cb_open.isChecked() and os.name == "nt":
             try:
                 subprocess.Popen(["explorer", "/select,", msg], creationflags=CREATE_NO_WINDOW)

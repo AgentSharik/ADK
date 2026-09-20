@@ -193,7 +193,7 @@ class LoginDialog(FramelessDialog):
             if self.remember_method.isChecked():
                 settings.save_section("UI", {"login_method": "sso"})
                 settings.login_method = "sso"
-            self.status.setText(f"SSO: {who}")
+            self.status.setText(tr("SSO: {0}").format(who))
             self.accept()
 
         def fail(msg):
@@ -475,7 +475,7 @@ class PluginsDialog(FramelessDialog):
     def reload(self):
         from . import plugins
         d = settings.plugins_dir
-        self.lbl_dir.setText(f"Папка: {d}")
+        self.lbl_dir.setText(tr("Папка: {0}").format(d))
         self.files = plugins.list_plugin_files(d)
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(self.files))
@@ -526,7 +526,7 @@ class PluginsDialog(FramelessDialog):
         for r, f in enumerate(self.files):
             if f["path"] == path:
                 self.table.selectRow(r)
-        self.status.setText(f"Создан шаблон: {os.path.basename(path)} — откройте его, документация внутри файла.")
+        self.status.setText(tr("Создан шаблон: {0} — откройте его, документация внутри файла.").format(os.path.basename(path)))
 
     def _toggle(self):
         from . import plugins
@@ -912,7 +912,7 @@ class UserCardDialog(FramelessDialog):
         return w
 
     def _update_groups_title(self):
-        self.lbl_groups.setText(f"<b>Состоит в группах: {self.groups_list.count()}</b> · двойной клик — участники")
+        self.lbl_groups.setText(tr("<b>Состоит в группах: {0}</b> · двойной клик — участники").format(self.groups_list.count()))
 
     def _deny(self, action: str) -> bool:
         from . import access as _access
@@ -1418,7 +1418,7 @@ class AuditLogDialog(FramelessDialog):
                                          action=self.action.currentData() or "",
                                          text=self.text.text().strip(), since=self._since())
         except Exception as exc:  # noqa: BLE001
-            self.status.setText(f"⚠️ {exc}")
+            self.status.setText(tr("⚠️ {0}").format(exc))
             return
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(self.rows))
@@ -1526,7 +1526,7 @@ class PrintersDialog(FramelessDialog):
         try:
             data = self.live_rows if self.live_rows is not None else db.printer_summary()
         except Exception as exc:  # noqa: BLE001
-            self.status.setText(f"⚠️ {exc}")
+            self.status.setText(tr("⚠️ {0}").format(exc))
             return
         self.rows = [r for r in data if (not kind or r["kind"] == kind)
                      and (not q or q in f"{r['name']} {r['ip']} {r.get('computers', '')}".casefold())]
@@ -1552,13 +1552,13 @@ class PrintersDialog(FramelessDialog):
         fit_columns(self.table, max_width=420)
         total_pcs = sum(r["pcs"] for r in self.rows)
         if org_mode:
-            self.status.setText(f"🏢 «{self._org_name}»: подключений принтеров — {len(self.rows)} (живой опрос, по каждому сотруднику)")
+            self.status.setText(tr("🏢 «{0}»: подключений принтеров — {1} (живой опрос, по каждому сотруднику)").format(self._org_name, len(self.rows)))
             return
         src = "живой опрос" if self.live_rows is not None else "сохранённые данные"
         if not self.rows and self.live_rows is None:
             self.status.setText(tr("В базе пока нет принтеров — нажмите «Опросить парк», чтобы собрать их с ПК прямо сейчас"))
         else:
-            self.status.setText(f"Принтеров: {len(self.rows)} · подключений: {total_pcs} · {src}")
+            self.status.setText(tr("Принтеров: {0} · подключений: {1} · {2}").format(len(self.rows), total_pcs, src))
 
     # --- живой опрос парка (3.5.10)
     def poll_live(self):
@@ -1567,7 +1567,7 @@ class PrintersDialog(FramelessDialog):
         try:
             hosts = fleetpoll.fleet_hosts(self.app.get_conn)
         except Exception as exc:  # noqa: BLE001
-            self.status.setText(f"⚠️ Список ПК не получен: {exc}")
+            self.status.setText(tr("⚠️ Список ПК не получен: {0}").format(exc))
             return
         if not hosts:
             self.status.setText(tr("⚠️ ПК для опроса не найдены: инвентарь пуст и AD не вернул рабочих станций (проверьте host_pattern)"))
@@ -1584,10 +1584,10 @@ class PrintersDialog(FramelessDialog):
         try:
             hosts, users = fleetpoll.org_computers(self.app.get_conn, d.choice)
         except Exception as exc:  # noqa: BLE001
-            self.status.setText(f"⚠️ Список ПК организации не получен: {exc}")
+            self.status.setText(tr("⚠️ Список ПК организации не получен: {0}").format(exc))
             return
         if not hosts:
-            self.status.setText(f"⚠️ В организации «{d.choice}» не найдено ПК (нет привязок, инвентаря и userWorkstations)")
+            self.status.setText(tr("⚠️ В организации «{0}» не найдено ПК (нет привязок, инвентаря и userWorkstations)").format(d.choice))
             return
         self._org_users, self._org_name = users, d.choice
         self._start_live(hosts)
@@ -1600,11 +1600,11 @@ class PrintersDialog(FramelessDialog):
         self.btn_save.setEnabled(False)
         self.live_results = {}
         pre = f"🏢 «{self._org_name}»: " if self._org_users else ""
-        self.status.setText(f"{pre}⏳ Опрашиваю {len(hosts)} ПК…")
+        self.status.setText(tr("{0}⏳ Опрашиваю {1} ПК…").format(pre, len(hosts)))
         self.worker = fleetpoll.FleetPollWorker(hosts, fleetpoll.printers_live, parent=self)
-        self.worker.progress.connect(lambda i, n, h: self.status.setText(f"{pre}⏳ Опрошено {i} из {n} ПК · {h}"))
+        self.worker.progress.connect(lambda i, n, h: self.status.setText(tr("{0}⏳ Опрошено {1} из {2} ПК · {3}").format(pre, i, n, h)))
         self.worker.finished_poll.connect(self._live_done)
-        self.worker.error.connect(lambda m: (self._live_done({}), self.status.setText(f"⚠️ {m}")))
+        self.worker.error.connect(lambda m: (self._live_done({}), self.status.setText(tr("⚠️ {0}").format(m))))
         self.worker.start()
 
     def stop_live(self):
@@ -1651,7 +1651,7 @@ class PrintersDialog(FramelessDialog):
         db.log_action(getattr(self.app, "admin_name", ""), "printers_fleet", "fleet", f"{n} ПК")
         self.live_rows = None
         self.reload()
-        self.status.setText(f"✅ Сохранено в базу: принтеры {n} ПК. Теперь они находятся поиском по IP и модели.")
+        self.status.setText(tr("✅ Сохранено в базу: принтеры {0} ПК. Теперь они находятся поиском по IP и модели.").format(n))
 
     def on_dialog_done(self):
         if self.worker:
@@ -1722,9 +1722,9 @@ class GroupMembersDialog(FramelessDialog):
                 for col, val in enumerate(row):
                     self.table.setItem(r, col, QTableWidgetItem(val))
             fit_columns(self.table)
-            self.status.setText(f"Участников: {len(rows)}")
+            self.status.setText(tr("Участников: {0}").format(len(rows)))
 
-        run_in_background(self, load, done, lambda m: self.status.setText(f"Ошибка: {m}"))
+        run_in_background(self, load, done, lambda m: self.status.setText(tr("Ошибка: {0}").format(m)))
 
 
 # ============================================================================ регистрация

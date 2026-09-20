@@ -15,6 +15,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from . import ad, db, netutils
 from .config import CREATE_NO_WINDOW, SEARCH_RESULT_LIMIT, settings
+from .i18n import tr  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -735,7 +736,7 @@ class PCScannerWorker(BaseWorker):
             self.finished_scan.emit(len(hosts))
         except Exception as exc:  # noqa: BLE001
             log.exception("PCScannerWorker")
-            self.error.emit(f"Ошибка сканирования: {exc}")
+            self.error.emit(tr("Ошибка сканирования: {0}").format(exc))
             self.finished_scan.emit(0)
 
     @classmethod
@@ -752,7 +753,7 @@ class PCScannerWorker(BaseWorker):
             raise RuntimeError(f"ни один ПК домена не подходит под host_pattern "
                                f"«{settings.host_pattern}» (config.ini → [Scanner]); исключение: «{settings.host_exclude}»; "
                                f"список ПК брался через {via.upper()}")
-        w.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping, журналы входов)…")
+        w.progress.emit(tr("⚡ Опрос {0} ПК (DNS, ping, журналы входов)…").format(len(hosts)))
         results = w.probe_hosts(hosts)
         results = enrich_with_dc_logons(results, w.progress.emit)
         db.batch_update_inventory(results, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -771,7 +772,7 @@ class PCScannerWorker(BaseWorker):
                 self.progress.emit("⚠️ PowerShell не вернул данных — опрашиваю ПК средствами Python…")
             except Exception as exc:  # noqa: BLE001
                 log.warning("scanner powershell: %s", exc)
-                self.progress.emit(f"⚠️ PowerShell: {str(exc)[:120]} — опрашиваю ПК средствами Python…")
+                self.progress.emit(tr("⚠️ PowerShell: {0} — опрашиваю ПК средствами Python…").format(str(exc)[:120]))
         return self._probe_python(hosts)
 
     def _probe_python(self, hosts: list[str]) -> list[dict]:
@@ -801,7 +802,7 @@ class PCScannerWorker(BaseWorker):
                     break
                 out.append(f.result())
                 if i % 25 == 0 or i == total:
-                    self.progress.emit(f"⚡ Опрос ПК: {i}/{total}")
+                    self.progress.emit(tr("⚡ Опрос ПК: {0}/{1}").format(i, total))
         return out
 
     def _index_printers(self, hosts: list[str]) -> None:
@@ -809,9 +810,9 @@ class PCScannerWorker(BaseWorker):
         if not os.path.isdir(settings.invent_hardware_dir):
             return
         self.progress.emit("🖨️ Индексация принтеров из CSV…")
-        n = netutils.index_printers(hosts, lambda i, t: self.progress.emit(f"🖨️ Принтеры: {i}/{t}"),
+        n = netutils.index_printers(hosts, lambda i, t: self.progress.emit(tr("🖨️ Принтеры: {0}/{1}").format(i, t)),
                                     lambda: self.cancelled)
-        self.progress.emit(f"🖨️ Принтеры проиндексированы: {n} ПК с CSV")
+        self.progress.emit(tr("🖨️ Принтеры проиндексированы: {0} ПК с CSV").format(n))
 
     def _run_powershell(self, hosts: list[str], ping_ms: int = 300) -> list[dict]:
         """PowerShell-сканер через :mod:`psrun` (3.6.1; раньше — прямой ``powershell -Command <текст>``, который из
@@ -854,7 +855,7 @@ class PingWorker(BaseWorker):
 
     def run(self) -> None:
         if not netutils.is_valid_hostname(self.target):
-            self.error.emit(f"Недопустимое имя узла: {self.target}")
+            self.error.emit(tr("Недопустимое имя узла: {0}").format(self.target))
             return
         # -w 4000 — как у обычного ping в cmd (раньше стояло 1000: ответ за 1,2 с по Wi-Fi считался потерей,
         # и у живого ПК появлялся красный столбец; теперь цифры окна совпадают с тем, что админ видит в консоли)
@@ -872,7 +873,7 @@ class PingWorker(BaseWorker):
                 if parsed:
                     self.ping_event.emit(parsed)
         except OSError as exc:
-            self.error.emit(f"Не удалось запустить ping: {exc}")
+            self.error.emit(tr("Не удалось запустить ping: {0}").format(exc))
         finally:
             self.stop_process()
 
@@ -935,7 +936,7 @@ class FreeIPWorker(BaseWorker):
                 self._dhcp_cache[self.prefix] = cached
         self.dhcp_data = cached
         for e in cached.get("errors") or []:
-            self.progress.emit(f"⚠️ DHCP: {e}")
+            self.progress.emit(tr("⚠️ DHCP: {0}").format(e))
 
     def _dhcp_busy(self, ip: str) -> bool:
         if not self.dhcp_data or not self.dhcp_data.get("scopes"):
@@ -1035,7 +1036,7 @@ class FreeIPWorker(BaseWorker):
                     r = verdict.pop(shown)
                     if r != "cancelled":
                         self.host_checked.emit(shown, r)
-                        self.progress.emit(f"⚡ {self.prefix}.{shown} — {_FREEIP_TEXT.get(r, r)}")
+                        self.progress.emit(tr("⚡ {0}.{1} — {2}").format(self.prefix, shown, _FREEIP_TEXT.get(r, r)))
                         if r == "free":
                             found = f"{self.prefix}.{shown}"
                             break
@@ -1285,7 +1286,7 @@ class InventoryWorker(BaseWorker):
                     self.finished_export.emit(False, f"В организации «{self.company}» нет сотрудников")
                     return
                 rows = build_inventory_rows(entries, cancelled=lambda: self.cancelled,
-                                            progress=lambda i, n: self.progress.emit(f"Обработано {i}/{n}…"))
+                                            progress=lambda i, n: self.progress.emit(tr("Обработано {0}/{1}…").format(i, n)))
                 if self.cancelled:
                     return
             if self.preview:

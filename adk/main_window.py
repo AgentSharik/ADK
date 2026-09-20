@@ -700,7 +700,7 @@ class ADApp(FramelessMainWindow):
             self.active_ad_total = n
             self.refresh_dashboard()
 
-        run_in_background(self, work, done, lambda m: self.lbl_status.setText(f"⚠️ AD: {m}"))
+        run_in_background(self, work, done, lambda m: self.lbl_status.setText(tr("⚠️ AD: {0}").format(m)))
 
     def refresh_dashboard(self):
         try:
@@ -821,7 +821,7 @@ class ADApp(FramelessMainWindow):
         self.results = rows
         self.stack.setCurrentIndex(1)
         self.fill_table(rows)
-        self.lbl_status.setText(f"Компьютеров {tag}: {len(rows)} · подтягиваю карточки из AD…")
+        self.lbl_status.setText(tr("Компьютеров {0}: {1} · подтягиваю карточки из AD…").format(tag, len(rows)))
         self._enrich_rows_from_ad(rows, tag)
 
     def _enrich_rows_from_ad(self, rows: list[dict], tag: str) -> None:
@@ -829,7 +829,7 @@ class ADApp(FramelessMainWindow):
         учётка) — одним LDAP-запросом по всем логинам, а не по клику на каждую строку."""
         logins = sorted({db.normalize_login(r["login"]) for r in rows if r.get("login") and r["login"] != "—"})
         if not logins:
-            self.lbl_status.setText(f"Компьютеров {tag}: {len(rows)}")
+            self.lbl_status.setText(tr("Компьютеров {0}: {1}").format(tag, len(rows)))
             return
 
         def work():
@@ -867,9 +867,9 @@ class ADApp(FramelessMainWindow):
             if sel is not None and sel in rows:
                 self._shown = None
                 self.select_row(rows.index(sel))
-            self.lbl_status.setText(f"Компьютеров {tag}: {len(rows)}")
+            self.lbl_status.setText(tr("Компьютеров {0}: {1}").format(tag, len(rows)))
 
-        run_in_background(self, work, done, lambda m: self.lbl_status.setText(f"Компьютеров {tag}: {len(rows)} · AD: {m}"))
+        run_in_background(self, work, done, lambda m: self.lbl_status.setText(tr("Компьютеров {0}: {1} · AD: {2}").format(tag, len(rows), m)))
 
     # ------------------------------------------------------------------ поиск
     def on_text_changed(self, text: str):
@@ -905,7 +905,7 @@ class ADApp(FramelessMainWindow):
         w = SearchWorker(self.get_conn, q, self.chk_archive.isChecked(), self.chk_disabled.isChecked(), parent=self)
         w.results_ready.connect(self.on_results)
         w.net_ready.connect(self.on_net_ready)
-        w.error.connect(lambda m: self.lbl_status.setText(f"⚠️ {m}"))
+        w.error.connect(lambda m: self.lbl_status.setText(tr("⚠️ {0}").format(m)))
         self._threads.append(w)
 
         def _cleanup():
@@ -931,15 +931,15 @@ class ADApp(FramelessMainWindow):
         QTimer.singleShot(0, lambda: self._after_results(query, terms))
         if truncated:
             self.lbl_status.setText(
-                f"Найдено: {len(rows)} — показаны первые {SEARCH_RESULT_LIMIT} учётных записей, уточните запрос")
+                tr("Найдено: {0} — показаны первые {1} учётных записей, уточните запрос").format(len(rows), SEARCH_RESULT_LIMIT))
         else:
             printers = [r for r in rows if r.get("kind") == "printer"]
             people = len(rows) - len(printers)
             if printers:
                 pcs = sum(len((r.get("printer") or {}).get("pcs") or []) for r in printers)
-                self.lbl_status.setText(f"🖨️ Принтеров: {len(printers)} (подключено ПК — {pcs}) · людей/ПК: {people}")
+                self.lbl_status.setText(tr("🖨️ Принтеров: {0} (подключено ПК — {1}) · людей/ПК: {2}").format(len(printers), pcs, people))
             else:
-                self.lbl_status.setText(f"Найдено: {len(rows)}")
+                self.lbl_status.setText(tr("Найдено: {0}").format(len(rows)))
 
     @staticmethod
     def net_badge(u: dict) -> "StatusItem":
@@ -1096,7 +1096,7 @@ class ADApp(FramelessMainWindow):
         if login and login != "—" and u.get("entry") is None and not u.get("_ldap_loaded"):
             self._enrich_from_ad(u)
         if not login or login == "—":
-            self.lbl_fio.setText(f"💻 {comp} (свободный ПК)")
+            self.lbl_fio.setText(tr("💻 {0} (свободный ПК)").format(comp))
             self.lbl_sub.setText(tr("Пользователь не залогинен"))
         else:
             self.lbl_fio.setText(f"👤 {u.get('full_fio') or u.get('fio') or login}")
@@ -1203,7 +1203,7 @@ class ADApp(FramelessMainWindow):
         self._set_header_actions_visible(True)
         self.lbl_fio.setText(f"🖨️ {g.get('name') or u.get('fio')}")
         kind = {"network": "сетевой", "shared": "общий (через сервер)", "usb": "USB", "local": "локальный"}.get(g.get("kind", ""), "—")
-        self.lbl_sub.setText(f"Принтер · {kind}")
+        self.lbl_sub.setText(tr("Принтер · {0}").format(kind))
         ip = g.get("ip") or ""
         if ip:
             self.pvals["ip"].setText(ip)
@@ -1224,7 +1224,7 @@ class ADApp(FramelessMainWindow):
         if g.get("discovered"):
             # 3.5.10: принтер найден прямо по адресу (в базе его не было) — честно говорим откуда модель и имя узла
             self.pvals["port"].setText((f"узел {g['port']} · " if g.get("port") else "") + f"модель: {g.get('source', '')}")
-            self.lbl_sub.setText(f"Принтер · {kind} · в базе не числится — найден по адресу")
+            self.lbl_sub.setText(tr("Принтер · {0} · в базе не числится — найден по адресу").format(kind))
         else:
             self.pvals["port"].setText(g.get("port") or "—")
         pr = u.get("probe")
@@ -1538,7 +1538,7 @@ class ADApp(FramelessMainWindow):
         for argv in netutils.power_commands(action, target):
             subprocess.Popen(argv, creationflags=CREATE_NO_WINDOW)
         db.log_action(self.admin_name, action, comp)
-        self.lbl_status.setText(f"⏻ {label}: команда отправлена на {comp}")
+        self.lbl_status.setText(tr("⏻ {0}: команда отправлена на {1}").format(label, comp))
 
     def open_disk(self, comp: str, target: str) -> None:
         """«Диск»: один том у ПК → сразу C$; несколько → стилизованное меню с выбором тома (буква, метка, размер)."""
@@ -1711,7 +1711,7 @@ class ADApp(FramelessMainWindow):
         pal = app_palette()
         high = sum(1 for i in items if i["severity"] == "high")
         color = pal.danger[0] if high else (pal.warning[0] if items else pal.success[0])
-        self.lbl_attention.setText(f"🔔 {attention.summary_line(items)}")
+        self.lbl_attention.setText(tr("🔔 {0}").format(attention.summary_line(items)))
         self.attention_card.setStyleSheet(f"#dashCard {{ border-left: 4px solid {color}; }}")
         if self.tray and high and not getattr(self, "_attention_notified", False):
             self._attention_notified = True
@@ -1748,7 +1748,7 @@ class ADApp(FramelessMainWindow):
             MessageBox.critical(self, "Экспорт", str(exc))
             return
         db.log_action(self.admin_name, "export", self.search_input.text().strip(), f"{n} строк → {os.path.basename(path)}")
-        self.lbl_status.setText(f"📤 Экспортировано строк: {n} → {path}")
+        self.lbl_status.setText(tr("📤 Экспортировано строк: {0} → {1}").format(n, path))
 
     def notes_selected(self):
         u = self.selected()
@@ -1780,7 +1780,7 @@ class ADApp(FramelessMainWindow):
         last = notes[0]
         more = f" (+{len(notes) - 1})" if len(notes) > 1 else ""
         self.lbl_notes.setText(f"{escape(last['ts'][:16])} · {escape(last['admin'])}: {escape(last['text'])}{more}")
-        self.btn_notes.setText(f"📝 {len(notes)}")
+        self.btn_notes.setText(tr("📝 {0}").format(len(notes)))
 
     def history_selected(self):
         u = self.selected()
@@ -1902,16 +1902,16 @@ class ADApp(FramelessMainWindow):
         try:
             ok, holder, until = db.scan_lease_acquire(self.scan_owner)
         except Exception as exc:  # noqa: BLE001
-            self.lbl_status.setText(f"⚠️ База: {exc}")
+            self.lbl_status.setText(tr("⚠️ База: {0}").format(exc))
             return
         if not ok:
-            self.lbl_status.setText(f"⏳ Парк сканирует {holder} (до {until[11:16]}) — база общая, повторный опрос не нужен")
+            self.lbl_status.setText(tr("⏳ Парк сканирует {0} (до {1}) — база общая, повторный опрос не нужен").format(holder, until[11:16]))
             self.refresh_dashboard()
             return
         self.btn_scan.setEnabled(False)
         self.scanner = PCScannerWorker(self.get_conn, parent=self, deep=False)   # 3.9.1: фон — лёгкий, как в 3.8
         self.scanner.progress.connect(self.lbl_status.setText)
-        self.scanner.error.connect(lambda m: self.lbl_status.setText(f"⚠️ {m}"))
+        self.scanner.error.connect(lambda m: self.lbl_status.setText(tr("⚠️ {0}").format(m)))
         self.scanner.finished_scan.connect(self.on_scan_done)
         self.scanner.start()
 
@@ -1935,10 +1935,10 @@ class ADApp(FramelessMainWindow):
         try:
             ok, holder, until = db.scan_lease_acquire(self.scan_owner)
         except Exception as exc:  # noqa: BLE001
-            self.lbl_status.setText(f"⚠️ База: {exc}")
+            self.lbl_status.setText(tr("⚠️ База: {0}").format(exc))
             return
         if not ok:
-            self.lbl_status.setText(f"⏳ Парк сканирует {holder} (до {until[11:16]}) — база общая, повторный опрос не нужен")
+            self.lbl_status.setText(tr("⏳ Парк сканирует {0} (до {1}) — база общая, повторный опрос не нужен").format(holder, until[11:16]))
             self.refresh_dashboard()
             return
         self.btn_scan.setEnabled(False)
@@ -1952,7 +1952,7 @@ class ADApp(FramelessMainWindow):
         self.full_worker.unit.connect(self._full_on_unit)
         self.full_worker.step_text.connect(self._full_on_step)
         self.full_worker.finished_full.connect(self.on_full_scan_done)
-        self.full_worker.error.connect(lambda m: self.lbl_status.setText(f"⚠️ {m}"))
+        self.full_worker.error.connect(lambda m: self.lbl_status.setText(tr("⚠️ {0}").format(m)))
         self._threads.append(self.full_worker)
         self.full_worker.start()
 

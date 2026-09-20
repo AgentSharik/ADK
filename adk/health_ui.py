@@ -745,7 +745,7 @@ class HealthDialog(FramelessDialog):
             self.lbl_ev_top.setText(f"По {len(shown)} событиям в таблице за {period}." +
                                     (f" Чаще всего в критических и ошибках: {top_src}." if top_src else ""))
         else:
-            self.lbl_ev_top.setText(f"✅ За {period} событий выбранных уровней нет.")
+            self.lbl_ev_top.setText(tr("✅ За {0} событий выбранных уровней нет.").format(period))
         note = f" · {len(d['errors'])} журнал(ов) не прочитано" if d.get("errors") else ""
         self.lbl_events.setText(f"Показано {len(shown)} из {d['summary']['total']} загруженных событий (лимит 500){note}")
 
@@ -898,13 +898,13 @@ class HealthDialog(FramelessDialog):
         self._usage_stop = False
         self._usage_started = time.monotonic()
         root = f"\\\\{self.comp}\\{drive.rstrip(':')}$"
-        self.lbl_usage.setText(f"⏳ Обхожу {root}… 0 с")
+        self.lbl_usage.setText(tr("⏳ Обхожу {0}… 0 с").format(root))
         # 3.5.10: обход можно прервать («Стоп»), а подпись показывает, что процесс жив (секунды идут) — раньше окно
         # выглядело зависшим: одна и та же строка на минуты, без возможности отменить
         self._usage_timer = QTimer(self)
         self._usage_timer.setInterval(1000)
         self._usage_timer.timeout.connect(lambda: self.lbl_usage.setText(
-            f"⏳ Обхожу {root}… {int(time.monotonic() - self._usage_started)} с — большие диски занимают несколько минут"))
+            tr("⏳ Обхожу {0}… {1} с — большие диски занимают несколько минут").format(root, int(time.monotonic() - self._usage_started))))
         self._usage_timer.start()
         run_in_background(self, lambda: health.get_disk_usage(self.comp, drive, top_count,
                                                                 cancelled=lambda: self._usage_stop),
@@ -954,7 +954,7 @@ class HealthDialog(FramelessDialog):
         host = getattr(self, "comp", "") or "ПК"
         vol = f"диск {letter}:" if letter else "этот диск"
         if not hogs:
-            self.lbl_hogs.setText(f"✅ На компьютере {host}, {vol}: временных файлов, которые можно безопасно удалить, не найдено.")
+            self.lbl_hogs.setText(tr("✅ На компьютере {0}, {1}: временных файлов, которые можно безопасно удалить, не найдено.").format(host, vol))
             return
         share = f" — это {total / u['total'] * 100:.1f}% занятого места" if u.get("total") else ""
         self.lbl_hogs.setText(f"🧹 На компьютере {host}, {vol}: можно освободить до {health.fmt_size(total)}{share}. "
@@ -1008,9 +1008,9 @@ class HealthDialog(FramelessDialog):
             return
         try:
             open_in_explorer(path)
-            self.lbl_status.setText(f"📂 Открыто в Проводнике: {path}")
+            self.lbl_status.setText(tr("📂 Открыто в Проводнике: {0}").format(path))
         except OSError as exc:
-            self.lbl_status.setText(f"⚠️ Не удалось открыть {path}: {exc}")
+            self.lbl_status.setText(tr("⚠️ Не удалось открыть {0}: {1}").format(path, exc))
 
     # ------------------------------------------------------------------ отчёт
     def copy_report(self):

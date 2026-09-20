@@ -84,7 +84,7 @@ class BulkOperationsDialog(FramelessDialog):
         self.body.addWidget(self.table, 1)
         self.lbl_more: QLabel = QLabel("")
         if len(self.users) > MAX_ROWS:
-            self.lbl_more.setText(f"…в списке показаны первые {MAX_ROWS} из {len(self.users)} — операция применится ко всем")
+            self.lbl_more.setText(tr("…в списке показаны первые {0} из {1} — операция применится ко всем").format(MAX_ROWS, len(self.users)))
             self.lbl_more.setObjectName("subtle")
             self.lbl_more.setWordWrap(True)
             self.body.addWidget(self.lbl_more)
@@ -106,7 +106,7 @@ class BulkOperationsDialog(FramelessDialog):
         self.body.addLayout(btns)
 
         self.all_groups: dict[str, str] = {}
-        run_in_background(self, self._load_groups, self._groups_loaded, lambda m: self.status.setText(f"⚠️ {m}"))
+        run_in_background(self, self._load_groups, self._groups_loaded, lambda m: self.status.setText(tr("⚠️ {0}").format(m)))
         self._op_changed()
 
     # ---- группы
@@ -193,7 +193,7 @@ class BulkOperationsDialog(FramelessDialog):
                 c.unbind()
             return out, pwds
 
-        run_in_background(self, work, self._done, lambda m: (self.status.setText(f"⚠️ {m}"), self.btn_run.setEnabled(True)))
+        run_in_background(self, work, self._done, lambda m: (self.status.setText(tr("⚠️ {0}").format(m)), self.btn_run.setEnabled(True)))
 
     def _done(self, res):
         self.results, self.passwords = res
@@ -203,7 +203,7 @@ class BulkOperationsDialog(FramelessDialog):
             ok, m = by_login.get(login, (False, "—"))
             self.table.setItem(r, 2, QTableWidgetItem(m))
         good = sum(1 for _, ok, _ in self.results if ok)
-        self.status.setText(f"Готово: {good}/{len(self.results)} успешно")
+        self.status.setText(tr("Готово: {0}/{1} успешно").format(good, len(self.results)))
         self.btn_run.setEnabled(True)
         if self.passwords:
             self.btn_copy.setVisible(True)
@@ -212,7 +212,7 @@ class BulkOperationsDialog(FramelessDialog):
     def copy_passwords(self):
         text = "\n".join(f"{l}\t{p}" for l, p in self.passwords.items())
         QApplication.clipboard().setText(text)
-        self.status.setText(f"📋 Пароли ({len(self.passwords)}) скопированы в буфер — вставьте в защищённое место и очистите буфер")
+        self.status.setText(tr("📋 Пароли ({0}) скопированы в буфер — вставьте в защищённое место и очистите буфер").format(len(self.passwords)))
 
 
 # ============================================================================ заметки
@@ -371,7 +371,7 @@ class GroupCompareDialog(FramelessDialog):
             self.ref_groups = groups
             self._fill()
 
-        run_in_background(self, work, done, lambda m: self.status.setText(f"⚠️ {m}"))
+        run_in_background(self, work, done, lambda m: self.status.setText(tr("⚠️ {0}").format(m)))
 
     def apply(self, lst: QListWidget, op):
         if not access.can("groups_sync"):
@@ -406,9 +406,9 @@ class GroupCompareDialog(FramelessDialog):
                 else:
                     self.target_groups.pop(cn, None)
             self._fill()
-            self.status.setText(f"✅ Применено: {len(done_cns)}")
+            self.status.setText(tr("✅ Применено: {0}").format(len(done_cns)))
 
-        run_in_background(self, work, ok, lambda m: self.status.setText(f"⚠️ {m}"))
+        run_in_background(self, work, ok, lambda m: self.status.setText(tr("⚠️ {0}").format(m)))
 
 
 # ============================================================================ таймлайн
