@@ -24,13 +24,18 @@ _PS = r"""
 $ErrorActionPreference = 'Stop'
 $c = '__HOST__'
 $since = (Get-Date).AddHours(-__HOURS__)
+$skipNet = __SKIPNET__
 $ev = @()
 try {
   $ev = Get-WinEvent -ComputerName $c -FilterHashtable @{LogName='Security'; Id=4624,4625; StartTime=$since} -MaxEvents 2000 -ErrorAction Stop
 } catch {
   if ($_.Exception.Message -notmatch 'No events were found|Не найдено событий') { throw ('Журнал Security ' + $c + ': ' + $_.Exception.Message) }
 }
+# 3.9.0: сетевые входы (тип 3) — основная масса событий на общем ПК, а в окне они по умолчанию скрыты.
+# Когда они не нужны, отсекаем их ещё здесь, по Properties[8] (LogonType у 4624), БЕЗ разбора XML:
+# передавать и разбирать приходится в разы меньше событий — журнал читается заметно быстрее.
 $rows = @(@($ev) | Where-Object { $_ } |
+  Where-Object { -not $skipNet -or $_.Id -ne 4624 -or ('' + $_.Properties[8].Value) -ne '3' } |
   ForEach-Object {
     $x = [xml]$_.ToXml()
     $d = @{}
@@ -71,11 +76,14 @@ def parse_events_json(text: str) -> dict:
             "fails": sum(1 for x in events if x["kind"] == "fail")}
 
 
-def get_logons(host: str, hours: int = 24, timeout: int = 120) -> dict:
+def get_logons(host: str, hours: int = 24, timeout: int = 120, include_net: bool = True) -> dict:
+    """События входов на ПК. ``include_net=False`` (3.9.0) — сетевые входы (тип 3) отсекаются ещё в PowerShell,
+    до переноса и разбора XML: их обычно большинство, а в окне они по умолчанию скрыты — читать быстрее."""
     if not is_valid_hostname(host):
         return {"error": f"Недопустимое имя узла: {host!r}"}
     from . import psrun
-    script = _PS.replace("__HOST__", host).replace("__HOURS__", str(int(hours)))
+    script = (_PS.replace("__HOST__", host).replace("__HOURS__", str(int(hours)))
+              .replace("__SKIPNET__", "$false" if include_net else "$true"))
     res = psrun.run(script, timeout=timeout)
     if not res.ok:
         low = res.error.lower()

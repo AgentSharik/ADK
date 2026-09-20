@@ -98,7 +98,7 @@ def test_migrate_config_ignores_unknown_sections(tmp_path):
 
 
 # ---------------------------------------------------------------- массовые операции: без фриза
-def test_bulk_dialog_caps_table_rows(monkeypatch):
+def test_bulk_dialog_caps_table_rows(qapp, monkeypatch):
     from adk.tools import BulkOperationsDialog
 
     class _App:
@@ -129,3 +129,24 @@ def test_logons_cached_label():
     d = parse_events_json('[{"id": 4624, "ts": "2026-09-19 10:00:00", "user": "ivanov", "domain": "CITY",'
                           ' "type": "11", "ip": "", "status": "0x0"}]')
     assert d["events"][0]["type"] == "Вход по кэшу"
+
+
+# ---------------------------------------------------------------- входы: сетевые отсеиваются в PowerShell
+def test_logons_skip_net_builds_script(monkeypatch):
+    from adk import logons
+    seen = {}
+
+    class _Res:
+        ok = True
+        stdout = "[]"
+
+    def fake_run(script, timeout=None, cancelled=None):
+        seen["script"] = script
+        return _Res()
+
+    import adk.psrun as psrun
+    monkeypatch.setattr(psrun, "run", fake_run)
+    logons.get_logons("WS-101", 24, include_net=False)
+    assert "$skipNet = $true" in seen["script"] and "-ne '3'" in seen["script"]
+    logons.get_logons("WS-101", 24, include_net=True)
+    assert "$skipNet = $false" in seen["script"]

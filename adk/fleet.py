@@ -411,8 +411,8 @@ class LogonsDialog(FramelessDialog):
         top.addWidget(self.only_fail)
         self.show_net = QCheckBox("Сетевые входы (тип 3)")
         self.show_net.setToolTip("Тип 3 — это не вход за этим ПК, а обращение к нему по сети с другого компьютера "
-                                 "(общие папки, службы). По умолчанию скрыты, чтобы не путали.")
-        self.show_net.toggled.connect(self._render)
+                                 "(общие папки, службы). По умолчанию скрыты и не читаются с ПК — включите, чтобы увидеть.")
+        self.show_net.toggled.connect(self._net_toggled)
         top.addWidget(self.show_net)
         top.addStretch()
         b = QPushButton("🔄 Обновить")
@@ -440,14 +440,25 @@ class LogonsDialog(FramelessDialog):
         self.load()
 
     def load(self):
-        self.summary.setText("⏳ Читаю журнал Security на ПК (Get-WinEvent, до 1–2 минут на большом журнале)…")
+        include = self.show_net.isChecked()
+        self._loaded_net = include
+        hint = "" if include else " (сетевые входы отсеиваются сразу — читается быстрее)"
+        self.summary.setText("⏳ Читаю журнал Security на ПК (Get-WinEvent, до 1–2 минут на большом журнале)…" + hint)
         hours = int(self.hours.currentData())
-        run_in_background(self, lambda: logons.get_logons(self.comp, hours), self._done, lambda m: self.summary.setText(f"⚠️ {m}"))
+        run_in_background(self, lambda: logons.get_logons(self.comp, hours, include_net=include),
+                          self._done, lambda m: self.summary.setText(f"⚠️ {m}"))
 
     def _done(self, d: dict):
         self._data = d
         self.summary.setText(logons.format_summary(d))
         self._render()
+
+    def _net_toggled(self, on: bool):
+        """Включили «Сетевые входы» — их надо дочитать с ПК (при загрузке они отсеивались для скорости)."""
+        if on and not getattr(self, "_loaded_net", True):
+            self.load()
+        else:
+            self._render()
 
     def _render(self):
         pal = app_palette()
