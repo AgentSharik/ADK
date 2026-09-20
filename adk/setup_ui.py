@@ -23,9 +23,9 @@ from PyQt6.QtWidgets import (QButtonGroup, QFileDialog, QFrame, QHBoxLayout, QLa
                              QRadioButton, QSizePolicy, QVBoxLayout)
 
 from . import db
-from .config import DOCS_DIR, settings
+from .config import DOCS_DIR, PORTABLE_DIR, park_pattern, settings
 from .widgets import FramelessDialog, app_palette
-from .workers import BaseWorker
+from .workers import BaseWorker, PCScannerWorker
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +98,8 @@ class DbSetupDialog(FramelessDialog):
         cl.setSpacing(8)
         cl.setContentsMargins(14, 12, 14, 12)
         self.grp = QButtonGroup(self)
-        self.rb_default = QRadioButton("В моих документах (база только на этом ПК)")
+        self.rb_default = QRadioButton("Рядом с программой (папка ADK возле ADK.exe — конфиг и база всегда при нём)"
+                                       if PORTABLE_DIR else "В моих документах (база только на этом ПК)")
         self.rb_default.setToolTip(os.path.join(DOCS_DIR, DB_FILE))
         self.rb_default.setMinimumHeight(26)
         self.lbl_default_path = QLabel(os.path.join(DOCS_DIR, DB_FILE))
@@ -269,3 +270,148 @@ def fill_summary_text(s: dict) -> str:
         return f"⚠️ Первичное наполнение прервано: {s['error']} — повторите через «Сканировать парк»"
     return (f"✅ База заполнена: ПК из домена — {s['pcs']}, принтеры — {s['printers']} на {s['printers_pcs']} ПК. "
             "Дальше сканер обновляет её сам по расписанию.")
+
+
+class ParkMaskDialog(FramelessDialog):
+    """«Выберите имена ПК, с которыми будет работать ADK» (3.10.0).
+
+    Показывается после выбора базы данных при первом запуске, если маска парка ещё не задана.
+    Ввод по-человечески: «PC-» — все ПК на «PC-…» (→ ``PC-*``), «PC-0000» — ровно четыре цифры
+    (→ ``PC-????``). Напротив каждого поля — сколько ПК домена подходит прямо сейчас. Кнопка «＋»
+    добавляет поле, «✕» убирает. Результат сохраняется в ``[Scanner] host_mask``.
+    """
+
+    def __init__(self, parent, computer_names: list[str] | None = None):
+        super().__init__("🏷️ Имена ПК парка", parent, (640, 520))
+        self.setMinimumSize(560, 460)
+        self.computer_names = computer_names or []
+        self.mask_saved = False
+        self.body.setSpacing(10)
+        self.body.setContentsMargins(18, 4, 18, 4)
+
+        intro = QLabel(
+            "Выберите имена ПК, с которыми будет работать ADK — остальные машины домена ADK показывать не будет.<br>"
+            "Пишите серию как удобно: <b>PC-</b> — все ПК, начинающиеся на ADM; <b>PC-0000</b> — ПК "
+            "<b>PC-</b> ровно с четырьмя цифрами. Несколько серий — несколько полей.")
+        intro.setWordWrap(True)
+        self.body.addWidget(intro)
+
+        self.rows_card = QFrame()
+        self.rows_card.setObjectName("dashCard")
+        self.rows_lay = QVBoxLayout(self.rows_card)
+        self.rows_lay.setContentsMargins(14, 10, 14, 10)
+        self.rows_lay.setSpacing(6)
+        self.body.addWidget(self.rows_card)
+
+        self.btn_add = QPushButton("＋ Добавить серию")
+        self.btn_add.setMinimumHeight(34)
+        self.btn_add.clicked.connect(lambda: self.add_row())
+        self.body.addWidget(self.btn_add)
+
+        self.total_lbl = QLabel("")
+        self.total_lbl.setObjectName("subtle")
+        self.total_lbl.setWordWrap(True)
+        self.body.addWidget(self.total_lbl)
+
+        self.body.addStretch(1)
+        btns = QHBoxLayout()
+        btn_skip = QPushButton("Пропустить — все ПК домена")
+        btn_skip.clicked.connect(self.reject)
+        self.btn_ok = QPushButton("💾 Сохранить и продолжить")
+        self.btn_ok.setObjectName("btnPrimary")
+        self.btn_ok.setMinimumHeight(40)
+        self.btn_ok.clicked.connect(self.save)
+        btns.addWidget(btn_skip)
+        btns.addStretch(1)
+        btns.addWidget(self.btn_ok)
+        self.body.addLayout(btns)
+
+        if not self.computer_names:
+            self.total_lbl.setText("ℹ️ Список ПК домена недоступен — количество не показываю, маска всё равно сохранится.")
+        self.add_row()
+        self.recount()
+
+    # --- строки ввода
+    def add_row(self, text: str = ""):
+        row = QHBoxLayout()
+        edit = QLineEdit(text)
+        edit.setMinimumHeight(34)
+        edit.setPlaceholderText("например PC- или PC-0000")
+        cnt = QLabel("")
+        cnt.setObjectName("subtle")
+        cnt.setMinimumWidth(90)
+        btn_del = QPushButton("✕")
+        btn_del.setFixedWidth(36)
+        btn_del.setMinimumHeight(34)
+        btn_del.setToolTip("Убрать серию")
+        row.addWidget(edit, 1)
+        row.addWidget(cnt)
+        row.addWidget(btn_del)
+        self.rows_lay.addLayout(row)
+        edit.textChanged.connect(self.recount)
+        btn_del.clicked.connect(lambda: self.remove_row(edit, cnt, btn_del, row))
+        edit.setFocus()
+        self.recount()                     # поле с готовым текстом (add_row("PC-")) тоже должно посчитаться
+
+    def remove_row(self, edit, cnt, btn_del, row):
+        self.rows_lay.removeItem(row)
+        edit.deleteLater()
+        cnt.deleteLater()
+        btn_del.deleteLater()
+        self.recount()
+
+    def _patterns(self) -> list[str]:
+        out, seen = [], set()
+        for i in range(self.rows_lay.count()):
+            lay = self.rows_lay.itemAt(i)
+            if lay is None:
+                continue
+            edit = lay.itemAt(0).widget() if lay.count() else None
+            if isinstance(edit, QLineEdit):
+                p = park_pattern(edit.text())
+                if p and p not in seen:
+                    seen.add(p)
+                    out.append(p)
+        return out
+
+    def recount(self, *_):
+        """Живой счётчик: сколько ПК домена подходит под каждое поле и под всё вместе."""
+        pats = []
+        for i in range(self.rows_lay.count()):
+            lay = self.rows_lay.itemAt(i)
+            edit = lay.itemAt(0).widget() if lay is not None and lay.count() else None
+            cnt = lay.itemAt(1).widget() if lay is not None and lay.count() > 1 else None
+            if not isinstance(edit, QLineEdit):
+                continue
+            p = park_pattern(edit.text())
+            pats.append(p)
+            if isinstance(cnt, QLabel):
+                if not p or not self.computer_names:
+                    cnt.setText("")
+                else:
+                    rx = PCScannerWorker._mask_regex(p)
+                    n = sum(1 for name in self.computer_names if rx and rx.match(name))
+                    cnt.setText(f"найдено: {n}" if n else "не найдено")
+        if self.computer_names:
+            total = 0
+            for p in pats:
+                if p:
+                    rx = PCScannerWorker._mask_regex(p)
+                    total += sum(1 for name in self.computer_names if rx and rx.match(name))
+            uniq = {n for p in pats if p for n in self.computer_names
+                    if PCScannerWorker._mask_regex(p) and PCScannerWorker._mask_regex(p).match(n)}
+            self.total_lbl.setText(f"В парк попадает ПК: {len(uniq)} из {len(self.computer_names)} в домене."
+                                   if uniq else ("Ничего не найдено — проверьте написание." if any(pats) else ""))
+        self.btn_ok.setEnabled(any(pats))
+
+    def save(self, *_):
+        pats = self._patterns()
+        if not pats:
+            self.reject()
+            return
+        mask = ", ".join(pats)
+        settings.host_mask = mask
+        settings.save_section("Scanner", {"host_mask": mask})
+        log.info("маска парка из окна первого запуска: %s", mask)
+        self.mask_saved = True
+        self.accept()

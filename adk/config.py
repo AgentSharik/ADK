@@ -1,8 +1,9 @@
 """Конфигурация приложения.
 
 Все параметры, специфичные для организации (домен, сетевые пути, RMS), вынесены
-в ``config.ini`` в профиле пользователя. В коде нет ни одного жёстко прописанного
-адреса — репозиторий можно публиковать.
+в ``config.ini``. В собранном exe папка ``ADK`` с конфигом, базой и логом создаётся
+рядом с ``ADK.exe`` (портативно; если рядом с exe нет прав на запись — «Документы\\ADK»).
+В коде нет ни одного жёстко прописанного адреса — репозиторий можно публиковать.
 """
 from __future__ import annotations
 
@@ -17,10 +18,90 @@ APP_TITLE = "ADK — Active Directory Kit"
 IS_WINDOWS = sys.platform.startswith("win")
 CREATE_NO_WINDOW = 0x08000000 if IS_WINDOWS else 0
 
-DOCS_DIR = os.path.join(os.path.expanduser("~"), "Documents", APP_NAME)
+
+def _try_portable_dir(exe_dir: str) -> str | None:
+    """Проверить, что рядом с exe можно создать папку ADK и писать в неё. None — нельзя."""
+    cand = os.path.join(exe_dir, APP_NAME)
+    try:
+        os.makedirs(cand, exist_ok=True)
+        probe = os.path.join(cand, ".write-test")
+        with open(probe, "w", encoding="utf-8") as fh:
+            fh.write("ok")
+        os.remove(probe)
+        return cand
+    except OSError:
+        return None
+
+
+def _migrate_old_data(old: str, new: str) -> None:
+    """3.10.0: перенос данных из «Документы\\ADK» в папку рядом с exe (однократно, при первом запуске новой версии)."""
+    if not os.path.isdir(old) or os.path.exists(os.path.join(new, "config.ini")):
+        return
+    import shutil
+    try:
+        for name in os.listdir(old):
+            try:
+                if not os.path.exists(os.path.join(new, name)):
+                    shutil.move(os.path.join(old, name), os.path.join(new, name))
+            except OSError:
+                logging.getLogger(__name__).warning("перенос %s в %s не удался — файл оставлен на месте", name, new)
+        try:
+            os.rmdir(old)
+        except OSError:
+            pass
+    except OSError:
+        pass
+    # абсолютные пути в конфиге (db_path, папки инвентарей, бэкапов), ведущие в старую папку, —
+    # переписать на новую: иначе база «потерялась» бы (файл перенесён, а путь остался прежним)
+    cfg = os.path.join(new, "config.ini")
+    if os.path.exists(cfg):
+        try:
+            with open(cfg, encoding="utf-8") as fh:
+                txt = fh.read()
+            if old in txt:
+                with open(cfg, "w", encoding="utf-8") as fh:
+                    fh.write(txt.replace(old, new))
+        except OSError:
+            pass
+
+
+def _data_dir() -> tuple[str, bool]:
+    """Каталог данных ADK. Возвращает (путь, портативный_ли).
+
+    3.10.0: в собранном виде (exe) — папка ``ADK`` **рядом с ADK.exe** (портативный режим: конфиг, база,
+    лог, плагины — всё в одном месте). Если рядом с exe писать нельзя (Program Files, сетевой диск
+    только для чтения) — прежнее поведение, ``Документы\\ADK``. При первом запуске новой версии данные
+    из «Документы\\ADK» переносятся в новую папку. В режиме разработки (python) — по-прежнему «Документы».
+    """
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        cand = _try_portable_dir(exe_dir)
+        if cand:
+            _migrate_old_data(os.path.join(os.path.expanduser("~"), "Documents", APP_NAME), cand)
+            return cand, True
+    return os.path.join(os.path.expanduser("~"), "Documents", APP_NAME), False
+
+
+DOCS_DIR, _PORTABLE = _data_dir()
+PORTABLE_DIR = DOCS_DIR if _PORTABLE else None    # не None — работает портативный режим (папка ADK рядом с exe)
 INI_FILE = os.path.join(DOCS_DIR, "config.ini")
 LOG_FILE = os.path.join(DOCS_DIR, "adk.log")
 PLUGINS_DIR = os.path.join(DOCS_DIR, "plugins")
+
+
+def park_pattern(text: str) -> str:
+    """Превратить то, что ввёл пользователь, в элемент маски парка (host_mask).
+
+    «PC-» → ``PC-*`` (все ПК с таким началом); «PC-0000» → ``PC-????`` (каждая цифра — ровно одна
+    позиция); «PC» без дефиса — точное имя. 3.10.0.
+    """
+    t = text.strip().upper()
+    if not t:
+        return ""
+    out = "".join("?" if (c.isascii() and c.isdigit()) else c for c in t)
+    if t[-1] in "-_ ./\\":
+        out += "*"
+    return out
 
 
 # Флаги userAccountControl
@@ -40,7 +121,9 @@ _DEFAULTS: dict[str, dict[str, str]] = {
         "search_base": "DC=example,DC=local",
         "users_ou": "OU=Employees,DC=example,DC=local",
         "upn_suffix": "example.local",
-        "use_ssl": "true",
+        # 3.10.0: по умолчанию без LDAPS — обычный порт 389, смена пароля через net user /domain (SAMR).
+        # Включать use_ssl = true нужно только для шифрования LDAPS (порт 636).
+        "use_ssl": "false",
         "tls_validate": "false",
         "connect_timeout": "5",
         "max_password_age_days": "90",
@@ -332,7 +415,7 @@ users_ou = {ad_sec.get('users_ou', 'OU=Users,DC=example,DC=local')}
 # Суффикс UPN (логин@домен)
 upn_suffix = {ad_sec.get('upn_suffix', 'example.local')}
 # LDAPS (порт 636); false — порт 389 без SSL. Без LDAPS пароль меняется через net user /domain (SAMR).
-use_ssl = {ad_sec.get('use_ssl', 'true')}
+use_ssl = {ad_sec.get('use_ssl', 'false')}
 # Проверка SSL-сертификата контроллера домена. false по умолчанию: у большинства доменов
 # сертификат ДК самоподписанный, и строгая проверка даёт «контроллер домена недоступен».
 tls_validate = {ad_sec.get('tls_validate', 'false')}

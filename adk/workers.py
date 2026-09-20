@@ -563,7 +563,12 @@ class PCScannerWorker(BaseWorker):
                 conn.unbind()
             hosts = self.workstation_names(entries)
             if not hosts:
-                self.progress.emit("⚠️ Целевые ПК не найдены (проверьте host_pattern в config.ini)")
+                # 3.10.0: подсказка зависит от того, что фильтрует — заданная маска парка или host_pattern
+                if settings.host_mask.strip():
+                    self.progress.emit(f"⚠️ По маске парка «{settings.host_mask}» не нашлось ни одного ПК — "
+                                       f"проверьте [Scanner] host_mask в config.ini")
+                else:
+                    self.progress.emit("⚠️ Целевые ПК не найдены (проверьте host_pattern в config.ini)")
                 self.finished_scan.emit(0)
                 return
             self.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping, журналы входов)…")
@@ -593,6 +598,9 @@ class PCScannerWorker(BaseWorker):
             conn.unbind()
         hosts = w.workstation_names(entries)
         if not hosts:
+            if settings.host_mask.strip():
+                raise RuntimeError(f"в AD найдено {len(entries)} компьютеров, но ни один не подходит под маску парка "
+                                   f"«{settings.host_mask}» ([Scanner] host_mask в config.ini)")
             raise RuntimeError(f"в AD найдено {len(entries)} компьютеров, но ни один не подходит под host_pattern "
                                f"«{settings.host_pattern}» (config.ini → [Scanner]); исключение: «{settings.host_exclude}»")
         w.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping, журналы входов)…")

@@ -1,6 +1,6 @@
 # ADK — Active Directory Kit · руководство для продолжения работы в новом чате
 
-Актуально на 2026-09-20. Версия проекта **3.9.1**, тестов **352**, e2e 46 + 83 + 45 + 41, стенд `tests/bench/` (1500 ПК), видео-ролик **31** (709 с). Раздел О — обязательный регламент работы.
+Актуально на 2026-09-20. Версия проекта **3.10.0**, тестов **371**, e2e 46 + 83 + 45 + 41, стенд `tests/bench/` (1500 ПК), видео-ролик **31** (709 с). Раздел О — обязательный регламент работы.
 Внутренний документ: лежит в `extras/`, не входит в zip и не упоминается в README/CHANGELOG.
 Прочитать целиком до первой правки — здесь всё от А до Я, включая производство видео и чистку истории git.
 
@@ -542,6 +542,14 @@ Kyocera, 10.0.9.93, Шевченко+архивы, набор по буквам.
 - Фикс: конец `closeEvent` — если не `_quitting`: `QApplication.quit()` + страховка `QTimer.singleShot(3000, os._exit(0))` (в тестах PYTEST_CURRENT_TEST не ставится). `quit_app` ставит `_quitting` ДО close() — без рекурсии.
 - Комментарий маски в config.example.ini/DEFAULT_CONFIG/_MIGRATE_KEYS: `?` = одна цифра.
 - Тесты: +2 (close с треем → quit; quit_app → флаг). Видео 32: ≥709 с.
+
+### 3.10.0 — портативная папка, окно парка, дефолты без LDAPS
+- `config._data_dir() -> (путь, portable)`: frozen → `exe_dir/ADK` (проба записи), иначе Документы; `_migrate_old_data()` переносит Документы\ADK → новую папку и перезаписывает старые абсолютные пути в config.ini (иначе db_path указывал бы на исчезнувший файл). `PORTABLE_DIR` — не None только в портативном режиме.
+- `config.park_pattern(text)`: «PC-» → `PC-*`, «PC-0000» → `PC-????` (каждая цифра = `?`), без дефиса — точное имя. `ParkMaskDialog(setup_ui)` — поля + живые счётчики по списку ПК домена (`__main__._fetch_computer_names`), save → `settings.host_mask` + `save_section("Scanner", ...)`. Показ: `db_setup_ran and not host_mask and not ADK_TESTS`, после логина, до ask_startup_scan.
+- Дефолты `[AD] use_ssl/tls_validate = false` (шаблон write_default_config берёт из _DEFAULTS; config.example.ini тоже).
+- Сканер: при пустом результате подсказка называет host_mask, когда маска задана (workers.py, обе ветки — Qt-воркер и scan_once).
+- Грабли: старый тест партии 30 запрещал слово «portable» (зачистка прошлой реализации) — переписан: запрещены только имена старых глобалов IS_PORTABLE/ADK_PORTABLE/ADK_HOME. QLineEdit(text) в конструкторе НЕ эмитит textChanged — add_row сам зовёт recount().
+- Тесты: +20 в tests/test_batch39.py. Видео 32: ≥709 с.
 
 ## Н. Технические грабли
 

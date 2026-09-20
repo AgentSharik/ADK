@@ -91,6 +91,24 @@ DB_HANG_TEXT = (
 _CLI_FLAGS = ("--find", "--export-inventory", "--attention", "--wol", "--ping", "--scan", "--serve", "--version", "-h", "--help")
 
 
+def _fetch_computer_names(user: str | None, password: str | None) -> list[str]:
+    """Список рабочих станций домена для окна выбора парка (3.10.0). Ошибка — не критична: окно покажет ввод без счётчика."""
+    try:
+        from . import ad
+        conn = ad.make_connection(user, password)
+        try:
+            entries = ad.paged_search(
+                conn,
+                "(&(objectClass=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))"
+                "(!(operatingSystem=*Server*)))", ["name"])
+        finally:
+            conn.unbind()
+        return [ad.get_ad_value(e, "name").rstrip("$").upper() for e in entries]
+    except Exception:  # noqa: BLE001
+        log.exception("список ПК для окна выбора парка")
+        return []
+
+
 def main() -> int:
     if any(arg.split("=")[0] in _CLI_FLAGS for arg in sys.argv[1:]):
         from .cli import main as cli_main
@@ -110,12 +128,14 @@ def main() -> int:
 
     # 3.5.11: первый запуск — спросить, где лежит (или будет лежать) база, ещё до окна входа
     initial_fill = False
+    db_setup_ran = False
     from .setup_ui import needs_db_setup
     if needs_db_setup():
         from .setup_ui import DbSetupDialog
         setup = DbSetupDialog()
         if setup.exec() != QDialog.DialogCode.Accepted:
             return 0
+        db_setup_ran = True
         initial_fill = setup.is_new
         setup.deleteLater()          # settings уже перечитаны — db.* открывают соединение по новому db_path
 
@@ -154,6 +174,18 @@ def main() -> int:
         user, password = dlg.username, dlg.password
         dlg.deleteLater()
         break
+
+    # 3.10.0: сразу после выбора базы (первый запуск) — какие серии ПК образуют парк, если маска ещё не задана.
+    # Живой счётчик «найдено: N» считается по реальному списку ПК домена, результат пишется в [Scanner] host_mask.
+    if db_setup_ran and not os.environ.get("ADK_TESTS") and not config.settings.host_mask.strip():
+        try:
+            from .setup_ui import ParkMaskDialog
+            names = _fetch_computer_names(user, password)
+            pm = ParkMaskDialog(None, names)
+            pm.exec()
+            pm.deleteLater()
+        except Exception:  # noqa: BLE001
+            log.exception("окно выбора парка")
 
     # 3.9.0: вопрос «что собрать» — строго до главного окна и только один раз, при пустой базе
     # (первый запуск / свежий файл). Дальше база обновляется кнопкой и по расписанию — вопрос не беспокоит.

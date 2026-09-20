@@ -244,9 +244,12 @@ def test_settings_db_ready_flag_parsed(tmp_path, monkeypatch):
     assert s.db_ready is True and s.db_path == str(tmp_path / "a.db")
 
 
-# --------------------------------------------------------------------------- portable-режима больше нет
+# --------------------------------------------- старой реализации portable-режима больше нет (см. docstring)
 @pytest.mark.parametrize("rel", ["adk", "docs", "README.md", "config.example.ini", "tests"])
 def test_no_portable_mode_traces(rel):
+    """Партия 30 зачищала остатки старой экспериментальной реализации портативного режима.
+    С 3.10.0 папка ADK рядом с exe — официальная функция (config.PORTABLE_DIR), слово «портативно»
+    в текстах допустимо; запрещены только имена старых глобалов, чтобы не смешать две реализации."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     path = os.path.join(root, rel)
     files = [path] if os.path.isfile(path) else [os.path.join(d, f) for d, _, fs in os.walk(path) for f in fs
@@ -257,7 +260,7 @@ def test_no_portable_mode_traces(rel):
             continue
         with open(f, encoding="utf-8", errors="ignore") as fh:
             txt = fh.read()
-        if re.search(r"IS_PORTABLE|ADK_PORTABLE|ADK_HOME|portable", txt, re.I):
+        if re.search(r"IS_PORTABLE|ADK_PORTABLE|ADK_HOME", txt):
             bad.append(os.path.relpath(f, root))
     assert not bad, bad
 
