@@ -9,6 +9,9 @@ from __future__ import annotations
 _LANG = "ru"
 
 EN: dict[str, str] = {
+    # 3.9.2: кнопка «Опросить парк» (ПО) убрана — текст без неё + прогресс «Области»
+    "Сохранённых данных о ПО пока нет — опросите ПК из его карточки или воспользуйтесь «Область».": "No saved software data yet — poll a PC from its card or use \"Organization\".",
+    "🏢 «{0}»: ⏳ Опрошено {1} из {2} ПК · {3}" : "🏢 \"{0}\": ⏳ Polled {1} of {2} PCs · {3}",
     # слой 3b: аварийные MessageBox из __main__.py
     "Внутренняя ошибка": "Internal error",
     "{0}: {1}\nПодробности — в журнале.": "{0}: {1}\nDetails — in the log.",
@@ -105,7 +108,6 @@ EN: dict[str, str] = {
     "Объект": "Object",
     "Опись": "Inventory",
     "Опись сохранена:\n{0}": "Inventory saved:\n{0}",
-    "Опрос парка: ответили {0} ПК, не в сети {1}, не удалось {2}. ПО сохранено — введите название для поиска.": "Fleet poll: responded {0} PCs, offline {1}, failed {2}. Software saved — type a name to search.",
     "Опросить принтеры только у ПК выбранной организации (как в Excel-описи).\nПокажет, какой принтер к какому сотруднику подключён, тип подключения и адрес.": "Poll printers only on PCs of the selected organization (as in the Excel inventory).\nShows which printer is attached to which computer; PCs are taken from the current selection.",
     "Опросить только ПК выбранной организации (как в Excel-описи)\\nи показать, какой пользователь какое ПО использует": "Poll only PCs of the selected organization (as in the Excel inventory)\\nand show which user uses which software",
     "Опрошено {0}: программ — {1}, обновлений — {2}": "Polled {0}: programs — {1}, updates — {2}",
@@ -282,7 +284,6 @@ EN: dict[str, str] = {
     "ℹ️ Файл есть, но инвентарь в нём пуст — после входа ADK заполнит его: опросит домен и ПК.{0}": "ℹ️ The file exists but the inventory is empty — after sign-in ADK will fill it: query the domain and PCs.{0}",
     "⏳ Обхожу {0}… 0 с": "⏳ Walking {0}… 0 s",
     "⏳ Обхожу {0}… {1} с — большие диски занимают несколько минут": "⏳ Walking {0}… {1} s — large drives take a few minutes",
-    "⏳ Опрашиваю {0} ПК…": "⏳ Querying {0} PCs…",
     "⏳ Парк сканирует {0} (до {1}) — база общая, повторный опрос не нужен": "⏳ {0} is scanning the fleet (until {1}) — the database is shared, no need to re-scan",
     "⏻ {0}: команда отправлена на {1}": "⏻ {0}: command sent to {1}",
     "⚠️ AD: {0}": "⚠️ AD: {0}",
@@ -383,18 +384,12 @@ EN: dict[str, str] = {
     "Только обновления безопасности (по описанию KB). Заполняется при опросе ПК.":
         "Security updates only (by KB description). Filled when the PC is queried.",
     "Название программы (часть), например: 1С, Chrome, KES…": "Program name (part), e.g.: Chrome, KES…",
-    "Опросить все ПК в сети (WinRM → WMI → удалённый реестр) и сохранить их ПО в базу":
-        "Query all online PCs (WinRM → WMI → remote registry) and save their software to the database",
     "Поиск идёт по сохранённым данным опрошенных ПК. Двойной клик — найти ПК в главном окне.":
         "Search runs over saved data of queried PCs. Double-click — find the PC in the main window.",
-    "Сохранённых данных о ПО пока нет — нажмите «Опросить парк» или опросите ПК из его карточки.":
-        "No saved software data yet — press “Query the fleet” or query the PC from its card.",
     "Топ программ по числу ПК (по сохранённым данным). Введите название для точного поиска.":
         "Top programs by PC count (from saved data). Type a name for an exact search.",
     "⏳ Опрашиваю ПК (WinRM → WMI → удалённый реестр), обычно 10–60 с…":
         "⏳ Querying the PC (WinRM → WMI → remote registry), usually 10–60 s…",
-    "⚠️ ПК для опроса не найдены: инвентарь пуст и AD не вернул рабочих станций":
-        "⚠️ No PCs to query: the inventory is empty and AD returned no workstations",
     "Только различия": "Differences only", "⏳ Загрузка…": "⏳ Loading…", "⏳ Опрашиваю оба ПК…": "⏳ Querying both PCs…",
     "Первые три октета подсети /24": "First three octets of the /24 subnet",
     "С какого хоста начинать проверку": "Which host to start checking from", "🔍 Найти": "🔍 Find",

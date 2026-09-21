@@ -230,11 +230,8 @@ class SoftwareDialog(FramelessDialog):
         b.setObjectName("btnPrimary")
         b.clicked.connect(self.search_fleet)
         top.addWidget(b)
-        # 3.5.10: опрос всего парка отсюда — без него вкладка у организации без сохранённых данных была пустой
-        self.btn_fleet_poll = QPushButton(tr("📡 Опросить парк"))
-        self.btn_fleet_poll.setToolTip(tr("Опросить все ПК в сети (WinRM → WMI → удалённый реестр) и сохранить их ПО в базу"))
-        self.btn_fleet_poll.clicked.connect(self.poll_fleet)
-        top.addWidget(self.btn_fleet_poll)
+        # 3.9.2: «📡 Опросить парк» (опрос ПО всех ПК парка) убран — тяжёлый разовый проход;
+        # ПО собирается точечно: опрос одного ПК из карточки, «Область» (одна организация).
         # 3.8.0: «Область» — опрос только ПК выбранной организации, с колонкой «Пользователь»
         self.btn_fleet_org = QPushButton(tr("🏢 Область"))
         self.btn_fleet_org.setToolTip(tr("Опросить только ПК выбранной организации (как в Excel-описи)\\n" "и показать, какой пользователь какое ПО использует"))
@@ -261,7 +258,7 @@ class SoftwareDialog(FramelessDialog):
     def _fill_summary(self):
         top = software.software_summary()
         if not top:
-            self.fleet_lbl.setText(tr("Сохранённых данных о ПО пока нет — нажмите «Опросить парк» или опросите ПК из его карточки."))
+            self.fleet_lbl.setText(tr("Сохранённых данных о ПО пока нет — опросите ПК из его карточки или воспользуйтесь «Область»."))
             return
         self.fleet_lbl.setText(tr("Топ программ по числу ПК (по сохранённым данным). Введите название для точного поиска."))
         _fill(self.fleet, [(f"{n} ПК", name) for name, n in top[:100]])
@@ -301,20 +298,6 @@ class SoftwareDialog(FramelessDialog):
         run_in_background(self, lambda: software.get_software(self.comp), done,
                           lambda m: (self.btn_poll.setEnabled(True), self.lbl.setText(tr("⚠️ {0}").format(m))))
 
-    def poll_fleet(self):
-        from . import fleetpoll
-        self._org_users, self._org_rows, self._org_name = None, None, ""
-        self.fleet.setHorizontalHeaderLabels([tr("ПК"), tr("Программа"), tr("Версия"), tr("Опрошен")])
-        try:
-            hosts = fleetpoll.fleet_hosts(self.app.get_conn)
-        except Exception as exc:  # noqa: BLE001
-            self.fleet_lbl.setText(tr("⚠️ Список ПК не получен: {0}").format(exc))
-            return
-        if not hosts:
-            self.fleet_lbl.setText(tr("⚠️ ПК для опроса не найдены: инвентарь пуст и AD не вернул рабочих станций"))
-            return
-        self._start_fleet_poll(hosts)
-
     def poll_org(self):
         """«Область»: выбрать организацию и опросить только её ПК — в таблице появится, кто какое ПО использует."""
         from . import fleetpoll
@@ -336,42 +319,32 @@ class SoftwareDialog(FramelessDialog):
         self._start_fleet_poll(hosts)
 
     def _start_fleet_poll(self, hosts: list[str]):
+        """Живой опрос ПО выбранных ПК (единственный запуск — из «Области»)."""
         from . import fleetpoll
-        self.btn_fleet_poll.setEnabled(False)
         self.btn_fleet_org.setEnabled(False)
         self.btn_fleet_stop.setEnabled(True)
-        if not self._org_users:
-            self.fleet_lbl.setText(tr("⏳ Опрашиваю {0} ПК…").format(len(hosts)))
         self.fleet_worker = fleetpoll.FleetPollWorker(hosts, fleetpoll.software_live, parent=self)
         self.fleet_worker.progress.connect(lambda i, n, h: self.fleet_lbl.setText(
-            (f"🏢 «{self._org_name}»: " if self._org_users else "") + f"⏳ Опрошено {i} из {n} ПК · {h}"))
+            tr("🏢 «{0}»: ⏳ Опрошено {1} из {2} ПК · {3}").format(self._org_name, i, n, h)))
         self.fleet_worker.finished_poll.connect(self._fleet_done)
         self.fleet_worker.error.connect(lambda m: (self._fleet_done({}), self.fleet_lbl.setText(tr("⚠️ {0}").format(m))))
         self.fleet_worker.start()
 
     def _fleet_done(self, results: dict):
         from . import fleetpoll
-        self.btn_fleet_poll.setEnabled(True)
         self.btn_fleet_org.setEnabled(True)
         self.btn_fleet_stop.setEnabled(False)
         sm = fleetpoll.summarize(results)
-        if self._org_users:
-            # «Область»: кто какое ПО использует — строки (пользователь, ПК, программа, версия) из живого опроса
-            rows = []
-            for comp, r in sorted(results.items()):
-                for s in r.get("software") or []:
-                    rows.append((self._org_users.get(comp, "—"), comp, s["name"], s.get("version") or ""))
-            self._org_rows = rows
-            _fill(self.fleet, rows)
-            self.fleet_lbl.setText(tr("🏢 «{0}»: ответили {1} ПК, не в сети {2}, не удалось {3}. ПО — {4} записей; введите название для фильтра.")
-                                   .format(self._org_name, sm["ok"], sm["skipped"], sm["failed"], len(rows)))
-            db.log_action(getattr(self.app, "admin_name", ""), "software_fleet", self._org_name, f"{sm['ok']} ПК (область)")
-            return
-        self._fill_summary()
-        if results:
-            self.fleet_lbl.setText(tr("Опрос парка: ответили {0} ПК, не в сети {1}, не удалось {2}. ПО сохранено — введите название для поиска.")
-                                   .format(sm["ok"], sm["skipped"], sm["failed"]))
-            db.log_action(getattr(self.app, "admin_name", ""), "software_fleet", "fleet", f"{sm['ok']} ПК")
+        # «Область»: кто какое ПО использует — строки (пользователь, ПК, программа, версия) из живого опроса
+        rows = []
+        for comp, r in sorted(results.items()):
+            for s in r.get("software") or []:
+                rows.append((self._org_users.get(comp, "—"), comp, s["name"], s.get("version") or ""))
+        self._org_rows = rows
+        _fill(self.fleet, rows)
+        self.fleet_lbl.setText(tr("🏢 «{0}»: ответили {1} ПК, не в сети {2}, не удалось {3}. ПО — {4} записей; введите название для фильтра.")
+                               .format(self._org_name, sm["ok"], sm["skipped"], sm["failed"], len(rows)))
+        db.log_action(getattr(self.app, "admin_name", ""), "software_fleet", self._org_name, f"{sm['ok']} ПК (область)")
 
     def on_dialog_done(self):
         if self.fleet_worker:
