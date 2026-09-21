@@ -36,7 +36,7 @@ def test_quick_access_uses_flow_layout(qapp, fake_conn, monkeypatch):
     w = _main(qapp, fake_conn, monkeypatch)
     buttons = [b for b in w.findChildren(type(w.btn_notes)) if b.parentWidget() is not None
                and isinstance(b.parentWidget().layout(), FlowLayout)]
-    assert len(buttons) >= 6, "кнопки быстрого доступа лежат в FlowLayout — при узком окне переносятся на новую строку"
+    assert len(buttons) >= 5, "кнопки быстрого доступа лежат в FlowLayout — при узком окне переносятся на новую строку"
     w.close()
 
 

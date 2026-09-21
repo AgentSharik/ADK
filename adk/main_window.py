@@ -498,8 +498,7 @@ class ADApp(FramelessMainWindow):
                                  ("📊 Excel-опись ПК", lambda: InventoryDialog(self, self).exec(), ""),
                                  ("🖨️ Принтеры парка", self.printers_overview, ""),
                                  ("➕ Новый пользователь AD", self.new_user, "create_user"),
-                                 ("📜 Журнал действий", lambda: AuditLogDialog(self, self).exec(), ""),
-                                 ("📦 ПО парка", lambda: SoftwareDialog("", self, self).exec(), "")):
+                                 ("📜 Журнал действий", lambda: AuditLogDialog(self, self).exec(), "")):
             b = QPushButton(tr(text))
             b.clicked.connect(fn)
             if action:
@@ -1956,7 +1955,7 @@ class ADApp(FramelessMainWindow):
 
     # ---- прогресс полного опроса в строке статуса
     def _full_step_names(self) -> dict[str, str]:
-        return {"pcs": "ПК", "printers": "принтеры", "software": "программы", "specs": "характеристики"}
+        return {"pcs": "ПК", "printers": "принтеры", "specs": "характеристики"}
 
     def _full_on_plan(self, phase: str, total: int):
         self._planned[phase] = total

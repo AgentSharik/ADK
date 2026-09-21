@@ -72,8 +72,9 @@ def test_startup_dialog_three_choices(qapp):
 def test_full_summary_text():
     from adk.scan_ui import full_summary_text
     full = full_summary_text({"pcs": 120, "online": 30, "printers": 34, "printers_pcs": 30,
-                              "sw": 3000, "sw_pcs": 28, "mode": "full"})
-    assert "ПК: 120" in full and "принтеры: 34 на 30 ПК" in full and "программы: 3000 на 28 ПК" in full
+                              "specs_pcs": 29, "mode": "full"})
+    assert "ПК: 120" in full and "принтеры: 34 на 30 ПК" in full and "характеристики: 29 ПК" in full
+    assert "программы" not in full          # 3.9.2: шаг «программы» убран из полного опроса
     assert "принтеры" not in full_summary_text({"pcs": 3, "mode": "pcs"})
     assert "прервано" in full_summary_text({"error": "нет связи", "mode": "full"})
 
@@ -93,7 +94,7 @@ def test_full_scan_worker_phases(monkeypatch):
     monkeypatch.setattr(fleetpoll, "printers_live",
                         lambda h: {"printers": [{"name": "HP LaserJet", "port": "IP_10.0.0.5", "kind": "network", "ip": "10.0.0.5"}]})
     monkeypatch.setattr(fleetpoll, "software_live",
-                        lambda h: {"software": [{"name": "1С", "version": "8.3", "publisher": "", "installed": ""}]})
+                        lambda h: (_ for _ in ()).throw(AssertionError("3.9.2: ПО не должно опрашиваться полным опросом")))
     monkeypatch.setattr(fleetpoll, "specs_live",
                         lambda h: {"specs": {"os": {"Название": "Windows 11 Pro"}, "cpu": {"Название": "i5"}}})
 
@@ -115,11 +116,12 @@ def test_full_scan_worker_phases(monkeypatch):
     assert done and not done[0]["error"]
     assert done[0]["pcs"] == 2 and done[0]["online"] == 1
     assert done[0]["printers"] == 1 and done[0]["printers_pcs"] == 1
-    assert done[0]["sw"] == 1 and done[0]["sw_pcs"] == 1
+    assert "sw" not in done[0] and "sw_pcs" not in done[0]   # 3.9.2: фазы «программы» больше нет
     assert done[0]["specs_pcs"] == 1                     # 3.9.0: характеристики собраны и в базе
-    # план: шаги объявлены, объём шагов 2–3 после шага 1 уточнён до фактического списка онлайн-ПК
-    assert ("pcs", 2) in plans and ("printers", 1) in plans and ("software", 1) in plans
-    assert units[-4][0] == "pcs" and units[-3][0] == "printers" and units[-2][0] == "software" and units[-1][0] == "specs"
+    # план: шаги объявлены, объём шага принтеров после шага 1 уточнён до фактического списка онлайн-ПК
+    assert ("pcs", 2) in plans and ("printers", 1) in plans and ("specs", 1) in plans
+    assert all(p != "software" for p, _ in plans)
+    assert units[-3][0] == "pcs" and units[-2][0] == "printers" and units[-1][0] == "specs"
     # принтеры живого опроса записаны в базу — они находятся поиском по IP
     assert any(r["ip"] == "10.0.0.5" for r in db.printer_summary())
 

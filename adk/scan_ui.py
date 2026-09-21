@@ -213,7 +213,11 @@ class FullScanPlan:
 
 
 class FullScanWorker(BaseWorker):
-    """Полный опрос парка: ПК (порциями по 50 — пул сканера остаётся широким) → принтеры → программы.
+    """Полный опрос парка: ПК (порциями по 50 — пул сканера остаётся широким) → принтеры → характеристики.
+
+    3.9.2: шаг «программы» убран из полного опроса — опрос ПО всех онлайн-ПК был самым тяжёлым;
+    ПО по-прежнему собирается точечно: опрос одного ПК из карточки, «Область» (одна организация),
+    «Опросить парк» из окна ПО.
 
     Сигналы: ``plan(phase, total)`` — объём шага стал известен; ``unit(phase, done, host)`` — выполнено
     ``done`` проверок шага, сейчас ``host``; ``step_text(text)`` — короткий текст текущего действия;
@@ -234,7 +238,7 @@ class FullScanWorker(BaseWorker):
 
     def run(self) -> None:
         from . import fleetpoll
-        s = {"pcs": 0, "online": 0, "printers_pcs": 0, "printers": 0, "sw_pcs": 0, "sw": 0,
+        s = {"pcs": 0, "online": 0, "printers_pcs": 0, "printers": 0,
              "specs_pcs": 0, "error": "", "stopped": False, "mode": self.mode}
         try:
             # ---- шаг 1: ПК из домена (LDAP, при пустом результате — ADSI, как в старой программе)
@@ -252,7 +256,6 @@ class FullScanWorker(BaseWorker):
             self.plan.emit("pcs", len(hosts))
             if self.mode == "full":
                 self.plan.emit("printers", est)
-                self.plan.emit("software", est)
             scanner = PCScannerWorker.__new__(PCScannerWorker)
             scanner.conn_factory, scanner._cancelled = self.conn_factory, False
             scanner.progress = _Emitter(self.step_text.emit)
@@ -279,7 +282,6 @@ class FullScanWorker(BaseWorker):
             hosts_online = fleetpoll.fleet_hosts(self.conn_factory, online_only=True)
             s["online"] = len(hosts_online)
             self.plan.emit("printers", len(hosts_online))
-            self.plan.emit("software", len(hosts_online))
             if self.cancelled:
                 s["stopped"] = True
                 self.finished_full.emit(s)
@@ -297,16 +299,7 @@ class FullScanWorker(BaseWorker):
                         s["printers"] += len(r["printers"])
                 if self.cancelled:
                     s["stopped"] = True
-                self.step_text.emit(tr("Программы: опрашиваю {0} ПК в сети…").format(len(hosts_online)))
-                res = fleetpoll.poll_fleet(
-                    hosts_online, fleetpoll.software_live,
-                    progress=lambda i, n, h: self.unit.emit("software", i, h),
-                    cancelled=lambda: self.cancelled)
-                for comp, r in res.items():
-                    if "software" in r:
-                        s["sw_pcs"] += 1
-                        s["sw"] += len(r["software"])
-                # ---- шаг 4 (3.9.0): характеристики — процессор/память/диски/ОС — в базу.
+                # ---- шаг 3 (3.9.0): характеристики — процессор/память/диски/ОС — в базу.
                 # Только для ПК без свежих данных: повторные полные опросы не пересобирают всё заново.
                 if not self.cancelled:
                     try:
@@ -341,7 +334,6 @@ def full_summary_text(s: dict) -> str:
     parts = [f"ПК: {s.get('pcs', 0)}"]
     if s.get("mode") == "full":
         parts.append(f"принтеры: {s.get('printers', 0)} на {s.get('printers_pcs', 0)} ПК")
-        parts.append(f"программы: {s.get('sw', 0)} на {s.get('sw_pcs', 0)} ПК")
         if s.get("specs_pcs"):
             parts.append(f"характеристики: {s.get('specs_pcs')} ПК")
     if s.get("stopped"):
