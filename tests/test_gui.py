@@ -245,13 +245,14 @@ def test_dialog_closed_before_background_thread_finishes_does_not_crash(qapp, fa
     from adk import widgets
 
     app = SimpleNamespace(get_conn=lambda: fake_conn, admin_name="admin")
+    live0 = set(widgets._LIVE_WORKERS)   # чужие долгоживущие потоки ранее созданных окон (updates.check и т.п.) не наше дело
     for _ in range(10):
         dlg = UserCardDialog(ENTRIES[0], app)  # стартует фоновую загрузку групп
         dlg.close()
         del dlg
         gc.collect()
-    _wait(lambda: not widgets._LIVE_WORKERS, qapp, 5000)
-    assert not widgets._LIVE_WORKERS  # все потоки дожили до finished и удалились сами
+    _wait(lambda: not (widgets._LIVE_WORKERS - live0), qapp, 5000)
+    assert not (widgets._LIVE_WORKERS - live0)  # все потоки карточек дожили до finished и удалились сами
 
 
 # --------------------------------------------------------------------------- 2.1.0: горячие клавиши, инспектор, журнал

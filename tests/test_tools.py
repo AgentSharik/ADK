@@ -61,6 +61,18 @@ def _spin(app, ms=400):
         time.sleep(0.01)
 
 
+def _wait(app, cond, ms=5000):
+    """Ждать условие, крутя event loop — для фоновых потоков (CI Stability ×5: _spin бывает мал)."""
+    import time
+    t0 = time.time()
+    while (time.time() - t0) * 1000 < ms:
+        app.processEvents()
+        if cond():
+            return True
+        time.sleep(0.01)
+    return cond()
+
+
 # ------------------------------------------------------------------ 1. заметки, таймлайн, подсказки
 def test_notes_crud_and_count():
     nid = db.add_note("CORP\\Ivanov", "  выдан ноутбук  ", "admin")
@@ -292,8 +304,8 @@ def test_bulk_dialog_disable_and_readonly(qapp, monkeypatch):
     assert dlg.table.rowCount() == 2 and dlg.groups.count() == 2
     dlg.op.setCurrentIndex(dlg.op.findData("disable"))
     dlg.run_op()
-    _spin(qapp)
-    assert len(app.conn.modified) == 2 and all(ok for _, ok, _ in dlg.results)
+    assert _wait(qapp, lambda: len(app.conn.modified) == 2 and len(dlg.results) == 2), (app.conn.modified, dlg.results)   # фоновые потоки: ждать, а не надеяться на _spin
+    assert all(ok for _, ok, _ in dlg.results)
     assert {r[2] for r in db.audit_entries()} >= {"bulk_disable"}
     access.set_readonly(True, "test")
     try:
