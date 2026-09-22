@@ -267,3 +267,18 @@ def test_parse_live_printers_host_dns_name_fallback():
     ps = netutils.parse_live_printers_json(json.dumps(payload))
     assert ps[0]["ip"] == "10.0.2.50"            # IP из имени порта полезнее нерезолвленного имени
     assert ps[1]["ip"] == "prn-canon01" and ps[1]["kind"] == "network"   # имени порта нет IP — честно имя
+
+
+def test_printers_from_specs_ip_column_wins():
+    """3.9.7: отдельная колонка «IP-адрес» в инвентарном CSV надёжнее IP в имени порта-метки."""
+    d = {"printers": {"0": {"Наименование": "HP LaserJet", "Порт": "IP_10.0.2.50", "IP-адрес": "10.0.9.99",
+                            "По умолчанию": "да"}}}
+    prn = netutils.printers_from_specs(d)
+    assert prn and prn[0]["ip"] == "10.0.9.99" and prn[0]["kind"] == "network"
+
+
+def test_printers_from_specs_no_ip_column_keeps_port_ip():
+    """Колонки адреса нет — прежнее поведение: IP из имени порта, «Расположение» — фолбэк для WSD."""
+    d = {"printers": {"0": {"Наименование": "HP", "Порт": "IP_10.0.2.50", "Расположение": "2 этаж"}}}
+    prn = netutils.printers_from_specs(d)
+    assert prn[0]["ip"] == "10.0.2.50"

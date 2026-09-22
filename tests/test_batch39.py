@@ -455,3 +455,10 @@ def test_ps_scanner_reports_user_source():
     assert '$userSrc = "csv"' in _PS_SCANNER and '$userSrc = "wmi"' in _PS_SCANNER
     assert "Name='explorer.exe'" in _PS_SCANNER          # RDP-сессии: UserName бывает пуст
     assert "Invoke-CimMethod -MethodName GetOwner" in _PS_SCANNER
+
+
+def test_ps_scanner_registry_fallback():
+    """3.9.7: третий путь «кто за ПК» — удалённый реестр (порт 445), когда WinRM и WMI закрыты."""
+    from adk.workers import _PS_SCANNER
+    assert "OpenRemoteBaseKey" in _PS_SCANNER
+    assert "LastLoggedOnSAMUser" in _PS_SCANNER and "LastLoggedOnUser" in _PS_SCANNER

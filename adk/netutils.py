@@ -816,11 +816,18 @@ def printers_from_specs(d: dict) -> list[dict]:
     for info in d.get("printers", {}).values():
         name = _first_match(info, "наименование", "название", "модель", "name", default="")
         port = _first_match(info, "порт", "port", default="")
-        loc = _first_match(info, "расположение", "location", "адрес", "url", default="")
+        # 3.9.7: отдельная колонка адреса («IP», «IP-адрес», «Адрес») — надёжнее IP в имени порта:
+        # имя порта — метка при его создании и может остаться от старого адреса принтера
+        ipcol = ip_from_text(_first_match(info, "ip", "адрес", default=""))
+        loc = _first_match(info, "расположение", "location", "url", default="")
         if not name or is_virtual_printer(name, port):
             continue
         kind, ip = classify_printer_port(port)
-        if kind == "network" and not ip and loc:
+        if ipcol:
+            ip = ipcol
+            if kind not in ("network", "shared"):
+                kind = "network"
+        elif kind == "network" and not ip and loc:
             ip = ip_from_text(loc)          # WSD-порт без адреса, но в «Расположении» есть http://IP:3911/
         default_raw = _first_match(info, "по умолчанию", "default", default="").lower()
         out.append({"name": name.strip(), "port": port, "kind": kind, "ip": ip,

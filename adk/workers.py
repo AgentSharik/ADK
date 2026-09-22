@@ -513,6 +513,15 @@ foreach ($item in $data) {
           try { $o = @(Get-CimInstance -ClassName Win32_Process -Filter "Name='explorer.exe'" -ComputerName $pc -OperationTimeoutSec 3 -ErrorAction Stop | Invoke-CimMethod -MethodName GetOwner)[0]
                 if ($o -and $o.User) { $u = $o.Domain + '/' + $o.User } } catch {}
         }
+        if (-not $u) {
+          # 3.9.7: удалённый реестр (порт 445, служба RemoteRegistry) — отвечает, когда WinRM и WMI закрыты;
+          # LastLoggedOnSAMUser вида DOMAIN\user — последний вошедший пользователь
+          try { $base = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, $pc)
+                $lu = $base.OpenSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI')
+                if ($lu) { $v = $lu.GetValue('LastLoggedOnSAMUser'); if (-not $v) { $v = $lu.GetValue('LastLoggedOnUser') }
+                           if ($v) { $u = [string]$v } }
+                $base.Close() } catch {}
+        }
         if ($u) { $user = ($u -split '[\\/]')[-1].Trim(); $userSrc = "wmi" }
       } catch {}
     }
