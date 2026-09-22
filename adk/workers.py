@@ -745,12 +745,14 @@ class PCScannerWorker(BaseWorker):
             self.finished_scan.emit(0)
 
     @classmethod
-    def scan_once(cls, conn_factory: ConnFactory, progress=None) -> int:
-        """Синхронный проход сканера без Qt-потока — для CLI (`adk --scan`) и серверного планировщика."""
+    def scan_once(cls, conn_factory: ConnFactory, progress=None, deep: bool = True) -> int:
+        """Синхронный проход сканера без Qt-потока — для CLI (`adk --scan`) и серверного планировщика.
+        ``deep=False`` (3.9.4) — лёгкий проход повторных циклов сервера: DNS + пинг 100 мс + сверка
+        с базой, без WMI «кто за ПК» и журнала КД — та же семантика, что фоновый скан GUI (3.9.3)."""
         w = cls.__new__(cls)
         w.conn_factory, w._cancelled = conn_factory, False
         w.progress = _Emitter(progress or (lambda m: log.info("%s", m)))
-        w.deep = True   # CLI/серверный запуск — полный опрос (WMI «кто за ПК» + журнал КД)
+        w.deep = deep   # CLI --scan и первичное наполнение — True; повторные циклы сервера — False
         hosts, via = host_list_from_ad(conn_factory, w.progress.emit)
         if not hosts:
             if settings.host_mask.strip():
@@ -760,8 +762,9 @@ class PCScannerWorker(BaseWorker):
                                f"«{settings.host_pattern}» (config.ini → [Scanner]); исключение: «{settings.host_exclude}»; "
                                f"список ПК брался через {via.upper()}")
         w.progress.emit(tr("⚡ Опрос {0} ПК (DNS, ping, журналы входов)…").format(len(hosts)))
-        results = w.probe_hosts(hosts)
-        results = enrich_with_dc_logons(results, w.progress.emit)
+        results = w.probe_hosts(hosts, ping_ms=300 if deep else 100)
+        if deep:   # 3.9.4: журнал КД — только полный опрос, лёгкий проход его не читает
+            results = enrich_with_dc_logons(results, w.progress.emit)
         db.batch_update_inventory(results, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         w._index_printers(hosts)
         return len(hosts)

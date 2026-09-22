@@ -72,22 +72,39 @@ def _print_table(rows: list[list[str]]) -> None:
             print("  ".join("-" * w for w in widths))
 
 
-def serve(interval_min: int, iterations: int | None = None, sleep=None) -> int:
-    """Серверный режим без GUI: цикл «скан парка → сводка → уведомления». ``iterations``/``sleep`` — для тестов."""
+def serve(interval_min: int, iterations: int | None = None, sleep=None, now=None) -> int:
+    """Серверный режим без GUI: цикл «скан парка → сводка → уведомления».
+
+    3.9.4: повторные циклы — лёгкие (DNS + пинг 100 мс + сверка, без WMI «кто за ПК» и журнала КД),
+    как фоновый скан GUI (3.9.3). Полный проход — только пока база пуста (первичное наполнение) и
+    дальше планово, раз в ``[Scanner] auto_scan_deep_every_min`` минут (0 — плановых полных нет).
+    ``iterations``/``sleep``/``now`` — для тестов."""
     import time
 
     from . import attention, config, db, notify
     from .workers import PCScannerWorker
     sleep = sleep or time.sleep
+    now = now or time.monotonic
     factory = _conn_factory()
     log.info("ADK %s: серверный режим, интервал %d мин, БД: %s", __version__, interval_min, config.settings.db_path)
+    deep_every_min = int(getattr(config.settings, "auto_scan_deep_every_min", 1440) or 0)
+    last_deep = now()   # непустая база на момент старта считается свежей — плановый полный не сразу
     n = 0
     while iterations is None or n < iterations:
         n += 1
         try:
-            done = PCScannerWorker.scan_once(factory, lambda m: log.info("%s", m))
+            try:
+                total = db.db_execute_with_retry("SELECT COUNT(*) FROM pc_inventory", fetch="one")[0] or 0
+            except Exception:
+                total = 0
+            deep = total == 0 or (deep_every_min > 0 and now() - last_deep >= deep_every_min * 60)
+            done = PCScannerWorker.scan_once(factory, lambda m: log.info("%s", m), deep=deep)
+            if deep:
+                last_deep = now()
             items = attention.collect_from_settings(factory, config.settings.attention)
-            log.info("Проход %d: ПК — %d; %s", n, done, attention.summary_line(items))
+            log.info("Проход %d (%s): ПК — %d; %s", n,
+                     "полный: WMI «кто за ПК» + журнал КД" if deep else "лёгкий: DNS + пинг, без WMI",
+                     done, attention.summary_line(items))
             high = [i for i in items if i["severity"] == "high"]
             if high and config.settings.notify.get("smtp_host"):
                 text = "\n".join(f"{i['icon']} {i['title']}: {i['subject']} — {i['text']}" for i in high[:20])

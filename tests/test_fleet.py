@@ -332,12 +332,74 @@ def test_cli_wol_unknown_mac(capsys):
 
 def test_serve_one_iteration(monkeypatch):
     from adk.workers import PCScannerWorker
-    monkeypatch.setattr(PCScannerWorker, "scan_once", classmethod(lambda cls, f, p=None: 3))
+    monkeypatch.setattr(PCScannerWorker, "scan_once", classmethod(lambda cls, f, p=None, deep=True: 3))
     monkeypatch.setattr(attention, "collect_from_settings", lambda f, cfg: [])
     slept = []
     assert cli.serve(1, iterations=1, sleep=slept.append) == 0
     assert slept == []  # после последней итерации не спим
     assert any(r[2] == "scan" for r in db.audit_entries())
+
+
+def test_serve_deep_only_to_fill_and_on_schedule(monkeypatch):
+    """3.9.4: сервер — лёгкие циклы без WMI (deep=False); полный — пустой базе (наполнение)
+    и дальше планово, раз в auto_scan_deep_every_min; 0 — плановых полных нет."""
+    from adk import config
+    from adk.workers import PCScannerWorker
+    deeps = []
+    monkeypatch.setattr(PCScannerWorker, "scan_once",
+                        classmethod(lambda cls, f, p=None, deep=True: deeps.append(deep) or 0))
+    monkeypatch.setattr(attention, "collect_from_settings", lambda f, cfg: [])
+    monkeypatch.setattr(config.settings, "auto_scan_deep_every_min", 1)   # плановый полный — раз в минуту
+    # пустая база → первый проход полный (первичное наполнение)
+    assert cli.serve(1, iterations=1, sleep=lambda s: None, now=lambda: 1000.0) == 0
+    assert deeps == [True]
+    # база наполнена → лёгкие; через минуту — плановый полный, потом снова
+    db.db_execute_with_retry(
+        "INSERT INTO pc_inventory (computer_name, ip_address, is_online) VALUES ('PC-1', '10.0.0.1', 1)")
+    clock = {"t": 1000.0}
+    assert cli.serve(1, iterations=3, sleep=lambda s: clock.update(t=clock["t"] + s),
+                     now=lambda: clock["t"]) == 0
+    assert deeps == [True, False, True, True]   # старт свежий → лёгкий; минута прошла → полный, полный
+
+
+def test_serve_deep_disabled_never_full(monkeypatch):
+    """auto_scan_deep_every_min = 0 — плановых полных нет: наполненная база всегда лёгкий проход."""
+    from adk import config
+    from adk.workers import PCScannerWorker
+    deeps = []
+    monkeypatch.setattr(PCScannerWorker, "scan_once",
+                        classmethod(lambda cls, f, p=None, deep=True: deeps.append(deep) or 0))
+    monkeypatch.setattr(attention, "collect_from_settings", lambda f, cfg: [])
+    monkeypatch.setattr(config.settings, "auto_scan_deep_every_min", 0)
+    db.db_execute_with_retry(
+        "INSERT INTO pc_inventory (computer_name, ip_address, is_online) VALUES ('PC-1', '10.0.0.1', 1)")
+    clock = {"t": 1000.0}
+    assert cli.serve(1, iterations=3, sleep=lambda s: clock.update(t=clock["t"] + s),
+                     now=lambda: clock["t"]) == 0
+    assert deeps == [False, False, False]
+
+
+def test_scan_once_light_pass_fast_ping_no_dc_logons(monkeypatch):
+    """3.9.4: scan_once(deep=False) — пинг 100 мс, WMI выключен и журнал КД не читается."""
+    from adk import ad, config
+    from adk import workers as W
+    from adk.workers import PCScannerWorker
+    monkeypatch.setattr(ad, "paged_search", lambda c, f, a: [{"attributes": {"name": "WS-001"}}])
+    monkeypatch.setattr(ad, "get_ad_value", lambda e, k: e["attributes"][k])
+    monkeypatch.setattr(config.settings, "host_pattern", r"^WS-\d+$")
+    seen = {}
+
+    def _probe(self, hosts, ping_ms=300, wmi_user=None):
+        seen.update(ping_ms=ping_ms, wmi_user=wmi_user)
+        return [{"Hostname": "WS-001", "Status": "ACTIVE", "ActualIp": "10.0.0.1", "User": "ivanov"}]
+
+    monkeypatch.setattr(PCScannerWorker, "probe_hosts", _probe)
+    monkeypatch.setattr(W, "enrich_with_dc_logons", lambda r, p: seen.update(dc=True) or r)
+    class _C:
+        def unbind(self): pass
+    n = PCScannerWorker.scan_once(lambda: _C(), deep=False)
+    # ping 100 мс; WMI-гейт и журнал КД — только deep=True (тесты 3.9.3/3.9.4, test_batch39)
+    assert n == 1 and seen["ping_ms"] == 100 and "dc" not in seen
 
 
 def test_main_dispatches_to_cli(monkeypatch):

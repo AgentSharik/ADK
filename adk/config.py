@@ -150,6 +150,10 @@ _DEFAULTS: dict[str, dict[str, str]] = {
     },
     "Scanner": {
         "auto_scan_interval_min": "30",
+        # Серверный режим (adk --serve): раз в сколько минут ПОЛНЫЙ проход — обновляет «кто за ПК»
+        # (WMI) и журнал КД. Обычные циклы — лёгкие: DNS + пинг 100 мс, без WMI. 0 — полный только
+        # при наполнении пустой базы.
+        "auto_scan_deep_every_min": "1440",
         "host_pattern": r"^(WS-\d+|PC-.*)$",
         "host_exclude": r"(VIRT|VM|VBOX|TEST|SRV|SQL|SERVER)",
         "valid_subnets": "10.,192.168.,172.",
@@ -451,6 +455,10 @@ templates_file =
 
 [Scanner]
 auto_scan_interval_min = 30
+# Серверный режим (adk --serve): раз в сколько минут ПОЛНЫЙ проход — обновляет «кто за ПК» (WMI)
+# и журнал КД. Обычные циклы — лёгкие: DNS + пинг 100 мс, без WMI. 0 — полный только при наполнении
+# пустой базы. В GUI полный проход — кнопкой «Обновить парк».
+auto_scan_deep_every_min = 1440
 host_pattern = ^(WS-\\d+|PC-.*)$
 host_exclude = (VIRT|VM|VBOX|TEST|SRV|SQL|SERVER)
 # ГЛАВНЫЙ ФИЛЬТР ПАРКА: маска имён ПК через запятую. ? = одна цифра, * = любые символы.
@@ -547,6 +555,7 @@ class Settings:
 
         s = cp["Scanner"]
         self.auto_scan_interval_ms: int = s.getint("auto_scan_interval_min") * 60 * 1000
+        self.auto_scan_deep_every_min: int = s.getint("auto_scan_deep_every_min", fallback=1440)
         self.host_pattern: str = s.get("host_pattern")
         self.host_exclude: str = s.get("host_exclude")
         self.valid_subnets: tuple[str, ...] = tuple(
