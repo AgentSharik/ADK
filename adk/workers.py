@@ -492,13 +492,22 @@ foreach ($item in $data) {
       try { $r = (New-Object System.Net.NetworkInformation.Ping).Send($actualIp, $pingMs)
             if ($r.Status -eq 'Success') { $status = "ACTIVE" } } catch {}
     }
-    # 3.9.1: кто за ПК — спросить напрямую у машины (WMI), если инвентарный CSV не дал ответа;
-    # работает для онлайн-ПК и не зависит ни от обратного DNS, ни от прав на журнал контроллера домена.
-    # 3.9.3: только при $askUser (полный/первичный опрос) — фоновый скан без постоянных WMI-запросов
-    if ($askUser -and $status -eq 'ACTIVE' -and -not $user) {
+    # 3.9.1: кто за ПК — спросить напрямую у машины (WMI); работает для онлайн-ПК и не зависит
+    # ни от обратного DNS, ни от прав на журнал контроллера домена.
+    # 3.9.3: только при $askUser (полный/первичный опрос) — фоновый скан без постоянных WMI-запросов.
+    # 3.9.5: два транспорта — WinRM (Get-CimInstance), при отказе DCOM (Get-WmiObject): WinRM на
+    # рабочих станциях часто выключен, и один WinRM оставлял «кто за ПК» пустым. Ответ машины
+    # приоритетнее инвентарного CSV (его данные могли устареть); DOMAIN\login → login.
+    if ($askUser -and $status -eq 'ACTIVE') {
       try {
-        $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $pc -OperationTimeoutSec 3
-        if ($cs -and $cs.UserName) { $user = $cs.UserName }
+        $u = $null
+        try { $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $pc -OperationTimeoutSec 3 -ErrorAction Stop
+              if ($cs -and $cs.UserName) { $u = $cs.UserName } } catch {}
+        if (-not $u) {
+          try { $wmi = Get-WmiObject -Class Win32_ComputerSystem -ComputerName $pc -ErrorAction Stop
+                if ($wmi -and $wmi.UserName) { $u = $wmi.UserName } } catch {}
+        }
+        if ($u) { $user = ($u -split '\\')[-1].Trim() }
       } catch {}
     }
     [PSCustomObject]@{ Hostname = $pc; ActualIp = $actualIp; Status = $status; User = $user; LastLogon = $lastLogon }

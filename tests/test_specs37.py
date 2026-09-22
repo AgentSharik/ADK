@@ -240,3 +240,30 @@ def test_parse_health_json_dcom_dates():
         "boot": "2026-09-10 08:00:00", "now": "2026-09-19 12:00:00", "total_mb": 16384, "free_mb": 8192,
         "cpu": 12, "os": "Windows 10 Pro", "disks": [], "phys": []}))
     assert d["uptime_days"] == 9 and d["ram_used_pct"] == 50
+
+
+def test_is_ipv4():
+    assert netutils._is_ipv4("10.0.2.50") and netutils._is_ipv4(" 192.168.1.1 ")
+    assert not netutils._is_ipv4("prn-hp01") and not netutils._is_ipv4("10.0.2.50:9100")
+    assert not netutils._is_ipv4("999.1.1.1") and not netutils._is_ipv4("")
+
+
+def test_parse_live_printers_host_address_wins():
+    """3.9.5: фактический адрес порта (HostAddress) важнее метки в имени порта —
+    порт «IP_10.0.2.50» может называться по старому адресу, а печатать Windows уже на 10.0.9.99."""
+    payload = [{"name": "HP LaserJet", "port": "IP_10.0.2.50", "default": True, "status": 3,
+                "offline": False, "driver": "HP", "host": "10.0.9.99", "location": ""}]
+    prn = netutils.parse_live_printers_json(json.dumps(payload))
+    assert prn[0]["ip"] == "10.0.9.99" and prn[0]["kind"] == "network"
+
+
+def test_parse_live_printers_host_dns_name_fallback():
+    """Порт создан по DNS-имени и не резолвился (принтер офлайн): показываем имя порта-адреса,
+    а если в имени порта есть IP — его (числовой адрес полезнее имени)."""
+    payload = [{"name": "Kyocera", "port": "IP_10.0.2.50", "default": True, "status": 3,
+                "offline": False, "driver": "Kyocera", "host": "prn-hp01.corp.local", "location": ""},
+               {"name": "Canon", "port": "Standard TCP/IP", "default": False, "status": 3,
+                "offline": False, "driver": "Canon", "host": "prn-canon01", "location": ""}]
+    ps = netutils.parse_live_printers_json(json.dumps(payload))
+    assert ps[0]["ip"] == "10.0.2.50"            # IP из имени порта полезнее нерезолвленного имени
+    assert ps[1]["ip"] == "prn-canon01" and ps[1]["kind"] == "network"   # имени порта нет IP — честно имя

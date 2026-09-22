@@ -869,9 +869,15 @@ try { $ps = Get-CimInstance Win32_Printer -ComputerName $c -ErrorAction Stop } c
   try { $ps = Get-WmiObject Win32_Printer -ComputerName $c -ErrorAction Stop } catch { throw ("Принтеры $c не прочитаны. WinRM: $w | DCOM: " + $_.Exception.Message) }
 }
 $ps = @($ps | Select-Object Name, PortName, Default, PrinterStatus, WorkOffline, DriverName, Location)
+# 3.9.5: HostAddress порта резолвим в IP прямо здесь — порт мог быть создан по DNS-имени принтера,
+# а юзеру нужен адрес. Не резолвится (принтер выключен) — честно показываем что ввели при создании.
+function Resolve-HostAddress($a) {
+  try { $r = (@([System.Net.Dns]::GetHostAddresses([string]$a) | Where-Object { $_.AddressFamily -eq 'InterNetwork' } | Select-Object -First 1))[0].ToString(); if ($r) { return $r } } catch {}
+  return [string]$a
+}
 $ports = @{}
-try { Get-CimInstance Win32_TCPIPPrinterPort -ComputerName $c -ErrorAction Stop | ForEach-Object { $ports[$_.Name] = $_.HostAddress } } catch {
-  try { Get-WmiObject Win32_TCPIPPrinterPort -ComputerName $c -ErrorAction Stop | ForEach-Object { $ports[$_.Name] = $_.HostAddress } } catch {}
+try { Get-CimInstance Win32_TCPIPPrinterPort -ComputerName $c -ErrorAction Stop | ForEach-Object { $ports[$_.Name] = Resolve-HostAddress $_.HostAddress } } catch {
+  try { Get-WmiObject Win32_TCPIPPrinterPort -ComputerName $c -ErrorAction Stop | ForEach-Object { $ports[$_.Name] = Resolve-HostAddress $_.HostAddress } } catch {}
 }
 ConvertTo-Json -InputObject @($ps | ForEach-Object { @{ name = $_.Name; port = $_.PortName; default = [bool]$_.Default; status = [int]$_.PrinterStatus
                             offline = [bool]$_.WorkOffline; driver = $_.DriverName; host = $ports[$_.PortName]; location = [string]$_.Location } }) -Compress -Depth 3
@@ -891,8 +897,11 @@ def parse_live_printers_json(text: str) -> list[dict]:
         if not name or is_virtual_printer(name, port):
             continue
         kind, ip = classify_printer_port(port)
-        if not ip and x.get("host"):
-            ip = str(x["host"]).strip()
+        host = str(x.get("host") or "").strip()
+        if host:
+            # 3.9.5: HostAddress — фактический адрес, куда печатает Windows; имя порта («IP_10.0.2.50») —
+            # просто метка, которая могла остаться от старого адреса. Приоритет — фактическому адресу.
+            ip = host if _is_ipv4(host) else (ip or host)
             kind = "network"
         loc = (x.get("location") or "").strip()
         if not ip and loc:
@@ -994,6 +1003,12 @@ def ip_from_text(text: str) -> str:
         if all(int(o) <= 255 for o in m.group(1).split(".")):
             return m.group(1)
     return ""
+
+
+def _is_ipv4(s: str) -> bool:
+    """Строка целиком — корректный IPv4 ('10.0.2.50' → True, 'prn-hp01'/'10.0.2.50:9100' → False)."""
+    m = _IP_IN_PORT_RE.fullmatch((s or "").strip())
+    return bool(m) and all(int(o) <= 255 for o in m.group(1).split("."))
 
 
 def _pick_named(d: dict, *needles: str) -> str:

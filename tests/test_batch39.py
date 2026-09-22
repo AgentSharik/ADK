@@ -369,8 +369,13 @@ def test_ps_scanner_asks_pc_for_user_and_ping_param():
     # 3.9.3: WMI гейтится флагом $askUser (только полный/первичный опрос), пинг подставляется из Python
     assert "$askUser = __ASK_USER__" in _PS_SCANNER
     assert "$pingMs = __PING_MS__" in _PS_SCANNER
-    assert "if ($askUser -and $status -eq 'ACTIVE' -and -not $user)" in _PS_SCANNER
     assert ".AddArgument($pingMs).AddArgument($askUser)" in _PS_SCANNER
+    # 3.9.5: два транспорта WMI (WinRM → DCOM), спрашиваем у всех ACTIVE (CSV мог устареть),
+    # домен отрезаем — в базу пишется чистый логин
+    assert "if ($askUser -and $status -eq 'ACTIVE') {" in _PS_SCANNER
+    assert "Get-CimInstance -ClassName Win32_ComputerSystem" in _PS_SCANNER
+    assert "Get-WmiObject -Class Win32_ComputerSystem" in _PS_SCANNER
+    assert ("$u -split '" + chr(92) + chr(92) + "')[-1]") in _PS_SCANNER   # DOMAIN\login → login
 
 
 def test_run_powershell_substitutes_ping_and_wmi(monkeypatch):
