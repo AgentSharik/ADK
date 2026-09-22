@@ -464,7 +464,7 @@ foreach ($item in $data) {
   $ps = [powershell]::Create(); $ps.RunspacePool = $pool
   [void]$ps.AddScript({
     param($pc, $validPrefixes, $compDir, $compExitDir, $pingMs, $askUser)
-    $actualIp = "Не найден"; $status = "OFFLINE"; $user = ""; $latest = [datetime]::MinValue
+    $actualIp = "Не найден"; $status = "OFFLINE"; $user = ""; $userSrc = ""; $latest = [datetime]::MinValue
     foreach ($dir in @($compDir, $compExitDir)) {
       if (-not $dir) { continue }
       $path = Join-Path $dir "$pc.csv"
@@ -474,7 +474,7 @@ foreach ($item in $data) {
           $latest = $mtime
           try {
             $line = [System.IO.File]::ReadLines($path, [System.Text.Encoding]::GetEncoding(1251)) | Select-Object -First 1
-            if ($line) { $p = $line.Split(@(';', ','))[1]; if ($p) { $user = $p.Trim() } }
+            if ($line) { $p = $line.Split(@(';', ','))[1]; if ($p) { $user = $p.Trim(); $userSrc = "csv" } }
           } catch {}
         }
       }
@@ -498,6 +498,8 @@ foreach ($item in $data) {
     # 3.9.5: два транспорта — WinRM (Get-CimInstance), при отказе DCOM (Get-WmiObject): WinRM на
     # рабочих станциях часто выключен, и один WinRM оставлял «кто за ПК» пустым. Ответ машины
     # приоритетнее инвентарного CSV (его данные могли устареть); DOMAIN\login → login.
+    # 3.9.6: UserName пуст (RDP-сессии) → владелец explorer.exe; источник ответа — в UserSrc
+    # (wmi/csv): итог «кто за ПК» виден в строке статуса после полного опроса.
     if ($askUser -and $status -eq 'ACTIVE') {
       try {
         $u = $null
@@ -507,10 +509,14 @@ foreach ($item in $data) {
           try { $wmi = Get-WmiObject -Class Win32_ComputerSystem -ComputerName $pc -ErrorAction Stop
                 if ($wmi -and $wmi.UserName) { $u = $wmi.UserName } } catch {}
         }
-        if ($u) { $user = ($u -split '\\')[-1].Trim() }
+        if (-not $u) {
+          try { $o = @(Get-CimInstance -ClassName Win32_Process -Filter "Name='explorer.exe'" -ComputerName $pc -OperationTimeoutSec 3 -ErrorAction Stop | Invoke-CimMethod -MethodName GetOwner)[0]
+                if ($o -and $o.User) { $u = $o.Domain + '/' + $o.User } } catch {}
+        }
+        if ($u) { $user = ($u -split '[\\/]')[-1].Trim(); $userSrc = "wmi" }
       } catch {}
     }
-    [PSCustomObject]@{ Hostname = $pc; ActualIp = $actualIp; Status = $status; User = $user; LastLogon = $lastLogon }
+    [PSCustomObject]@{ Hostname = $pc; ActualIp = $actualIp; Status = $status; User = $user; UserSrc = $userSrc; LastLogon = $lastLogon }
   }).AddArgument($item.Name).AddArgument($validPrefixes).AddArgument($compDir).AddArgument($compExitDir).AddArgument($pingMs).AddArgument($askUser)
   $jobs += [PSCustomObject]@{ PS = $ps; H = $ps.BeginInvoke(); Name = $item.Name }
 }
@@ -774,6 +780,13 @@ class PCScannerWorker(BaseWorker):
         results = w.probe_hosts(hosts, ping_ms=300 if deep else 100)
         if deep:   # 3.9.4: журнал КД — только полный опрос, лёгкий проход его не читает
             results = enrich_with_dc_logons(results, w.progress.emit)
+            uw = sum(1 for r in results if (r.get("UserSrc") or "") == "wmi")
+            uc = sum(1 for r in results if (r.get("UserSrc") or "") == "csv")
+            uo = sum(1 for r in results if (r.get("User") or "").strip() and not r.get("UserSrc"))
+            on = sum(1 for r in results if r.get("Status") == "ACTIVE")
+            if on:
+                w.progress.emit(f"👥 Кто за ПК: машина ответила {uw} · CSV {uc} · журнал КД {uo} · "
+                                f"не отвечено {on - uw - uc - uo} из {on} включённых")
         db.batch_update_inventory(results, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         w._index_printers(hosts)
         return len(hosts)

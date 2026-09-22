@@ -375,7 +375,7 @@ def test_ps_scanner_asks_pc_for_user_and_ping_param():
     assert "if ($askUser -and $status -eq 'ACTIVE') {" in _PS_SCANNER
     assert "Get-CimInstance -ClassName Win32_ComputerSystem" in _PS_SCANNER
     assert "Get-WmiObject -Class Win32_ComputerSystem" in _PS_SCANNER
-    assert ("$u -split '" + chr(92) + chr(92) + "')[-1]") in _PS_SCANNER   # DOMAIN\login → login
+    assert ("$u -split '[" + chr(92) + chr(92) + "/]')[-1]") in _PS_SCANNER   # DOMAIN\login и DOMAIN/login → login   # DOMAIN\login → login
 
 
 def test_run_powershell_substitutes_ping_and_wmi(monkeypatch):
@@ -446,3 +446,12 @@ def test_attention_read_all(qapp, monkeypatch):
     assert d.items == [] and d.table.rowCount() == 0
     assert logged and logged[0][1] == "attention_read_all"  # одна запись в журнал, не построчно
     d.deleteLater()
+
+
+def test_ps_scanner_reports_user_source():
+    """3.9.6: сканер возвращает UserSrc (wmi/csv) и пробует владельца explorer.exe при пустом UserName."""
+    from adk.workers import _PS_SCANNER
+    assert "UserSrc = $userSrc" in _PS_SCANNER
+    assert '$userSrc = "csv"' in _PS_SCANNER and '$userSrc = "wmi"' in _PS_SCANNER
+    assert "Name='explorer.exe'" in _PS_SCANNER          # RDP-сессии: UserName бывает пуст
+    assert "Invoke-CimMethod -MethodName GetOwner" in _PS_SCANNER
