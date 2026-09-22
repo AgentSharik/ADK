@@ -258,6 +258,7 @@ class FullScanWorker(BaseWorker):
                 self.plan.emit("printers", est)
             scanner = PCScannerWorker.__new__(PCScannerWorker)
             scanner.conn_factory, scanner._cancelled = self.conn_factory, False
+            scanner.deep = True   # полный опрос: WMI «кто за ПК» включён (фоновый скан — без него)
             scanner.progress = _Emitter(self.step_text.emit)
             results = []
             for k in range(0, len(hosts), self.CHUNK):

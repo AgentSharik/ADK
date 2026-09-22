@@ -366,6 +366,38 @@ def test_ps_scanner_asks_pc_for_user_and_ping_param():
     from adk.workers import _PS_SCANNER
     assert "Win32_ComputerSystem" in _PS_SCANNER          # прямой источник «кто за ПК»
     assert "Send($actualIp, $pingMs)" in _PS_SCANNER      # таймаут пинга — параметром
+    # 3.9.3: WMI гейтится флагом $askUser (только полный/первичный опрос), пинг подставляется из Python
+    assert "$askUser = __ASK_USER__" in _PS_SCANNER
+    assert "$pingMs = __PING_MS__" in _PS_SCANNER
+    assert "if ($askUser -and $status -eq 'ACTIVE' -and -not $user)" in _PS_SCANNER
+    assert ".AddArgument($pingMs).AddArgument($askUser)" in _PS_SCANNER
+
+
+def test_run_powershell_substitutes_ping_and_wmi(monkeypatch):
+    """3.9.3: ping_ms и wmi_user реально попадают в скрипт (раньше $pingMs приходил пустым),
+    фоновый скан (deep=False) не дёргает WMI, полный/первичный — дёргает."""
+    from adk import psrun, workers
+
+    captured = {}
+
+    class _R:
+        ok, stdout, error = True, "[]", ""
+
+    monkeypatch.setattr(psrun, "run", lambda script, timeout=None, cancelled=None:
+                        (captured.__setitem__("script", script), _R())[1])
+    w_light = workers.PCScannerWorker(lambda: None, deep=False)
+    w_light._run_powershell(["PC-1"], 100, False)
+    s = captured["script"]
+    assert "$pingMs = 100" in s and "$askUser = False" in s
+    w_light._run_powershell(["PC-1"], 100, True)
+    assert "$askUser = True" in captured["script"]
+
+    # probe_hosts берёт wmi_user из self.deep; объект без deep (FullScanWorker/scan_once) — полный опрос
+    assert w_light._wmi_user_default() is False
+    w_full = workers.PCScannerWorker(lambda: None)
+    assert w_full._wmi_user_default() is True
+    bare = workers.PCScannerWorker.__new__(workers.PCScannerWorker)
+    assert bare._wmi_user_default() is True   # QObject без __init__ — RuntimeError → полный опрос
 
 
 def test_scanner_deep_flag(monkeypatch):

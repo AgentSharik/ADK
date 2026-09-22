@@ -455,12 +455,15 @@ _PS_SCANNER = r"""
 $data = Get-Content -LiteralPath '__INPUT__' -Encoding UTF8 -Raw | ConvertFrom-Json
 $validPrefixes = @(__PREFIXES__)
 $compDir = '__COMP_DIR__'; $compExitDir = '__COMPEXIT_DIR__'
+$pingMs = __PING_MS__          # таймаут пинга: полный опрос 300 мс, фоновый — 100 мс
+$askUser = __ASK_USER__        # WMI «кто за ПК» — только полный/первичный опрос (первичная связка ПК↔человек);
+                               # фоновый скан не дёргает WMI на каждом запуске (3.9.3)
 $pool = [runspacefactory]::CreateRunspacePool(1, 50); $pool.Open()
 $jobs = @()
 foreach ($item in $data) {
   $ps = [powershell]::Create(); $ps.RunspacePool = $pool
   [void]$ps.AddScript({
-    param($pc, $validPrefixes, $compDir, $compExitDir, $pingMs)
+    param($pc, $validPrefixes, $compDir, $compExitDir, $pingMs, $askUser)
     $actualIp = "Не найден"; $status = "OFFLINE"; $user = ""; $latest = [datetime]::MinValue
     foreach ($dir in @($compDir, $compExitDir)) {
       if (-not $dir) { continue }
@@ -490,15 +493,16 @@ foreach ($item in $data) {
             if ($r.Status -eq 'Success') { $status = "ACTIVE" } } catch {}
     }
     # 3.9.1: кто за ПК — спросить напрямую у машины (WMI), если инвентарный CSV не дал ответа;
-    # работает для онлайн-ПК и не зависит ни от обратного DNS, ни от прав на журнал контроллера домена
-    if ($status -eq 'ACTIVE' -and -not $user) {
+    # работает для онлайн-ПК и не зависит ни от обратного DNS, ни от прав на журнал контроллера домена.
+    # 3.9.3: только при $askUser (полный/первичный опрос) — фоновый скан без постоянных WMI-запросов
+    if ($askUser -and $status -eq 'ACTIVE' -and -not $user) {
       try {
         $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $pc -OperationTimeoutSec 3
         if ($cs -and $cs.UserName) { $user = $cs.UserName }
       } catch {}
     }
     [PSCustomObject]@{ Hostname = $pc; ActualIp = $actualIp; Status = $status; User = $user; LastLogon = $lastLogon }
-  }).AddArgument($item.Name).AddArgument($validPrefixes).AddArgument($compDir).AddArgument($compExitDir).AddArgument($pingMs)
+  }).AddArgument($item.Name).AddArgument($validPrefixes).AddArgument($compDir).AddArgument($compExitDir).AddArgument($pingMs).AddArgument($askUser)
   $jobs += [PSCustomObject]@{ PS = $ps; H = $ps.BeginInvoke(); Name = $item.Name }
 }
 $results = foreach ($j in $jobs) {
@@ -667,9 +671,10 @@ class PCScannerWorker(BaseWorker):
     finished_scan = pyqtSignal(int)
 
     def __init__(self, conn_factory: ConnFactory, parent=None, deep: bool = True):
-        """``deep=True`` — полный/первичный опрос: пинг 300 мс + чтение журнала контроллера домена (события 4768).
+        """``deep=True`` — полный/первичный опрос: пинг 300 мс + WMI «кто за ПК» у онлайн-машин + журнал КД (4768).
         ``deep=False`` — фоновый по расписанию (3.9.1): лёгкий, как в 3.8 — DNS + сверка с базой + пинг 100 мс;
-        «кто за ПК» при этом всё равно узнаётся (WMI у онлайн-машин), без тяжёлого шага по журналу."""
+        БЕЗ WMI и БЕЗ чтения журнала КД (3.9.3: WMI — только полный опрос, для первичной связки ПК↔человек;
+        фоновый не должен дёргать WMI на каждом запуске)."""
         super().__init__(parent)
         self.conn_factory = conn_factory
         self.deep = deep
@@ -745,6 +750,7 @@ class PCScannerWorker(BaseWorker):
         w = cls.__new__(cls)
         w.conn_factory, w._cancelled = conn_factory, False
         w.progress = _Emitter(progress or (lambda m: log.info("%s", m)))
+        w.deep = True   # CLI/серверный запуск — полный опрос (WMI «кто за ПК» + журнал КД)
         hosts, via = host_list_from_ad(conn_factory, w.progress.emit)
         if not hosts:
             if settings.host_mask.strip():
@@ -760,13 +766,28 @@ class PCScannerWorker(BaseWorker):
         w._index_printers(hosts)
         return len(hosts)
 
-    def probe_hosts(self, hosts: list[str], ping_ms: int = 300) -> list[dict]:
+    def _wmi_user_default(self) -> bool:
+        """WMI «кто за ПК» включён только в полном опросе (self.deep). Объекты, созданные через
+        ``__new__`` без ``__init__`` (FullScanWorker, scan_once) — тоже полный опрос: атрибуты
+        у такого QObject читать нельзя (RuntimeError), считаем глубоким."""
+        try:
+            return bool(getattr(self, "deep", True))
+        except RuntimeError:
+            return True
+
+    def probe_hosts(self, hosts: list[str], ping_ms: int = 300, wmi_user: bool | None = None) -> list[dict]:
         """DNS + ping + журналы входов для каждого ПК. На Windows — PowerShell (RunspacePool, 50 потоков, журналы
         logon-скрипта); если PowerShell не дал результата или мы не на Windows — запасной путь на Python
-        (DNS + TCP 445/ICMP, без журналов). Пустой ответ больше не считается успехом."""
+        (DNS + TCP 445/ICMP, без журналов). Пустой ответ больше не считается успехом.
+
+        ``wmi_user`` — дёргать ли WMI «кто за ПК» у онлайн-машин: None → по ``self.deep``
+        (полный/первичный опрос — да, фоновый — нет); объекты, созданные через ``__new__``
+        (FullScanWorker, scan_once), считаются полным опросом."""
+        if wmi_user is None:
+            wmi_user = self._wmi_user_default()
         if os.name == "nt":
             try:
-                results = self._run_powershell(hosts, ping_ms)
+                results = self._run_powershell(hosts, ping_ms, wmi_user)
                 if results:
                     return results
                 self.progress.emit("⚠️ PowerShell не вернул данных — опрашиваю ПК средствами Python…")
@@ -814,9 +835,10 @@ class PCScannerWorker(BaseWorker):
                                     lambda: self.cancelled)
         self.progress.emit(tr("🖨️ Принтеры проиндексированы: {0} ПК с CSV").format(n))
 
-    def _run_powershell(self, hosts: list[str], ping_ms: int = 300) -> list[dict]:
+    def _run_powershell(self, hosts: list[str], ping_ms: int = 300, wmi_user: bool = True) -> list[dict]:
         """PowerShell-сканер через :mod:`psrun` (3.6.1; раньше — прямой ``powershell -Command <текст>``, который из
-        exe без консоли мог завершиться молча). Ошибка → исключение с понятной причиной, пустой ответ → []."""
+        exe без консоли мог завершиться молча). Ошибка → исключение с понятной причиной, пустой ответ → [].
+        3.9.3: ``ping_ms`` и ``wmi_user`` реально подставляются в скрипт (раньше $pingMs приходил пустым)."""
         import tempfile
         from . import psrun
 
@@ -827,7 +849,9 @@ class PCScannerWorker(BaseWorker):
                   .replace("__INPUT__", input_path)
                   .replace("__PREFIXES__", ", ".join(f"'{p}'" for p in settings.valid_subnets))
                   .replace("__COMP_DIR__", settings.invent_comp_dir)
-                  .replace("__COMPEXIT_DIR__", settings.invent_compexit_dir))
+                  .replace("__COMPEXIT_DIR__", settings.invent_compexit_dir)
+                  .replace("__PING_MS__", str(int(ping_ms)))
+                  .replace("__ASK_USER__", "True" if wmi_user else "False"))
         try:
             res = psrun.run(script, timeout=900, cancelled=lambda: self.cancelled)
         finally:
