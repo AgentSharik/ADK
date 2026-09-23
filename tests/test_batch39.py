@@ -396,6 +396,11 @@ def test_run_powershell_substitutes_ping_and_wmi(monkeypatch):
     assert "$pingMs = 100" in s and "$askUser = $false" in s   # 3.9.6: PS-литералы, не Python True
     w_light._run_powershell(["PC-1"], 100, True)
     assert "$askUser = $true" in captured["script"]
+    # 3.9.6: ширина пула как в «Доменном Радаре» — лёгкий проход 200, с WMI — 50
+    w_light._run_powershell(["PC-1"], 100, False)
+    assert "CreateRunspacePool(1, 200)" in captured["script"] and "SetMinThreads(200, 200)" in captured["script"]
+    w_light._run_powershell(["PC-1"], 300, True)
+    assert "CreateRunspacePool(1, 50)" in captured["script"] and "SetMinThreads(50, 50)" in captured["script"]
 
     # probe_hosts берёт wmi_user из self.deep; объект без deep (FullScanWorker/scan_once) — полный опрос
     assert w_light._wmi_user_default() is False
@@ -464,3 +469,12 @@ def test_ps_scanner_registry_fallback():
     assert "LastLoggedOnSAMUser" in _PS_SCANNER and "LastLoggedOnUser" in _PS_SCANNER
 
 
+
+
+def test_ps_scanner_radar_csv_match():
+    """3.9.6: сверка CSV как в «Доменном Радаре» — разделитель по «;», 4-е поле (список IP)
+    обязано войти в подсеть, иначе запись «кто за ПК» не берётся."""
+    from adk.workers import _PS_SCANNER
+    assert "$delim = \";\"; if (-not $line.Contains(\";\")) { $delim = \",\" }" in _PS_SCANNER
+    assert "$parts[3].Trim() -split ','" in _PS_SCANNER
+    assert "if ($logIp -and $parts[1].Trim()) { $user = $parts[1].Trim(); $userSrc = \"csv\" }" in _PS_SCANNER

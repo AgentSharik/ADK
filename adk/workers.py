@@ -458,7 +458,10 @@ $compDir = '__COMP_DIR__'; $compExitDir = '__COMPEXIT_DIR__'
 $pingMs = __PING_MS__          # таймаут пинга: полный опрос 300 мс, фоновый — 100 мс
 $askUser = __ASK_USER__        # WMI «кто за ПК» — только полный/первичный опрос (первичная связка ПК↔человек);
                                # фоновый скан не дёргает WMI на каждом запуске (3.9.3)
-$pool = [runspacefactory]::CreateRunspacePool(1, 50); $pool.Open()
+# 3.9.6: механизм «Доменного Радара» (прошлый продукт): лёгкий проход — широкий пул 200,
+# полный опрос с WMI — 50 (WMI тяжёлый, широкий пул его не ускоряет)
+[System.Threading.ThreadPool]::SetMinThreads(__POOL__, __POOL__) | Out-Null
+$pool = [runspacefactory]::CreateRunspacePool(1, __POOL__); $pool.Open()
 $jobs = @()
 foreach ($item in $data) {
   $ps = [powershell]::Create(); $ps.RunspacePool = $pool
@@ -474,7 +477,21 @@ foreach ($item in $data) {
           $latest = $mtime
           try {
             $line = [System.IO.File]::ReadLines($path, [System.Text.Encoding]::GetEncoding(1251)) | Select-Object -First 1
-            if ($line) { $p = $line.Split(@(';', ','))[1]; if ($p) { $user = $p.Trim(); $userSrc = "csv" } }
+            if ($line) {
+              # 3.9.6: сверка как в «Доменном Радаре»: разделитель по наличию «;»,
+              # запись верна, только если IP из журнала (4-е поле) входит в нашу подсеть
+              $delim = ";"; if (-not $line.Contains(";")) { $delim = "," }
+              $parts = $line.Split($delim)
+              if ($parts.Length -ge 4) {
+                $logIp = $null
+                foreach ($ip in ($parts[3].Trim() -split ',')) {
+                  $ip = $ip.Trim()
+                  foreach ($pref in $validPrefixes) { if ($ip -and $ip.StartsWith($pref)) { $logIp = $ip; break } }
+                  if ($logIp) { break }
+                }
+                if ($logIp -and $parts[1].Trim()) { $user = $parts[1].Trim(); $userSrc = "csv" }
+              }
+            }
           } catch {}
         }
       }
@@ -869,7 +886,8 @@ class PCScannerWorker(BaseWorker):
                                     lambda: self.cancelled)
         self.progress.emit(tr("🖨️ Принтеры проиндексированы: {0} ПК с CSV").format(n))
 
-    def _run_powershell(self, hosts: list[str], ping_ms: int = 300, wmi_user: bool = True) -> list[dict]:
+    def _run_powershell(self, hosts: list[str], ping_ms: int = 300, wmi_user: bool = True,
+                       pool: int | None = None) -> list[dict]:
         """PowerShell-сканер через :mod:`psrun` (3.6.1; раньше — прямой ``powershell -Command <текст>``, который из
         exe без консоли мог завершиться молча). Ошибка → исключение с понятной причиной, пустой ответ → [].
         3.9.3: ``ping_ms`` и ``wmi_user`` реально подставляются в скрипт (раньше $pingMs приходил пустым)."""
@@ -885,6 +903,7 @@ class PCScannerWorker(BaseWorker):
                   .replace("__COMP_DIR__", settings.invent_comp_dir)
                   .replace("__COMPEXIT_DIR__", settings.invent_compexit_dir)
                   .replace("__PING_MS__", str(int(ping_ms)))
+                  .replace("__POOL__", str(int(pool if pool is not None else (50 if wmi_user else 200))))
                   .replace("__ASK_USER__", "$true" if wmi_user else "$false"))   # 3.9.6: PS-литералы — True валил весь скрипт
         try:
             res = psrun.run(script, timeout=900, cancelled=lambda: self.cancelled)
