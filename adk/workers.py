@@ -885,7 +885,7 @@ class PCScannerWorker(BaseWorker):
                   .replace("__COMP_DIR__", settings.invent_comp_dir)
                   .replace("__COMPEXIT_DIR__", settings.invent_compexit_dir)
                   .replace("__PING_MS__", str(int(ping_ms)))
-                  .replace("__ASK_USER__", "True" if wmi_user else "False"))
+                  .replace("__ASK_USER__", "$true" if wmi_user else "$false"))   # 3.9.6: PS-литералы — True валил весь скрипт
         try:
             res = psrun.run(script, timeout=900, cancelled=lambda: self.cancelled)
         finally:

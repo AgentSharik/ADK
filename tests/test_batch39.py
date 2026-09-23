@@ -393,9 +393,9 @@ def test_run_powershell_substitutes_ping_and_wmi(monkeypatch):
     w_light = workers.PCScannerWorker(lambda: None, deep=False)
     w_light._run_powershell(["PC-1"], 100, False)
     s = captured["script"]
-    assert "$pingMs = 100" in s and "$askUser = False" in s
+    assert "$pingMs = 100" in s and "$askUser = $false" in s   # 3.9.6: PS-литералы, не Python True
     w_light._run_powershell(["PC-1"], 100, True)
-    assert "$askUser = True" in captured["script"]
+    assert "$askUser = $true" in captured["script"]
 
     # probe_hosts берёт wmi_user из self.deep; объект без deep (FullScanWorker/scan_once) — полный опрос
     assert w_light._wmi_user_default() is False
@@ -462,3 +462,5 @@ def test_ps_scanner_registry_fallback():
     from adk.workers import _PS_SCANNER
     assert "OpenRemoteBaseKey" in _PS_SCANNER
     assert "LastLoggedOnSAMUser" in _PS_SCANNER and "LastLoggedOnUser" in _PS_SCANNER
+
+
