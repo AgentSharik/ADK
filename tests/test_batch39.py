@@ -370,7 +370,7 @@ def test_ps_scanner_asks_pc_for_user_and_ping_param():
     assert "$askUser = __ASK_USER__" in _PS_SCANNER
     assert "$pingMs = __PING_MS__" in _PS_SCANNER
     assert ".AddArgument($pingMs).AddArgument($askUser)" in _PS_SCANNER
-    # 3.9.5: два транспорта WMI (WinRM → DCOM), спрашиваем у всех ACTIVE (CSV мог устареть),
+    # 3.9.5: два транспорта WMI (WinRM → DCOM), спрашиваем у всех ACTIVE,
     # домен отрезаем — в базу пишется чистый логин
     assert "if ($askUser -and $status -eq 'ACTIVE') {" in _PS_SCANNER
     assert "Get-CimInstance -ClassName Win32_ComputerSystem" in _PS_SCANNER
@@ -454,10 +454,10 @@ def test_attention_read_all(qapp, monkeypatch):
 
 
 def test_ps_scanner_reports_user_source():
-    """3.9.6: сканер возвращает UserSrc (wmi/csv) и пробует владельца explorer.exe при пустом UserName."""
+    """3.9.6: сканер возвращает UserSrc (wmi) и пробует владельца explorer.exe при пустом UserName."""
     from adk.workers import _PS_SCANNER
     assert "UserSrc = $userSrc" in _PS_SCANNER
-    assert '$userSrc = "csv"' in _PS_SCANNER and '$userSrc = "wmi"' in _PS_SCANNER
+    assert '$userSrc = "wmi"' in _PS_SCANNER and '$userSrc = "csv"' not in _PS_SCANNER   # CSV убран (3.9.6)
     assert "Name='explorer.exe'" in _PS_SCANNER          # RDP-сессии: UserName бывает пуст
     assert "Invoke-CimMethod -MethodName GetOwner" in _PS_SCANNER
 
@@ -471,11 +471,14 @@ def test_ps_scanner_registry_fallback():
 
 
 
-def test_ps_scanner_csv_plain_login():
-    """3.9.6 (перевыпуск): CSV-«кто за ПК» — прежняя логика ADK (логин = 2-е поле, разделители «;»/«,»),
-    сверка по подсети из «Радара» откатана по приказу юзера: ADK строит свою базу (db_path)."""
+def test_ps_scanner_no_csv_dependency():
+    """3.9.6 (перевыпуск 3): зависимость от инвентарных CSV убрана вовсе — «кто за ПК» ADK собирает
+    сам (WMI-каскад у машины + журнал КД в полном опросе); фоновый проход хранит последнего
+    известного юзера в базе, не сбрасывая его."""
     from adk.workers import _PS_SCANNER
-    assert "$line.Split(@(';', ','))[1]" in _PS_SCANNER
-    assert "$delim" not in _PS_SCANNER and "$parts[3]" not in _PS_SCANNER
+    assert "__COMP_DIR__" not in _PS_SCANNER and "$compDir" not in _PS_SCANNER
+    assert ".csv" not in _PS_SCANNER and 'userSrc = "csv"' not in _PS_SCANNER
+    assert "Win32_ComputerSystem" in _PS_SCANNER          # свой источник — спросить машину
+    assert "LastLogon = \"Неизвестно\"" in _PS_SCANNER    # дата входа — из журнала КД, не из CSV
     # пул «Доменного Радара» остаётся: лёгкий проход 200
     assert "CreateRunspacePool(1, __POOL__)" in _PS_SCANNER

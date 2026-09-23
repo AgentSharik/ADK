@@ -444,8 +444,9 @@ max_password_age_days = 90
 db_path = {os.path.join(DOCS_DIR, 'pc_mapping.db')}
 backup_every_hours = 6
 backup_keep = 12
-# Сетевые папки инвентаризации рабочих станций
+# Сетевые папки инвентаризации рабочих станций (характеристики/принтеры)
 invent_hardware_dir = 
+# comp/compexit — только дата последнего входа в архивах «Прочитать всё»; сканер их не читает (3.9.6)
 invent_comp_dir = 
 invent_compexit_dir = 
 pst_backup_base = 

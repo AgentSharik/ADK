@@ -213,16 +213,16 @@ if __name__ == "__main__":
 
 
 def test_full_summary_text_shows_user_sources():
-    """3.9.6: в итоге полного опроса видно, откуда взялся «кто за ПК» — машина/CSV/КД."""
+    """3.9.6: в итоге полного опроса видно, откуда взялся «кто за ПК» — машина/журнал КД (CSV убран)."""
     from adk.scan_ui import full_summary_text
     txt = full_summary_text({"pcs": 120, "mode": "full", "printers": 5, "printers_pcs": 4,
-                             "user_wmi": 30, "user_csv": 10, "user_other": 5})
-    assert "кто за ПК: машина 30 · CSV 10 · КД 5" in txt and txt.startswith("✅")
+                             "user_wmi": 30, "user_other": 5})
+    assert "кто за ПК: машина 30 · КД 5" in txt and txt.startswith("✅")
 
 
 def test_full_summary_text_warns_when_no_user_source():
     """Ни один источник не ответил, но включённые ПК есть — заметное предупреждение в статусе."""
     from adk.scan_ui import full_summary_text
     txt = full_summary_text({"pcs": 120, "mode": "full", "printers": 5, "printers_pcs": 4,
-                             "user_wmi": 0, "user_csv": 0, "user_other": 0, "user_missing_warn": True})
+                             "user_wmi": 0, "user_other": 0, "user_missing_warn": True})
     assert txt.startswith("⚠️") and "не ответил ни на одной" in txt and "5985/135" in txt

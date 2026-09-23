@@ -454,7 +454,6 @@ class SearchWorker(BaseWorker):
 _PS_SCANNER = r"""
 $data = Get-Content -LiteralPath '__INPUT__' -Encoding UTF8 -Raw | ConvertFrom-Json
 $validPrefixes = @(__PREFIXES__)
-$compDir = '__COMP_DIR__'; $compExitDir = '__COMPEXIT_DIR__'
 $pingMs = __PING_MS__          # таймаут пинга: полный опрос 300 мс, фоновый — 100 мс
 $askUser = __ASK_USER__        # WMI «кто за ПК» — только полный/первичный опрос (первичная связка ПК↔человек);
                                # фоновый скан не дёргает WMI на каждом запуске (3.9.3)
@@ -466,23 +465,11 @@ $jobs = @()
 foreach ($item in $data) {
   $ps = [powershell]::Create(); $ps.RunspacePool = $pool
   [void]$ps.AddScript({
-    param($pc, $validPrefixes, $compDir, $compExitDir, $pingMs, $askUser)
-    $actualIp = "Не найден"; $status = "OFFLINE"; $user = ""; $userSrc = ""; $latest = [datetime]::MinValue
-    foreach ($dir in @($compDir, $compExitDir)) {
-      if (-not $dir) { continue }
-      $path = Join-Path $dir "$pc.csv"
-      if ([System.IO.File]::Exists($path)) {
-        $mtime = [System.IO.File]::GetLastWriteTime($path)
-        if ($mtime -gt $latest) {
-          $latest = $mtime
-          try {
-            $line = [System.IO.File]::ReadLines($path, [System.Text.Encoding]::GetEncoding(1251)) | Select-Object -First 1
-            if ($line) { $p = $line.Split(@(';', ','))[1]; if ($p) { $user = $p.Trim(); $userSrc = "csv" } }
-          } catch {}
-        }
-      }
-    }
-    $lastLogon = if ($latest -eq [datetime]::MinValue) { "Неизвестно" } else { $latest.ToString("dd.MM.yyyy HH:mm") }
+    param($pc, $validPrefixes, $pingMs, $askUser)
+    # 3.9.6 (перевыпуск 3): зависимость от инвентарных CSV убрана — «кто за ПК» ADK собирает сам:
+    # полный опрос спрашивает машину (WMI-каскад) и журнал контроллера домена (4768);
+    # фоновый проход хранит последнего известного пользователя в базе, не сбрасывая его.
+    $actualIp = "Не найден"; $status = "OFFLINE"; $user = ""; $userSrc = ""
     try {
       foreach ($ip in [System.Net.Dns]::GetHostAddresses($pc)) {
         if ($ip.AddressFamily -ne 'InterNetwork') { continue }
@@ -499,8 +486,8 @@ foreach ($item in $data) {
     # ни от обратного DNS, ни от прав на журнал контроллера домена.
     # 3.9.3: только при $askUser (полный/первичный опрос) — фоновый скан без постоянных WMI-запросов.
     # 3.9.5: два транспорта — WinRM (Get-CimInstance), при отказе DCOM (Get-WmiObject): WinRM на
-    # рабочих станциях часто выключен, и один WinRM оставлял «кто за ПК» пустым. Ответ машины
-    # приоритетнее инвентарного CSV (его данные могли устареть); DOMAIN\login → login.
+    # рабочих станциях часто выключен, и один WinRM оставлял «кто за ПК» пустым.
+    # Ответ машины — главный источник «кто за ПК»; DOMAIN\login → login.
     # 3.9.6: UserName пуст (RDP-сессии) → владелец explorer.exe; источник ответа — в UserSrc
     # (wmi/csv): итог «кто за ПК» виден в строке статуса после полного опроса.
     if ($askUser -and $status -eq 'ACTIVE') {
@@ -528,8 +515,8 @@ foreach ($item in $data) {
         if ($u) { $user = ($u -split '[\\/]')[-1].Trim(); $userSrc = "wmi" }
       } catch {}
     }
-    [PSCustomObject]@{ Hostname = $pc; ActualIp = $actualIp; Status = $status; User = $user; UserSrc = $userSrc; LastLogon = $lastLogon }
-  }).AddArgument($item.Name).AddArgument($validPrefixes).AddArgument($compDir).AddArgument($compExitDir).AddArgument($pingMs).AddArgument($askUser)
+    [PSCustomObject]@{ Hostname = $pc; ActualIp = $actualIp; Status = $status; User = $user; UserSrc = $userSrc; LastLogon = "Неизвестно" }
+  }).AddArgument($item.Name).AddArgument($validPrefixes).AddArgument($pingMs).AddArgument($askUser)
   $jobs += [PSCustomObject]@{ PS = $ps; H = $ps.BeginInvoke(); Name = $item.Name }
 }
 $results = foreach ($j in $jobs) {
@@ -687,13 +674,13 @@ def enrich_with_dc_logons(results: list[dict], progress=None) -> list[dict]:
     try:
         pairs = dc_logon_events(settings.dc_host)
     except Exception as exc:  # noqa: BLE001
-        say(f"👥 Журнал контроллера домена недоступен ({str(exc)[:100]}) — «кто за ПК» по инвентарю/опросу")
+        say(f"👥 Журнал контроллера домена недоступен ({str(exc)[:100]}) — «кто за ПК» только по опросу машин")
         return results
     return merge_dc_logons(results, pairs, progress)
 
 
 class PCScannerWorker(BaseWorker):
-    """Список рабочих станций из AD → DNS/ping/журналы (PowerShell RunspacePool) → pc_inventory."""
+    """Список рабочих станций из AD → DNS/ping + «кто за ПК» своими силами (PowerShell RunspacePool) → pc_inventory."""
     progress = pyqtSignal(str)
     finished_scan = pyqtSignal(int)
 
@@ -788,17 +775,16 @@ class PCScannerWorker(BaseWorker):
             raise RuntimeError(f"ни один ПК домена не подходит под host_pattern "
                                f"«{settings.host_pattern}» (config.ini → [Scanner]); исключение: «{settings.host_exclude}»; "
                                f"список ПК брался через {via.upper()}")
-        w.progress.emit(tr("⚡ Опрос {0} ПК (DNS, ping, журналы входов)…").format(len(hosts)))
+        w.progress.emit(tr("⚡ Опрос {0} ПК (DNS, ping)…").format(len(hosts)))
         results = w.probe_hosts(hosts, ping_ms=300 if deep else 100)
         if deep:   # 3.9.4: журнал КД — только полный опрос, лёгкий проход его не читает
             results = enrich_with_dc_logons(results, w.progress.emit)
             uw = sum(1 for r in results if (r.get("UserSrc") or "") == "wmi")
-            uc = sum(1 for r in results if (r.get("UserSrc") or "") == "csv")
             uo = sum(1 for r in results if (r.get("User") or "").strip() and not r.get("UserSrc"))
             on = sum(1 for r in results if r.get("Status") == "ACTIVE")
             if on:
-                w.progress.emit(f"👥 Кто за ПК: машина ответила {uw} · CSV {uc} · журнал КД {uo} · "
-                                f"не отвечено {on - uw - uc - uo} из {on} включённых")
+                w.progress.emit(f"👥 Кто за ПК: машина ответила {uw} · журнал КД {uo} · "
+                                f"не отвечено {on - uw - uo} из {on} включённых")
         db.batch_update_inventory(results, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         w._index_printers(hosts)
         return len(hosts)
@@ -813,9 +799,9 @@ class PCScannerWorker(BaseWorker):
             return True
 
     def probe_hosts(self, hosts: list[str], ping_ms: int = 300, wmi_user: bool | None = None) -> list[dict]:
-        """DNS + ping + журналы входов для каждого ПК. На Windows — PowerShell (RunspacePool, 50 потоков, журналы
-        logon-скрипта); если PowerShell не дал результата или мы не на Windows — запасной путь на Python
-        (DNS + TCP 445/ICMP, без журналов). Пустой ответ больше не считается успехом.
+        """DNS + ping для каждого ПК; «кто за ПК» — только свои источники: WMI-каскад (полный опрос) и
+        журнал КД, инвентарные CSV не читаются (3.9.6). На Windows — PowerShell (RunspacePool);
+        запасной путь на Python (DNS + TCP 445/ICMP, без юзера). Пустой ответ больше не считается успехом.
 
         ``wmi_user`` — дёргать ли WMI «кто за ПК» у онлайн-машин: None → по ``self.deep``
         (полный/первичный опрос — да, фоновый — нет); объекты, созданные через ``__new__``
@@ -886,8 +872,6 @@ class PCScannerWorker(BaseWorker):
         script = (_PS_SCANNER
                   .replace("__INPUT__", input_path)
                   .replace("__PREFIXES__", ", ".join(f"'{p}'" for p in settings.valid_subnets))
-                  .replace("__COMP_DIR__", settings.invent_comp_dir)
-                  .replace("__COMPEXIT_DIR__", settings.invent_compexit_dir)
                   .replace("__PING_MS__", str(int(ping_ms)))
                   .replace("__POOL__", str(int(pool if pool is not None else (50 if wmi_user else 200))))
                   .replace("__ASK_USER__", "$true" if wmi_user else "$false"))   # 3.9.6: PS-литералы — True валил весь скрипт

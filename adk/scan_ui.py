@@ -271,14 +271,13 @@ class FullScanWorker(BaseWorker):
             results = enrich_with_dc_logons(results, lambda m: self.step_text.emit(m))
             # 3.9.6: итог «кто за ПК» с источниками — видно в статусе, чтобы не гадать, работает ли связка
             uw = sum(1 for r in results if (r.get("UserSrc") or "") == "wmi")
-            uc = sum(1 for r in results if (r.get("UserSrc") or "") == "csv")
             uo = sum(1 for r in results if (r.get("User") or "").strip() and not r.get("UserSrc"))
             on = sum(1 for r in results if r.get("Status") == "ACTIVE")
-            s.update(user_wmi=uw, user_csv=uc, user_other=uo,
-                     user_missing_warn=bool(on and not (uw + uc + uo)))
+            s.update(user_wmi=uw, user_other=uo,
+                     user_missing_warn=bool(on and not (uw + uo)))
             if on:
-                self.step_text.emit(f"👥 Кто за ПК: машина ответила {uw} · CSV {uc} · журнал КД {uo} · "
-                                    f"не отвечено {on - uw - uc - uo} из {on} включённых")
+                self.step_text.emit(f"👥 Кто за ПК: машина ответила {uw} · журнал КД {uo} · "
+                                    f"не отвечено {on - uw - uo} из {on} включённых")
             if self.cancelled:
                 s["stopped"] = True
             if results:
@@ -347,8 +346,8 @@ def full_summary_text(s: dict) -> str:
         parts.append(f"принтеры: {s.get('printers', 0)} на {s.get('printers_pcs', 0)} ПК")
         if s.get("specs_pcs"):
             parts.append(f"характеристики: {s.get('specs_pcs')} ПК")
-    if any(s.get(k) for k in ("user_wmi", "user_csv", "user_other")):
-        parts.append(f"кто за ПК: машина {s.get('user_wmi', 0)} · CSV {s.get('user_csv', 0)} · КД {s.get('user_other', 0)}")
+    if any(s.get(k) for k in ("user_wmi", "user_other")):
+        parts.append(f"кто за ПК: машина {s.get('user_wmi', 0)} · КД {s.get('user_other', 0)}")
     if s.get("stopped"):
         parts.append("остановлено — начатое доработало")
     prefix = "⚠️ " if s.get("user_missing_warn") else "✅ "
