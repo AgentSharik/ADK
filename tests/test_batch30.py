@@ -474,11 +474,11 @@ def test_run_powershell_raises_readable_error(monkeypatch):
     from adk.workers import PCScannerWorker
     w = PCScannerWorker.__new__(PCScannerWorker)
     w._cancelled = False
-    monkeypatch.setattr(psrun, "run", lambda script, timeout=60, cancelled=None, on_tick=None: psrun.PsResult(False, error="доступ запрещён — нужна учётная запись с правами администратора"))
+    monkeypatch.setattr(psrun, "run", lambda script, timeout=60, cancelled=None, on_tick=None, on_line=None: psrun.PsResult(False, error="доступ запрещён — нужна учётная запись с правами администратора"))
     with pytest.raises(RuntimeError) as ei:
         w._run_powershell(["WS-001"])
     assert "доступ запрещён" in str(ei.value)
-    monkeypatch.setattr(psrun, "run", lambda script, timeout=60, cancelled=None, on_tick=None: psrun.PsResult(True, stdout='{"Hostname":"WS-001","ActualIp":"10.0.0.1","Status":"ACTIVE","User":"ivanov","LastLogon":"01.09.2026 09:00"}'))
+    monkeypatch.setattr(psrun, "run", lambda script, timeout=60, cancelled=None, on_tick=None, on_line=None: psrun.PsResult(True, stdout='{"Hostname":"WS-001","ActualIp":"10.0.0.1","Status":"ACTIVE","User":"ivanov","LastLogon":"01.09.2026 09:00"}'))
     assert w._run_powershell(["WS-001"])[0]["User"] == "ivanov"
 
 

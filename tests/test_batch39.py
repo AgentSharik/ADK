@@ -400,7 +400,7 @@ def test_run_powershell_substitutes_ping_and_wmi(monkeypatch):
     class _R:
         ok, stdout, error = True, "[]", ""
 
-    monkeypatch.setattr(psrun, "run", lambda script, timeout=None, cancelled=None:
+    monkeypatch.setattr(psrun, "run", lambda script, timeout=None, cancelled=None, on_tick=None, on_line=None:
                         (captured.__setitem__("script", script), _R())[1])
     monkeypatch.setattr(workers.settings, "scan_pool_width", 64)   # 3.9.9: щадящий дефолт, детерминированно
     w_light = workers.PCScannerWorker(lambda: None, deep=False)
@@ -506,7 +506,7 @@ def test_run_powershell_pool_width_setting(monkeypatch):
     class _R:
         ok, stdout, error = True, "[]", ""
 
-    monkeypatch.setattr(psrun, "run", lambda script, timeout=None, cancelled=None:
+    monkeypatch.setattr(psrun, "run", lambda script, timeout=None, cancelled=None, on_tick=None, on_line=None:
                         (captured.__setitem__("script", script), _R())[1])
     monkeypatch.setattr(workers.settings, "scan_pool_width", 32)
     w = workers.PCScannerWorker(lambda: None, deep=True)
@@ -524,7 +524,7 @@ def test_deep_scan_dc_first_spares_pcs(monkeypatch):
              {"Hostname": "PC-2", "ActualIp": "10.0.0.2", "Status": "OFFLINE", "User": "", "UserSrc": "", "LastLogon": "Неизвестно"}]
     calls = []
 
-    def probe(hosts, wmi_user):
+    def probe(hosts, wmi_user, offset=0, grand=0):
         calls.append((tuple(hosts), wmi_user))
         return [dict(r) for r in light if r["Hostname"] in hosts]
 
@@ -556,3 +556,29 @@ def test_merge_dc_logons_matches_by_ip_without_ptr(monkeypatch):
     out = workers.merge_dc_logons(results, [("ivanov", "10.0.0.7"), ("petrov", "10.0.0.8")])
     assert out[0]["User"] == "ivanov" and out[1]["User"] == "petrov"
     assert out[0]["LastLogon"] == "по журналу контроллера домена"
+
+
+def test_run_powershell_live_progress(monkeypatch):
+    """3.9.11: строки PRG из PowerShell-сканера превращаются в живой статус «label offset+d из grand» —
+    по мере опроса каждой машины, а не прыжками порциями."""
+    from adk import psrun, workers
+
+    seen = {}
+
+    class _R:
+        ok, stdout, error = True, "[]", ""
+
+    def fake_run(script, timeout=None, cancelled=None, on_tick=None, on_line=None):
+        seen["on_line"] = on_line
+        if on_line:
+            on_line("PRG 5/200\n")
+        return _R()
+
+    monkeypatch.setattr(psrun, "run", fake_run)
+    monkeypatch.setattr(workers.settings, "scan_pool_width", 64)
+    emitted = []
+    w = workers.PCScannerWorker(lambda: None, deep=False)
+    w.progress = type("P", (), {"emit": staticmethod(emitted.append)})()
+    w._run_powershell(["PC-1"], 100, False, label="⚡ Опрошено", offset=200, grand=400)
+    assert seen["on_line"] is not None
+    assert "⚡ Опрошено 205 из 400" in emitted

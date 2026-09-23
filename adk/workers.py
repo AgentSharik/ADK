@@ -528,6 +528,17 @@ foreach ($item in $data) {
   }).AddArgument($item.Name).AddArgument($validPrefixes).AddArgument($pingMs).AddArgument($askUser)
   $jobs += [PSCustomObject]@{ PS = $ps; H = $ps.BeginInvoke(); Name = $item.Name }
 }
+# 3.9.11: живой прогресс — пока машины опрашиваются, пишем PRG done/total (читается построчно)
+$total = $jobs.Count
+$reported = -1
+while ($true) {
+  $busy = 0
+  foreach ($j in $jobs) { if (-not $j.H.IsCompleted) { $busy++ } }
+  $d = $total - $busy
+  if ($d -ne $reported) { Write-Output "PRG $d/$total"; $reported = $d }
+  if ($busy -eq 0) { break }
+  Start-Sleep -Milliseconds 150
+}
 $results = foreach ($j in $jobs) {
   try { $j.PS.EndInvoke($j.H) } catch { [PSCustomObject]@{ Hostname = $j.Name; ActualIp = "Не найден"; Status = "OFFLINE"; User = ""; LastLogon = "Неизвестно" } }
   $j.PS.Dispose()
@@ -724,15 +735,16 @@ def deep_scan_dc_first(hosts: list[str], probe, progress=None, chunk_size: int =
     def run_all(part: list[str], wmi_user: bool) -> list[dict]:
         out: list[dict] = []
         if chunk_size and len(part) > chunk_size:
+            base = 0
             for k in range(0, len(part), chunk_size):
-                out += probe(part[k:k + chunk_size], wmi_user)
-                done = min(k + chunk_size, len(part))
+                out += probe(part[k:k + chunk_size], wmi_user, base, len(part))
+                base = done = min(k + chunk_size, len(part))
                 if on_light_done and not wmi_user:
                     on_light_done(done)
                 if progress and wmi_user:
                     say(f"👥 Дозапрос у машин: {done} из {len(part)} · параллельно {settings.scan_pool_width}")
         else:
-            out = probe(part, wmi_user)
+            out = probe(part, wmi_user, 0, len(part))
             if on_light_done and not wmi_user:
                 on_light_done(len(part))
         return out
@@ -831,7 +843,8 @@ class PCScannerWorker(BaseWorker):
             if self.deep:
                 # 3.9.8: журнал КД первым (один запрос), WMI у машин — только для остатка без юзера
                 results = deep_scan_dc_first(
-                    hosts, lambda h, wmi: self.probe_hosts(h, ping_ms=300, wmi_user=wmi),
+                    hosts, lambda h, wmi, off, grand: self.probe_hosts(h, ping_ms=300, wmi_user=wmi,
+                                                                       offset=off, grand=grand),
                     progress=self.progress.emit)
             else:
                 results = self.probe_hosts(hosts, ping_ms=100)
@@ -866,7 +879,8 @@ class PCScannerWorker(BaseWorker):
         w.progress.emit(tr("⚡ Опрос {0} ПК (DNS, ping, пул {1})…").format(len(hosts), settings.scan_pool_width))
         if deep:   # 3.9.8: журнал КД первым, WMI — только включённым без юзера
             results = deep_scan_dc_first(
-                hosts, lambda h, wmi: w.probe_hosts(h, ping_ms=300, wmi_user=wmi),
+                hosts, lambda h, wmi, off, grand: w.probe_hosts(h, ping_ms=300, wmi_user=wmi,
+                                                                offset=off, grand=grand),
                 progress=w.progress.emit)
         else:
             results = w.probe_hosts(hosts, ping_ms=100)
@@ -890,7 +904,8 @@ class PCScannerWorker(BaseWorker):
         except RuntimeError:
             return True
 
-    def probe_hosts(self, hosts: list[str], ping_ms: int = 300, wmi_user: bool | None = None) -> list[dict]:
+    def probe_hosts(self, hosts: list[str], ping_ms: int = 300, wmi_user: bool | None = None,
+                   offset: int = 0, grand: int = 0) -> list[dict]:
         """DNS + ping для каждого ПК; «кто за ПК» — только свои источники: WMI-каскад (полный опрос) и
         журнал КД, инвентарные CSV не читаются (3.9.6). На Windows — PowerShell (RunspacePool);
         запасной путь на Python (DNS + TCP 445/ICMP, без юзера). Пустой ответ больше не считается успехом.
@@ -902,7 +917,10 @@ class PCScannerWorker(BaseWorker):
             wmi_user = self._wmi_user_default()
         if os.name == "nt":
             try:
-                results = self._run_powershell(hosts, ping_ms, wmi_user)
+                results = self._run_powershell(
+                    hosts, ping_ms, wmi_user,
+                    label="👥 Дозапрос:" if wmi_user else "⚡ Опрошено",
+                    offset=offset, grand=grand)
                 if results:
                     return results
                 self.progress.emit("⚠️ PowerShell не вернул данных — опрашиваю ПК средствами Python…")
@@ -951,10 +969,12 @@ class PCScannerWorker(BaseWorker):
         self.progress.emit(tr("🖨️ Принтеры проиндексированы: {0} ПК с CSV").format(n))
 
     def _run_powershell(self, hosts: list[str], ping_ms: int = 300, wmi_user: bool = True,
-                       pool: int | None = None) -> list[dict]:
+                       pool: int | None = None, label: str = "", offset: int = 0, grand: int = 0) -> list[dict]:
         """PowerShell-сканер через :mod:`psrun` (3.6.1; раньше — прямой ``powershell -Command <текст>``, который из
         exe без консоли мог завершиться молча). Ошибка → исключение с понятной причиной, пустой ответ → [].
-        3.9.3: ``ping_ms`` и ``wmi_user`` реально подставляются в скрипт (раньше $pingMs приходил пустым)."""
+        3.9.3: ``ping_ms`` и ``wmi_user`` реально подставляются в скрипт (раньше $pingMs приходил пустым).
+        3.9.11: ``label/offset/grand`` — живой прогресс: строки ``PRG d/t`` из сканера превращаются
+        в статус «label offset+d из grand» по мере опроса каждой машины, а не прыжками порциями."""
         import tempfile
         from . import psrun
 
@@ -967,8 +987,16 @@ class PCScannerWorker(BaseWorker):
                   .replace("__PING_MS__", str(int(ping_ms)))
                   .replace("__POOL__", str(int(pool if pool is not None else (settings.scan_pool_width or 200))))
                   .replace("__ASK_USER__", "$true" if wmi_user else "$false"))   # 3.9.6: PS-литералы — True валил весь скрипт
+        def _on_line(line: str) -> None:
+            if line.startswith("PRG "):
+                try:
+                    d, t = line[4:].strip().split("/", 1)
+                    self.progress.emit(f"{label or '⚡ Опрошено'} {offset + int(d)} из {grand or int(t)}")
+                except (ValueError, TypeError):
+                    pass
+
         try:
-            res = psrun.run(script, timeout=900, cancelled=lambda: self.cancelled)
+            res = psrun.run(script, timeout=900, cancelled=lambda: self.cancelled, on_line=_on_line)
         finally:
             try:
                 os.remove(input_path)
@@ -976,7 +1004,8 @@ class PCScannerWorker(BaseWorker):
                 pass
         if not res.ok:
             raise RuntimeError(res.error)
-        data = json.loads(res.stdout)
+        stdout = "\n".join(x for x in (res.stdout or "").splitlines() if not x.startswith("PRG "))
+        data = json.loads(stdout)
         return [data] if isinstance(data, dict) else list(data)
 
     def cancel(self) -> None:

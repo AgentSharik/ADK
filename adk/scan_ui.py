@@ -261,10 +261,10 @@ class FullScanWorker(BaseWorker):
             scanner.deep = True
             scanner.progress = _Emitter(self.step_text.emit)
 
-            def _probe(chunk: list[str], wmi_user: bool) -> list[dict]:
+            def _probe(chunk: list[str], wmi_user: bool, offset: int = 0, grand: int = 0) -> list[dict]:
                 if self.cancelled:
                     return []
-                return scanner.probe_hosts(chunk, ping_ms=300, wmi_user=wmi_user)
+                return scanner.probe_hosts(chunk, ping_ms=300, wmi_user=wmi_user, offset=offset, grand=grand)
 
             # 3.9.8: лёгкий проход → журнал КД (один запрос) → WMI только для ПК без юзера
             from .workers import deep_scan_dc_first

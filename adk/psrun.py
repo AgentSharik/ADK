@@ -111,10 +111,13 @@ def explain_error(text: str) -> str:
 
 
 def run(script: str, timeout: int = 60, cancelled: Callable[[], bool] | None = None,
-        on_tick: Callable[[float], None] | None = None) -> PsResult:
+        on_tick: Callable[[float], None] | None = None,
+        on_line: Callable[[str], None] | None = None) -> PsResult:
     """Выполнить скрипт. ``cancelled()`` опрашивается каждые 0,5 с — при True процесс убивается.
 
     Возвращает :class:`PsResult`; ``error`` уже пропущен через :func:`explain_error`.
+    3.9.11: ``on_line`` — потоковый чтение stdout построчно (сканер пишет строки ``PRG done/total``,
+    чтобы статус показывал живой прогресс, а не прыгал порциями). Без ``on_line`` — как раньше.
     """
     if os.name != "nt":
         return PsResult(False, error="Опрос доступен только с Windows (PowerShell/CIM)")
@@ -127,11 +130,59 @@ def run(script: str, timeout: int = 60, cancelled: Callable[[], bool] | None = N
         except OSError as exc:
             return PsResult(False, error=f"PowerShell не запускается: {exc}")
         out, err = "", ""
-        while True:
-            try:
-                out, err = proc.communicate(timeout=0.5)
-                break
-            except subprocess.TimeoutExpired:
+        if on_line is None:
+            while True:
+                try:
+                    out, err = proc.communicate(timeout=0.5)
+                    break
+                except subprocess.TimeoutExpired:
+                    elapsed = time.monotonic() - started
+                    if on_tick:
+                        on_tick(elapsed)
+                    if cancelled and cancelled():
+                        _kill(proc)
+                        return PsResult(False, error="Остановлено пользователем", returncode=proc.returncode)
+                    if elapsed > timeout:
+                        _kill(proc)
+                        return PsResult(False, error=f"ПК не ответил за {timeout} с", returncode=proc.returncode)
+        else:
+            import queue as _q
+            import threading as _th
+            lines: list[str] = []
+            errbuf: list[str] = []
+            events: "_q.Queue[tuple[str, str | None]]" = _q.Queue()
+
+            def _pump_out() -> None:
+                try:
+                    for line in proc.stdout:
+                        lines.append(line)
+                        events.put(("line", line))
+                except OSError:
+                    pass
+                finally:
+                    events.put(("eof", None))
+
+            def _pump_err() -> None:
+                try:
+                    for line in proc.stderr:
+                        errbuf.append(line)
+                except OSError:
+                    pass
+
+            t_out = _th.Thread(target=_pump_out, daemon=True)
+            t_err = _th.Thread(target=_pump_err, daemon=True)
+            t_out.start()
+            t_err.start()
+            eof = False
+            while not eof:
+                try:
+                    kind, line = events.get(timeout=0.5)
+                except _q.Empty:
+                    kind, line = None, None
+                if kind == "line" and line is not None:
+                    on_line(line)
+                elif kind == "eof":
+                    eof = True
                 elapsed = time.monotonic() - started
                 if on_tick:
                     on_tick(elapsed)
@@ -141,6 +192,13 @@ def run(script: str, timeout: int = 60, cancelled: Callable[[], bool] | None = N
                 if elapsed > timeout:
                     _kill(proc)
                     return PsResult(False, error=f"ПК не ответил за {timeout} с", returncode=proc.returncode)
+            t_out.join(2)
+            t_err.join(2)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.SubprocessError:
+                _kill(proc)
+            out, err = "".join(lines), "".join(errbuf)
     finally:
         if tmp:
             try:
