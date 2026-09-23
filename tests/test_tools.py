@@ -258,15 +258,14 @@ def test_group_compare_diff_and_dialog(qapp, monkeypatch):
     dlg = GroupCompareDialog(_Entry("CN=t,OU=x", "target", ["CN=IT,OU=g"]), app)
     dlg.ref.setText("ref")
     dlg.load_ref()
-    _spin(qapp)
-    assert dlg.missing.count() == 1 and dlg.missing.item(0).text() == "VPN" and dlg.common.count() == 1
+    assert _wait(qapp, lambda: dlg.missing.count() == 1 and dlg.common.count() == 1)
+    assert dlg.missing.item(0).text() == "VPN" 
     from adk.widgets import MessageBox
     monkeypatch.setattr(MessageBox, "question", staticmethod(lambda *a, **k: True))
     monkeypatch.setattr(MessageBox, "information", staticmethod(lambda *a, **k: None))
     dlg.apply(dlg.missing, ad_add)
-    _spin(qapp)
-    assert app.conn.modified and app.conn.modified[0][0] == "CN=VPN,OU=g"
-    assert dlg.common.count() == 2 and dlg.missing.count() == 0
+    assert _wait(qapp, lambda: app.conn.modified and dlg.common.count() == 2 and dlg.missing.count() == 0)
+    assert app.conn.modified[0][0] == "CN=VPN,OU=g" 
     assert db.audit_entries()[0][2] == "groups_sync"
     dlg.close()
 
