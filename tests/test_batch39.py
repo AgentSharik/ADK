@@ -471,10 +471,11 @@ def test_ps_scanner_registry_fallback():
 
 
 
-def test_ps_scanner_radar_csv_match():
-    """3.9.6: сверка CSV как в «Доменном Радаре» — разделитель по «;», 4-е поле (список IP)
-    обязано войти в подсеть, иначе запись «кто за ПК» не берётся."""
+def test_ps_scanner_csv_plain_login():
+    """3.9.6 (перевыпуск): CSV-«кто за ПК» — прежняя логика ADK (логин = 2-е поле, разделители «;»/«,»),
+    сверка по подсети из «Радара» откатана по приказу юзера: ADK строит свою базу (db_path)."""
     from adk.workers import _PS_SCANNER
-    assert "$delim = \";\"; if (-not $line.Contains(\";\")) { $delim = \",\" }" in _PS_SCANNER
-    assert "$parts[3].Trim() -split ','" in _PS_SCANNER
-    assert "if ($logIp -and $parts[1].Trim()) { $user = $parts[1].Trim(); $userSrc = \"csv\" }" in _PS_SCANNER
+    assert "$line.Split(@(';', ','))[1]" in _PS_SCANNER
+    assert "$delim" not in _PS_SCANNER and "$parts[3]" not in _PS_SCANNER
+    # пул «Доменного Радара» остаётся: лёгкий проход 200
+    assert "CreateRunspacePool(1, __POOL__)" in _PS_SCANNER

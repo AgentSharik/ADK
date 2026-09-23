@@ -477,21 +477,7 @@ foreach ($item in $data) {
           $latest = $mtime
           try {
             $line = [System.IO.File]::ReadLines($path, [System.Text.Encoding]::GetEncoding(1251)) | Select-Object -First 1
-            if ($line) {
-              # 3.9.6: сверка как в «Доменном Радаре»: разделитель по наличию «;»,
-              # запись верна, только если IP из журнала (4-е поле) входит в нашу подсеть
-              $delim = ";"; if (-not $line.Contains(";")) { $delim = "," }
-              $parts = $line.Split($delim)
-              if ($parts.Length -ge 4) {
-                $logIp = $null
-                foreach ($ip in ($parts[3].Trim() -split ',')) {
-                  $ip = $ip.Trim()
-                  foreach ($pref in $validPrefixes) { if ($ip -and $ip.StartsWith($pref)) { $logIp = $ip; break } }
-                  if ($logIp) { break }
-                }
-                if ($logIp -and $parts[1].Trim()) { $user = $parts[1].Trim(); $userSrc = "csv" }
-              }
-            }
+            if ($line) { $p = $line.Split(@(';', ','))[1]; if ($p) { $user = $p.Trim(); $userSrc = "csv" } }
           } catch {}
         }
       }
