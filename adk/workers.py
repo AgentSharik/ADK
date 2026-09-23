@@ -457,8 +457,9 @@ $validPrefixes = @(__PREFIXES__)
 $pingMs = __PING_MS__          # таймаут пинга: полный опрос 300 мс, фоновый — 100 мс
 $askUser = __ASK_USER__        # WMI «кто за ПК» — только полный/первичный опрос (первичная связка ПК↔человек);
                                # фоновый скан не дёргает WMI на каждом запуске (3.9.3)
-# 3.9.6: механизм «Доменного Радара» (прошлый продукт): лёгкий проход — широкий пул 200,
-# полный опрос с WMI — 50 (WMI тяжёлый, широкий пул его не ускоряет)
+# 3.9.6: механизм «Доменного Радара» (прошлый продукт) — широкий пул 200.
+# 3.9.7: полный опрос с WMI тоже расширен до 200 — ожидания WMI сетевые, ширина их
+# параллелит; на каждую машину всё равно приходится 1 короткий запрос, нагрузка не растёт
 [System.Threading.ThreadPool]::SetMinThreads(__POOL__, __POOL__) | Out-Null
 $pool = [runspacefactory]::CreateRunspacePool(1, __POOL__); $pool.Open()
 $jobs = @()
@@ -493,14 +494,14 @@ foreach ($item in $data) {
     if ($askUser -and $status -eq 'ACTIVE') {
       try {
         $u = $null
-        try { $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $pc -OperationTimeoutSec 3 -ErrorAction Stop
+        try { $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $pc -OperationTimeoutSec 2 -ErrorAction Stop
               if ($cs -and $cs.UserName) { $u = $cs.UserName } } catch {}
         if (-not $u) {
           try { $wmi = Get-WmiObject -Class Win32_ComputerSystem -ComputerName $pc -ErrorAction Stop
                 if ($wmi -and $wmi.UserName) { $u = $wmi.UserName } } catch {}
         }
         if (-not $u) {
-          try { $o = @(Get-CimInstance -ClassName Win32_Process -Filter "Name='explorer.exe'" -ComputerName $pc -OperationTimeoutSec 3 -ErrorAction Stop | Invoke-CimMethod -MethodName GetOwner)[0]
+          try { $o = @(Get-CimInstance -ClassName Win32_Process -Filter "Name='explorer.exe'" -ComputerName $pc -OperationTimeoutSec 2 -ErrorAction Stop | Invoke-CimMethod -MethodName GetOwner)[0]
                 if ($o -and $o.User) { $u = $o.Domain + '/' + $o.User } } catch {}
         }
         if (-not $u) {
@@ -873,7 +874,7 @@ class PCScannerWorker(BaseWorker):
                   .replace("__INPUT__", input_path)
                   .replace("__PREFIXES__", ", ".join(f"'{p}'" for p in settings.valid_subnets))
                   .replace("__PING_MS__", str(int(ping_ms)))
-                  .replace("__POOL__", str(int(pool if pool is not None else (50 if wmi_user else 200))))
+                  .replace("__POOL__", str(int(pool if pool is not None else 200)))
                   .replace("__ASK_USER__", "$true" if wmi_user else "$false"))   # 3.9.6: PS-литералы — True валил весь скрипт
         try:
             res = psrun.run(script, timeout=900, cancelled=lambda: self.cancelled)
