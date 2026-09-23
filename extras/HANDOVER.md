@@ -625,6 +625,8 @@ Kyocera, 10.0.9.93, Шевченко+архивы, набор по буквам.
 - Тестов **397** (+3 i18n; 395+2 прошлый слой → 397 зелёные после фикса). Видео 32 сдано ранее.
 
 ### Партия 61: быстрый дозапрос + zip без папки ADK (3.9.9)
+- ВАЖНО (после сброса песочницы): push заработал только с remote вида https://AgentSharik:<PAT>@github.com/AgentSharik/ADK.git — форма x-access-token:<PAT> стала давать «Invalid username or token» при валидном токене (партия 61, 2026-09-23).
+
 - Юзер (скриншот «Дозапрос у машин: 200 из 1277»): лёгкий проход быстрый, дозапрос WMI очень медленный; «изучи интернет и скажи, как быстрее опросить ПК на предмет кто сидит». Исследование: quser/qwinsta быстры, но RPC-зависимы (висят при заблокированном 135) и видят только терминальные сессии; Win32_ComputerSystem через CIM; explorer.exe GetOwner через Invoke-CimMethod; Get-WmiObject без таймаута — главный источник висов (перевести на Get-CimInstance/New-CimSession -Protocol Dcom с -OperationTimeoutSec); порты: WinRM 5985, DCOM 135+динамические, реестр 445.
 - Реализовано в _PS_SCANNER: предпровер TCP-портов скриптблоком $port (TcpClient.ConnectAsync().Wait(400)) — WinRM только при открытом 5985, DCOM-ветка только при открытом 135 (New-CimSession -Protocol Dcom + Get-CimInstance -OperationTimeoutSec 2, сессия переиспользуется для explorer.exe, Remove-CimSession в finally), реестр только при открытом 445. Get-WmiObject убран из сканера полностью.
 - scan_pool_width default 200→64 (обещано юзеру в 3.9.8); тесты: (1) defaults 64 в подстановке (monkeypatch — локальный Documents/ADK/config.ini артефакт со значением 200 ронял тест, поправлен на 64), (2) scan_pool_width-тест переведён на 32, +1 новый test_ps_scanner_port_precheck_and_bounded_dcom. 414 passed + 2 skipped.
