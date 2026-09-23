@@ -186,8 +186,6 @@ Test-NetConnection dc01.corp.example.local -Port 636
 [Paths]
 db_path = %USERPROFILE%\Documents\ADK\pc_mapping.db
 invent_hardware_dir = \\fileserver\invent$\comp\hardware
-invent_comp_dir = \\fileserver\invent$\comp
-invent_compexit_dir = \\fileserver\invent$\compexit
 pst_backup_base =
 rms_viewer_path = C:\Program Files (x86)\Remote Manipulator System - Viewer\rutview.exe
 ```

@@ -433,12 +433,6 @@ class SearchWorker(BaseWorker):
                                     last_logon = item["date"]
                                     if ip == "Не найден":
                                         ip = item["ip"]
-                if self.include_archives and comp and last_logon in ("Нет данных", "Неизвестно"):
-                    csv_ip, csv_date = netutils.get_pc_info_from_csv(comp, login, disp)
-                    if csv_date != "Нет данных":
-                        last_logon = csv_date
-                    if ip == "Не найден":
-                        ip = csv_ip
                 rows.append({**base, "comp": comp or "—", "ip": ip if comp else "Не найден",
                              "is_online": online, "net_pending": is_pending, "last_logon": last_logon,
                              "last_seen_online": inv.get(comp, {}).get("last_seen_online"),
@@ -457,9 +451,9 @@ $validPrefixes = @(__PREFIXES__)
 $pingMs = __PING_MS__          # таймаут пинга: полный опрос 300 мс, фоновый — 100 мс
 $askUser = __ASK_USER__        # WMI «кто за ПК» — только полный/первичный опрос (первичная связка ПК↔человек);
                                # фоновый скан не дёргает WMI на каждом запуске (3.9.3)
-# 3.9.6: механизм «Доменного Радара» (прошлый продукт) — широкий пул 200.
-# 3.9.7: полный опрос с WMI тоже расширен до 200 — ожидания WMI сетевые, ширина их
-# параллелит; на каждую машину всё равно приходится 1 короткий запрос, нагрузка не растёт
+# Широкий пул потоков: ожидания (DNS/пинг/WMI) сетевые, ширина их параллелит; на каждую машину
+# приходится 1-2 коротких запроса — ширина пула нагрузку на машину не увеличивает.
+# Настройка: [Scanner] scan_pool_width — уменьшите, если сеть нервно реагирует на массовые опросы
 [System.Threading.ThreadPool]::SetMinThreads(__POOL__, __POOL__) | Out-Null
 $pool = [runspacefactory]::CreateRunspacePool(1, __POOL__); $pool.Open()
 $jobs = @()
@@ -680,16 +674,72 @@ def enrich_with_dc_logons(results: list[dict], progress=None) -> list[dict]:
     return merge_dc_logons(results, pairs, progress)
 
 
+def deep_scan_dc_first(hosts: list[str], probe, progress=None, chunk_size: int = 0,
+                       on_light_done=None) -> list[dict]:
+    """3.9.8: полный опрос «кто за ПК» с минимумом запросов к ПК пользователей.
+
+    Порядок: (1) лёгкий проход по всем ПК (DNS + пинг — машины не нагружаются);
+    (2) ОДИН запрос к журналу Security контроллера домена (4768) — закрывает большинство ПК,
+    ПК пользователей при этом вообще не опрашиваются; (3) WMI-каскад — только для включённых
+    ПК, оставшихся без юзера. Журнал КД недоступен/пуст — спрашиваются все включённые (как раньше).
+
+    ``probe(hosts, wmi_user) -> list[dict]`` — сканер; ``chunk_size > 0`` — порциями
+    (прогресс/отмена между порциями); ``on_light_done(done)`` — отчёт лёгкого прохода.
+    """
+    def say(msg):
+        if progress:
+            progress(msg)
+
+    def run_all(part: list[str], wmi_user: bool) -> list[dict]:
+        out: list[dict] = []
+        if chunk_size and len(part) > chunk_size:
+            for k in range(0, len(part), chunk_size):
+                out += probe(part[k:k + chunk_size], wmi_user)
+                done = min(k + chunk_size, len(part))
+                if on_light_done and not wmi_user:
+                    on_light_done(done)
+                if progress and wmi_user:
+                    say(f"👥 Дозапрос у машин: {done} из {len(part)}")
+        else:
+            out = probe(part, wmi_user)
+            if on_light_done and not wmi_user:
+                on_light_done(len(part))
+        return out
+
+    results = run_all(hosts, False)                      # (1) лёгкий проход — без WMI
+    if not results:
+        return results
+    say("👥 Журнал контроллера домена: один запрос вместо опроса машин…")
+    pairs: list[tuple[str, str]] | None = None
+    try:
+        pairs = dc_logon_events(settings.dc_host)        # (2) один запрос к КД
+    except Exception as exc:  # noqa: BLE001
+        say(f"👥 Журнал КД недоступен ({str(exc)[:100]}) — «кто за ПК» спрошу у машин напрямую")
+    if pairs:
+        results = merge_dc_logons(results, pairs, progress)
+    gaps = [r.get("Hostname") for r in results
+            if r.get("Status") == "ACTIVE" and not (r.get("User") or "").strip()]
+    if not gaps:
+        say("👥 Кто за ПК: журнал КД ответил за все включённые ПК — машины не опрашивались")
+        return results
+    say(f"👥 Дозапрос у машин: {len(gaps)} ПК без юзера после журнала КД…")
+    extra = run_all(gaps, True)                          # (3) WMI — только остаток
+    by_name = {(r.get("Hostname") or "").upper(): r for r in extra}
+    return [by_name.get((r.get("Hostname") or "").upper())
+            if by_name.get((r.get("Hostname") or "").upper()) and (by_name.get((r.get("Hostname") or "").upper()).get("User") or "").strip()
+            else r for r in results]
+
+
 class PCScannerWorker(BaseWorker):
     """Список рабочих станций из AD → DNS/ping + «кто за ПК» своими силами (PowerShell RunspacePool) → pc_inventory."""
     progress = pyqtSignal(str)
     finished_scan = pyqtSignal(int)
 
     def __init__(self, conn_factory: ConnFactory, parent=None, deep: bool = True):
-        """``deep=True`` — полный/первичный опрос: пинг 300 мс + WMI «кто за ПК» у онлайн-машин + журнал КД (4768).
-        ``deep=False`` — фоновый по расписанию (3.9.1): лёгкий, как в 3.8 — DNS + сверка с базой + пинг 100 мс;
-        БЕЗ WMI и БЕЗ чтения журнала КД (3.9.3: WMI — только полный опрос, для первичной связки ПК↔человек;
-        фоновый не должен дёргать WMI на каждом запуске)."""
+        """``deep=True`` — полный/первичный опрос (3.9.8): лёгкий проход (DNS + пинг 300 мс) → один запрос
+        к журналу КД (4768) → WMI «кто за ПК» только у включённых ПК, оставшихся без юзера.
+        ``deep=False`` — фоновый по расписанию: DNS + пинг 100 мс, юзер — последний известный
+        из базы (WMI и журнал КД не трогаются)."""
         super().__init__(parent)
         self.conn_factory = conn_factory
         self.deep = deep
@@ -744,12 +794,16 @@ class PCScannerWorker(BaseWorker):
                                        f"список ПК брался через {via.upper()}")
                 self.finished_scan.emit(0)
                 return
-            self.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping{' , журнал КД' if self.deep else ''})…")
-            results = self.probe_hosts(hosts, ping_ms=300 if self.deep else 100)
+            self.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping)…")
+            if self.deep:
+                # 3.9.8: журнал КД первым (один запрос), WMI у машин — только для остатка без юзера
+                results = deep_scan_dc_first(
+                    hosts, lambda h, wmi: self.probe_hosts(h, ping_ms=300, wmi_user=wmi),
+                    progress=self.progress.emit)
+            else:
+                results = self.probe_hosts(hosts, ping_ms=100)
             if self.cancelled:
                 return
-            if self.deep:
-                results = enrich_with_dc_logons(results, lambda m: self.progress.emit(m))
             self.progress.emit("💾 Обновление инвентаря…")
             db.batch_update_inventory(results, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             self._index_printers(hosts)
@@ -777,9 +831,13 @@ class PCScannerWorker(BaseWorker):
                                f"«{settings.host_pattern}» (config.ini → [Scanner]); исключение: «{settings.host_exclude}»; "
                                f"список ПК брался через {via.upper()}")
         w.progress.emit(tr("⚡ Опрос {0} ПК (DNS, ping)…").format(len(hosts)))
-        results = w.probe_hosts(hosts, ping_ms=300 if deep else 100)
-        if deep:   # 3.9.4: журнал КД — только полный опрос, лёгкий проход его не читает
-            results = enrich_with_dc_logons(results, w.progress.emit)
+        if deep:   # 3.9.8: журнал КД первым, WMI — только включённым без юзера
+            results = deep_scan_dc_first(
+                hosts, lambda h, wmi: w.probe_hosts(h, ping_ms=300, wmi_user=wmi),
+                progress=w.progress.emit)
+        else:
+            results = w.probe_hosts(hosts, ping_ms=100)
+        if deep:
             uw = sum(1 for r in results if (r.get("UserSrc") or "") == "wmi")
             uo = sum(1 for r in results if (r.get("User") or "").strip() and not r.get("UserSrc"))
             on = sum(1 for r in results if r.get("Status") == "ACTIVE")
@@ -874,7 +932,7 @@ class PCScannerWorker(BaseWorker):
                   .replace("__INPUT__", input_path)
                   .replace("__PREFIXES__", ", ".join(f"'{p}'" for p in settings.valid_subnets))
                   .replace("__PING_MS__", str(int(ping_ms)))
-                  .replace("__POOL__", str(int(pool if pool is not None else 200)))
+                  .replace("__POOL__", str(int(pool if pool is not None else (settings.scan_pool_width or 200))))
                   .replace("__ASK_USER__", "$true" if wmi_user else "$false"))   # 3.9.6: PS-литералы — True валил весь скрипт
         try:
             res = psrun.run(script, timeout=900, cancelled=lambda: self.cancelled)

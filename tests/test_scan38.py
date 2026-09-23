@@ -87,7 +87,7 @@ def test_full_scan_worker_phases(monkeypatch):
     monkeypatch.setattr(config.settings, "host_pattern", r"^WS-\d+$")
     monkeypatch.setattr(ad, "paged_search", lambda c, f, attrs, **kw: list(c._all))
     monkeypatch.setattr(PCScannerWorker, "probe_hosts",
-                        lambda self, hosts: [{"Hostname": h, "ActualIp": "10.0.0.1", "Status": "ACTIVE",
+                        lambda self, hosts, ping_ms=300, wmi_user=None: [{"Hostname": h, "ActualIp": "10.0.0.1", "Status": "ACTIVE",
                                               "User": "", "LastLogon": "Неизвестно"} for h in hosts])
     monkeypatch.setattr(PCScannerWorker, "_index_printers", lambda self, hosts: None)
     monkeypatch.setattr(fleetpoll, "fleet_hosts", lambda cf, online_only=True: ["WS-101"])
@@ -133,7 +133,7 @@ def test_full_scan_worker_pcs_only_skips_fleet(monkeypatch):
     monkeypatch.setattr(config.settings, "host_pattern", r"^WS-\d+$")
     monkeypatch.setattr(ad, "paged_search", lambda c, f, attrs, **kw: list(c._all))
     monkeypatch.setattr(PCScannerWorker, "probe_hosts",
-                        lambda self, hosts: [{"Hostname": h, "ActualIp": "10.0.0.1", "Status": "OFFLINE",
+                        lambda self, hosts, ping_ms=300, wmi_user=None: [{"Hostname": h, "ActualIp": "10.0.0.1", "Status": "OFFLINE",
                                               "User": "", "LastLogon": "Неизвестно"} for h in hosts])
     monkeypatch.setattr(PCScannerWorker, "_index_printers", lambda self, hosts: None)
 

@@ -143,8 +143,6 @@ _DEFAULTS: dict[str, dict[str, str]] = {
     "Paths": {
         "db_path": os.path.join(DOCS_DIR, "pc_mapping.db"),
         "invent_hardware_dir": "",
-        "invent_comp_dir": "",
-        "invent_compexit_dir": "",
         "pst_backup_base": "",
         "rms_viewer_path": r"C:\Program Files (x86)\Remote Manipulator System - Viewer\rutview.exe",
     },
@@ -154,6 +152,9 @@ _DEFAULTS: dict[str, dict[str, str]] = {
         # (WMI) и журнал КД. Обычные циклы — лёгкие: DNS + пинг 100 мс, без WMI. 0 — полный только
         # при наполнении пустой базы.
         "auto_scan_deep_every_min": "1440",
+        # Сколько ПК опрашивается одновременно (ширина пула PowerShell). 200 — быстро;
+        # уменьшите до 64/32, если сеть или защита нервно реагируют на массовые опросы.
+        "scan_pool_width": "200",
         "host_pattern": r"^(WS-\d+|PC-.*)$",
         "host_exclude": r"(VIRT|VM|VBOX|TEST|SRV|SQL|SERVER)",
         "valid_subnets": "10.,192.168.,172.",
@@ -444,11 +445,8 @@ max_password_age_days = 90
 db_path = {os.path.join(DOCS_DIR, 'pc_mapping.db')}
 backup_every_hours = 6
 backup_keep = 12
-# Сетевые папки инвентаризации рабочих станций (характеристики/принтеры)
+# Сетевая папка инвентаризации рабочих станций (характеристики/принтеры)
 invent_hardware_dir = 
-# comp/compexit — только дата последнего входа в архивах «Прочитать всё»; сканер их не читает (3.9.6)
-invent_comp_dir = 
-invent_compexit_dir = 
 pst_backup_base = 
 # Путь к клиенту удалённого доступа RMS
 rms_viewer_path = C:\\Program Files (x86)\\Remote Manipulator System - Viewer\\rutview.exe
@@ -460,6 +458,9 @@ auto_scan_interval_min = 30
 # и журнал КД. Обычные циклы — лёгкие: DNS + пинг 100 мс, без WMI. 0 — полный только при наполнении
 # пустой базы. В GUI полный проход — кнопкой «Обновить парк».
 auto_scan_deep_every_min = 1440
+# Сколько ПК опрашивается одновременно (ширина пула). 200 — быстро; если сеть/защита
+# нервно реагируют на массовые опросы — поставьте 64 или 32.
+scan_pool_width = 200
 host_pattern = ^(WS-\\d+|PC-.*)$
 host_exclude = (VIRT|VM|VBOX|TEST|SRV|SQL|SERVER)
 # ГЛАВНЫЙ ФИЛЬТР ПАРКА: маска имён ПК через запятую. ? = одна цифра, * = любые символы.
@@ -549,14 +550,13 @@ class Settings:
         p = cp["Paths"]
         self.db_path: str = p.get("db_path")
         self.invent_hardware_dir: str = p.get("invent_hardware_dir")
-        self.invent_comp_dir: str = p.get("invent_comp_dir")
-        self.invent_compexit_dir: str = p.get("invent_compexit_dir")
         self.pst_backup_base: str = p.get("pst_backup_base")
         self.rms_viewer_path: str = p.get("rms_viewer_path")
 
         s = cp["Scanner"]
         self.auto_scan_interval_ms: int = s.getint("auto_scan_interval_min") * 60 * 1000
         self.auto_scan_deep_every_min: int = s.getint("auto_scan_deep_every_min", fallback=1440)
+        self.scan_pool_width: int = max(4, s.getint("scan_pool_width", fallback=200))
         self.host_pattern: str = s.get("host_pattern")
         self.host_exclude: str = s.get("host_exclude")
         self.valid_subnets: tuple[str, ...] = tuple(

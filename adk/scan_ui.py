@@ -258,17 +258,20 @@ class FullScanWorker(BaseWorker):
                 self.plan.emit("printers", est)
             scanner = PCScannerWorker.__new__(PCScannerWorker)
             scanner.conn_factory, scanner._cancelled = self.conn_factory, False
-            scanner.deep = True   # полный опрос: WMI «кто за ПК» включён (фоновый скан — без него)
+            scanner.deep = True
             scanner.progress = _Emitter(self.step_text.emit)
-            results = []
-            for k in range(0, len(hosts), self.CHUNK):
+
+            def _probe(chunk: list[str], wmi_user: bool) -> list[dict]:
                 if self.cancelled:
-                    break
-                results += scanner.probe_hosts(hosts[k:k + self.CHUNK])
-                done = min(k + self.CHUNK, len(hosts))
-                self.unit.emit("pcs", done, f"опрошено {done} из {len(hosts)}")
-            from .workers import enrich_with_dc_logons
-            results = enrich_with_dc_logons(results, lambda m: self.step_text.emit(m))
+                    return []
+                return scanner.probe_hosts(chunk, ping_ms=300, wmi_user=wmi_user)
+
+            # 3.9.8: лёгкий проход → журнал КД (один запрос) → WMI только для ПК без юзера
+            from .workers import deep_scan_dc_first
+            results = deep_scan_dc_first(
+                hosts, _probe, progress=lambda m: self.step_text.emit(m),
+                chunk_size=self.CHUNK,
+                on_light_done=lambda done: self.unit.emit("pcs", done, f"опрошено {done} из {len(hosts)}"))
             # 3.9.6: итог «кто за ПК» с источниками — видно в статусе, чтобы не гадать, работает ли связка
             uw = sum(1 for r in results if (r.get("UserSrc") or "") == "wmi")
             uo = sum(1 for r in results if (r.get("User") or "").strip() and not r.get("UserSrc"))

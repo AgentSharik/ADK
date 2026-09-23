@@ -29,4 +29,3 @@ extras/data/uploads/
 *.db-shm
 extras/adk.zip
 config.nekrasov.ini
-extras/radar_v10_reference.py

@@ -1083,35 +1083,6 @@ def get_computer_specs_summary(computer_name: str) -> str:
     return "Характеристики не собраны"
 
 
-def get_pc_info_from_csv(pc_name: str, login: str, fio: str) -> tuple[str, str]:
-    """(ip, дата) последнего входа пользователя на ПК по журналам comp/compexit."""
-    name = clean_computer_name(pc_name)
-    if not name:
-        return "Не найден", "Нет данных"
-    ip, date = "Не найден", "Нет данных"
-    needles = [x.lower() for x in (login, fio) if x]
-    for base in (settings.invent_comp_dir, settings.invent_compexit_dir):
-        if not base:
-            continue
-        path = os.path.join(base, f"{name}.csv")
-        if not os.path.exists(path):
-            continue
-        try:
-            with open(path, encoding="cp1251", errors="ignore") as fh:
-                for line in fh:
-                    low = line.lower()
-                    if not any(n in low for n in needles):
-                        continue
-                    parts = line.split(";" if ";" in line else ",")
-                    if len(parts) >= 4 and parts[3].strip():
-                        ip = parts[3].strip().split(",")[0].strip()
-                    if len(parts) >= 5 and parts[4].strip():
-                        date = parts[4].strip()
-        except OSError:
-            continue
-    return ip, date
-
-
 # ---------------------------------------------------------------- список ПК домена через ADSI (запасной путь)
 _ADSI_COMPUTERS_PS = r"""
 $ErrorActionPreference = 'Stop'

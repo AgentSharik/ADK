@@ -396,7 +396,7 @@ def test_run_powershell_substitutes_ping_and_wmi(monkeypatch):
     assert "$pingMs = 100" in s and "$askUser = $false" in s   # 3.9.6: PS-литералы, не Python True
     w_light._run_powershell(["PC-1"], 100, True)
     assert "$askUser = $true" in captured["script"]
-    # 3.9.6: ширина пула как в «Доменном Радаре» — 200; 3.9.7: и полный опрос с WMI — 200
+    # ширина пула: 200 для обоих проходов (3.9.7); настраивается scan_pool_width (3.9.8)
     w_light._run_powershell(["PC-1"], 100, False)
     assert "CreateRunspacePool(1, 200)" in captured["script"] and "SetMinThreads(200, 200)" in captured["script"]
     w_light._run_powershell(["PC-1"], 300, True)
@@ -480,5 +480,49 @@ def test_ps_scanner_no_csv_dependency():
     assert ".csv" not in _PS_SCANNER and 'userSrc = "csv"' not in _PS_SCANNER
     assert "Win32_ComputerSystem" in _PS_SCANNER          # свой источник — спросить машину
     assert "LastLogon = \"Неизвестно\"" in _PS_SCANNER    # дата входа — из журнала КД, не из CSV
-    # пул «Доменного Радара» остаётся: лёгкий проход 200
+    # ширина пула настраивается (scan_pool_width), по умолчанию 200
     assert "CreateRunspacePool(1, __POOL__)" in _PS_SCANNER
+
+
+def test_run_powershell_pool_width_setting(monkeypatch):
+    """3.9.8: ширина пула опроса настраивается — [Scanner] scan_pool_width."""
+    from adk import psrun, workers
+
+    captured = {}
+
+    class _R:
+        ok, stdout, error = True, "[]", ""
+
+    monkeypatch.setattr(psrun, "run", lambda script, timeout=None, cancelled=None:
+                        (captured.__setitem__("script", script), _R())[1])
+    monkeypatch.setattr(workers.settings, "scan_pool_width", 64)
+    w = workers.PCScannerWorker(lambda: None, deep=True)
+    w._run_powershell(["PC-1"], 300, True)
+    assert "CreateRunspacePool(1, 64)" in captured["script"] and "SetMinThreads(64, 64)" in captured["script"]
+
+
+def test_deep_scan_dc_first_spares_pcs(monkeypatch):
+    """3.9.8: полный опрос не трогает ПК пользователей без нужды: журнал КД закрыл все включённые —
+    WMI-опрос машин не запускается вовсе; выключенные не опрашиваются и при недоступном журнале."""
+    import socket
+    from adk import workers
+
+    light = [{"Hostname": "PC-1", "ActualIp": "10.0.0.1", "Status": "ACTIVE", "User": "", "UserSrc": "", "LastLogon": "Неизвестно"},
+             {"Hostname": "PC-2", "ActualIp": "10.0.0.2", "Status": "OFFLINE", "User": "", "UserSrc": "", "LastLogon": "Неизвестно"}]
+    calls = []
+
+    def probe(hosts, wmi_user):
+        calls.append((tuple(hosts), wmi_user))
+        return [dict(r) for r in light if r["Hostname"] in hosts]
+
+    monkeypatch.setattr(workers, "dc_logon_events", lambda dc: [("ivanov", "10.0.0.1")])
+    monkeypatch.setattr(socket, "gethostbyaddr", lambda ip: ("pc-1.dom.local",))
+    res = workers.deep_scan_dc_first(["PC-1", "PC-2"], probe)
+    assert res[0]["User"] == "ivanov"                    # юзер из журнала КД
+    assert calls == [(("PC-1", "PC-2"), False)]          # машины WMI не опрашивались
+
+    monkeypatch.setattr(workers, "dc_logon_events", lambda dc: (_ for _ in ()).throw(RuntimeError("нет прав")))
+    calls.clear()
+    workers.deep_scan_dc_first(["PC-1", "PC-2"], probe)
+    assert (("PC-1",), True) in calls                    # fallback: только включённые
+    assert not any("PC-2" in h for h, w in calls if w)  # выключенные WMI не опрашиваются
