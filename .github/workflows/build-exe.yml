@@ -42,6 +42,7 @@ jobs:
         shell: pwsh
         run: |
           $v = (python -c "import adk; print(adk.__version__)")
+          Remove-Item dist\ADK -Recurse -Force -ErrorAction SilentlyContinue   # 3.9.9: папку данных создаёт само приложение при первом запуске
           Compress-Archive -Path "dist\*" -DestinationPath "ADK-$v-win64.zip"
       - uses: actions/upload-artifact@v4
         with:

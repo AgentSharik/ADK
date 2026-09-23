@@ -477,30 +477,44 @@ foreach ($item in $data) {
       try { $r = (New-Object System.Net.NetworkInformation.Ping).Send($actualIp, $pingMs)
             if ($r.Status -eq 'Success') { $status = "ACTIVE" } } catch {}
     }
-    # 3.9.1: кто за ПК — спросить напрямую у машины (WMI); работает для онлайн-ПК и не зависит
-    # ни от обратного DNS, ни от прав на журнал контроллера домена.
-    # 3.9.3: только при $askUser (полный/первичный опрос) — фоновый скан без постоянных WMI-запросов.
-    # 3.9.5: два транспорта — WinRM (Get-CimInstance), при отказе DCOM (Get-WmiObject): WinRM на
-    # рабочих станциях часто выключен, и один WinRM оставлял «кто за ПК» пустым.
-    # Ответ машины — главный источник «кто за ПК»; DOMAIN\login → login.
-    # 3.9.6: UserName пуст (RDP-сессии) → владелец explorer.exe; источник ответа — в UserSrc
-    # (wmi/csv): итог «кто за ПК» виден в строке статуса после полного опроса.
+    # «кто за ПК» — спросить напрямую у машины; только при $askUser (полный/первичный опрос),
+    # фоновый скан машин не дёргает. DOMAIN\login → login; источник ответа — в UserSrc.
+    # 3.9.9: скорость дозапроса — предпровер портов (400 мс: 5985 WinRM / 135 DCOM / 445 SMB):
+    # пробуется только открытый транспорт, а не все подряд с таймаутами на закрытых портах.
+    # DCOM — CIM-сессией с -OperationTimeoutSec 2 (у Get-WmiObject таймаута нет и он висел
+    # на «полуживых» машинах); сессия переиспользуется и для владельца explorer.exe (RDP-сессии,
+    # когда UserName пуст). Реестр (445) — когда WinRM и DCOM закрыты.
     if ($askUser -and $status -eq 'ACTIVE') {
       try {
         $u = $null
-        try { $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $pc -OperationTimeoutSec 2 -ErrorAction Stop
-              if ($cs -and $cs.UserName) { $u = $cs.UserName } } catch {}
-        if (-not $u) {
-          try { $wmi = Get-WmiObject -Class Win32_ComputerSystem -ComputerName $pc -ErrorAction Stop
-                if ($wmi -and $wmi.UserName) { $u = $wmi.UserName } } catch {}
+        $port = { param($p) $c = $null
+                  try { $c = New-Object System.Net.Sockets.TcpClient
+                        return $c.ConnectAsync($pc, $p).Wait(400) }
+                  catch { return $false }
+                  finally { if ($c) { $c.Close() } } }
+        $winrm = & $port 5985
+        if ($winrm) {
+          try { $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $pc -OperationTimeoutSec 2 -ErrorAction Stop
+                if ($cs -and $cs.UserName) { $u = $cs.UserName } } catch {}
         }
-        if (-not $u) {
+        if (-not $u -and (& $port 135)) {
+          $sess = $null
+          try {
+            $sess = New-CimSession -ComputerName $pc -Protocol Dcom
+            $cs = Get-CimInstance -ClassName Win32_ComputerSystem -CimSession $sess -OperationTimeoutSec 2 -ErrorAction Stop
+            if ($cs -and $cs.UserName) { $u = $cs.UserName }
+            if (-not $u) {
+              $o = @(Get-CimInstance -CimSession $sess -ClassName Win32_Process -Filter "Name='explorer.exe'" -OperationTimeoutSec 2 -ErrorAction Stop | Invoke-CimMethod -MethodName GetOwner)[0]
+              if ($o -and $o.User) { $u = $o.Domain + '/' + $o.User }
+            }
+          } catch {} finally { if ($sess) { try { Remove-CimSession $sess -ErrorAction SilentlyContinue } catch {} } }
+        }
+        if (-not $u -and $winrm) {
           try { $o = @(Get-CimInstance -ClassName Win32_Process -Filter "Name='explorer.exe'" -ComputerName $pc -OperationTimeoutSec 2 -ErrorAction Stop | Invoke-CimMethod -MethodName GetOwner)[0]
                 if ($o -and $o.User) { $u = $o.Domain + '/' + $o.User } } catch {}
         }
-        if (-not $u) {
-          # 3.9.7: удалённый реестр (порт 445, служба RemoteRegistry) — отвечает, когда WinRM и WMI закрыты;
-          # LastLoggedOnSAMUser вида DOMAIN\user — последний вошедший пользователь
+        if (-not $u -and (& $port 445)) {
+          # удалённый реестр (порт 445, служба RemoteRegistry); LastLoggedOnSAMUser вида DOMAIN\user
           try { $base = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, $pc)
                 $lu = $base.OpenSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI')
                 if ($lu) { $v = $lu.GetValue('LastLoggedOnSAMUser'); if (-not $v) { $v = $lu.GetValue('LastLoggedOnUser') }

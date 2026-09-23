@@ -374,8 +374,20 @@ def test_ps_scanner_asks_pc_for_user_and_ping_param():
     # домен отрезаем — в базу пишется чистый логин
     assert "if ($askUser -and $status -eq 'ACTIVE') {" in _PS_SCANNER
     assert "Get-CimInstance -ClassName Win32_ComputerSystem" in _PS_SCANNER
-    assert "Get-WmiObject -Class Win32_ComputerSystem" in _PS_SCANNER
     assert ("$u -split '[" + chr(92) + chr(92) + "/]')[-1]") in _PS_SCANNER   # DOMAIN\login и DOMAIN/login → login   # DOMAIN\login → login
+
+
+def test_ps_scanner_port_precheck_and_bounded_dcom():
+    """3.9.9: дозапрос не жжёт таймауты на закрытых портах — предпровер TCP (5985/135/445, 400 мс),
+    пробуется только открытый транспорт; DCOM — CIM-сессией с -OperationTimeoutSec 2
+    (у Get-WmiObject таймаута нет, он висел на «полуживых» машинах)."""
+    from adk.workers import _PS_SCANNER
+    assert "ConnectAsync($pc, $p).Wait(400)" in _PS_SCANNER
+    assert "& $port 5985" in _PS_SCANNER and "& $port 135" in _PS_SCANNER and "& $port 445" in _PS_SCANNER
+    assert "New-CimSession -ComputerName $pc -Protocol Dcom" in _PS_SCANNER
+    assert "Get-CimInstance -ClassName Win32_ComputerSystem -CimSession $sess -OperationTimeoutSec 2" in _PS_SCANNER
+    assert "Get-WmiObject -Class" not in _PS_SCANNER            # безтаймаутный путь убран
+    assert "Remove-CimSession $sess" in _PS_SCANNER             # сессия закрывается
 
 
 def test_run_powershell_substitutes_ping_and_wmi(monkeypatch):
@@ -390,17 +402,18 @@ def test_run_powershell_substitutes_ping_and_wmi(monkeypatch):
 
     monkeypatch.setattr(psrun, "run", lambda script, timeout=None, cancelled=None:
                         (captured.__setitem__("script", script), _R())[1])
+    monkeypatch.setattr(workers.settings, "scan_pool_width", 64)   # 3.9.9: щадящий дефолт, детерминированно
     w_light = workers.PCScannerWorker(lambda: None, deep=False)
     w_light._run_powershell(["PC-1"], 100, False)
     s = captured["script"]
     assert "$pingMs = 100" in s and "$askUser = $false" in s   # 3.9.6: PS-литералы, не Python True
     w_light._run_powershell(["PC-1"], 100, True)
     assert "$askUser = $true" in captured["script"]
-    # ширина пула: 200 для обоих проходов (3.9.7); настраивается scan_pool_width (3.9.8)
+    # ширина пула: по умолчанию 64 для обоих проходов (3.9.9, щадяще для сети)
     w_light._run_powershell(["PC-1"], 100, False)
-    assert "CreateRunspacePool(1, 200)" in captured["script"] and "SetMinThreads(200, 200)" in captured["script"]
+    assert "CreateRunspacePool(1, 64)" in captured["script"] and "SetMinThreads(64, 64)" in captured["script"]
     w_light._run_powershell(["PC-1"], 300, True)
-    assert "CreateRunspacePool(1, 200)" in captured["script"] and "SetMinThreads(200, 200)" in captured["script"]
+    assert "CreateRunspacePool(1, 64)" in captured["script"] and "SetMinThreads(64, 64)" in captured["script"]
 
     # probe_hosts берёт wmi_user из self.deep; объект без deep (FullScanWorker/scan_once) — полный опрос
     assert w_light._wmi_user_default() is False
@@ -495,10 +508,10 @@ def test_run_powershell_pool_width_setting(monkeypatch):
 
     monkeypatch.setattr(psrun, "run", lambda script, timeout=None, cancelled=None:
                         (captured.__setitem__("script", script), _R())[1])
-    monkeypatch.setattr(workers.settings, "scan_pool_width", 64)
+    monkeypatch.setattr(workers.settings, "scan_pool_width", 32)
     w = workers.PCScannerWorker(lambda: None, deep=True)
     w._run_powershell(["PC-1"], 300, True)
-    assert "CreateRunspacePool(1, 64)" in captured["script"] and "SetMinThreads(64, 64)" in captured["script"]
+    assert "CreateRunspacePool(1, 32)" in captured["script"] and "SetMinThreads(32, 32)" in captured["script"]
 
 
 def test_deep_scan_dc_first_spares_pcs(monkeypatch):

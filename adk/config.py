@@ -152,9 +152,9 @@ _DEFAULTS: dict[str, dict[str, str]] = {
         # (WMI) и журнал КД. Обычные циклы — лёгкие: DNS + пинг 100 мс, без WMI. 0 — полный только
         # при наполнении пустой базы.
         "auto_scan_deep_every_min": "1440",
-        # Сколько ПК опрашивается одновременно (ширина пула PowerShell). 200 — быстро;
-        # уменьшите до 64/32, если сеть или защита нервно реагируют на массовые опросы.
-        "scan_pool_width": "200",
+        # Сколько ПК опрашивается одновременно (ширина пула PowerShell). 64 — спокойно
+        # для сети и защиты; ускорить — 128/200.
+        "scan_pool_width": "64",
         "host_pattern": r"^(WS-\d+|PC-.*)$",
         "host_exclude": r"(VIRT|VM|VBOX|TEST|SRV|SQL|SERVER)",
         "valid_subnets": "10.,192.168.,172.",
@@ -458,9 +458,9 @@ auto_scan_interval_min = 30
 # и журнал КД. Обычные циклы — лёгкие: DNS + пинг 100 мс, без WMI. 0 — полный только при наполнении
 # пустой базы. В GUI полный проход — кнопкой «Обновить парк».
 auto_scan_deep_every_min = 1440
-# Сколько ПК опрашивается одновременно (ширина пула). 200 — быстро; если сеть/защита
-# нервно реагируют на массовые опросы — поставьте 64 или 32.
-scan_pool_width = 200
+# Сколько ПК опрашивается одновременно (ширина пула). 64 — спокойно для сети и защиты;
+# ускорить — 128/200.
+scan_pool_width = 64
 host_pattern = ^(WS-\\d+|PC-.*)$
 host_exclude = (VIRT|VM|VBOX|TEST|SRV|SQL|SERVER)
 # ГЛАВНЫЙ ФИЛЬТР ПАРКА: маска имён ПК через запятую. ? = одна цифра, * = любые символы.
@@ -556,7 +556,7 @@ class Settings:
         s = cp["Scanner"]
         self.auto_scan_interval_ms: int = s.getint("auto_scan_interval_min") * 60 * 1000
         self.auto_scan_deep_every_min: int = s.getint("auto_scan_deep_every_min", fallback=1440)
-        self.scan_pool_width: int = max(4, s.getint("scan_pool_width", fallback=200))
+        self.scan_pool_width: int = max(4, s.getint("scan_pool_width", fallback=64))
         self.host_pattern: str = s.get("host_pattern")
         self.host_exclude: str = s.get("host_exclude")
         self.valid_subnets: tuple[str, ...] = tuple(
