@@ -637,8 +637,10 @@ def dc_logon_events(dc_host: str, max_events: int = 20000, timeout: int = 240) -
 def merge_dc_logons(results: list[dict], pairs: list[tuple[str, str]], progress=None) -> list[dict]:
     """Вписать пользователей из событий контроллера домена тем ПК, где опрос не нашёл «кто за ПК».
 
-    ip → имя ПК обратным DNS (как в старой программе); если на ПК видели несколько входов —
-    берётся самый свежий (события отсортированы от новых к старым).
+    3.9.10: сначала точное совпадение по IP — адрес события сверяется с ActualIp из лёгкого
+    прохода (не зависит от обратного DNS, которого во многих сетях нет — из-за этого раньше
+    почти все ПК улетали в медленный дозапрос). Обратный DNS — только для несовпавших.
+    Несколько входов на ПК — берётся самый свежий (события идут от новых к старым).
     """
     import socket
     if not pairs or not results:
@@ -650,18 +652,33 @@ def merge_dc_logons(results: list[dict], pairs: list[tuple[str, str]], progress=
 
     say(f"👥 Входы с контроллера домена: {len(pairs)} — сопоставляю с ПК…")
 
-    def resolve(ip: str) -> str:
-        try:
-            return socket.gethostbyaddr(ip)[0].split(".")[0].upper()
-        except OSError:
-            return ""
+    ip_pc: dict[str, str] = {}
+    for r in results:
+        ip = (r.get("ActualIp") or "").strip()
+        h = (r.get("Hostname") or "").strip().upper()
+        if ip and ip != "Не найден" and h:
+            ip_pc.setdefault(ip, h)
 
-    with ThreadPoolExecutor(max_workers=32) as ex:
-        names = list(ex.map(resolve, [ip for _u, ip in pairs]))
     pc_user: dict[str, str] = {}
-    for (u, _ip), host in zip(pairs, names):
-        if host and host not in pc_user:
-            pc_user[host] = u
+    unresolved: list[tuple[str, str]] = []
+    for u, ip in pairs:
+        pc = ip_pc.get(ip)
+        if pc and pc not in pc_user:
+            pc_user[pc] = u
+        elif not pc:
+            unresolved.append((u, ip))
+
+    if unresolved:
+        def resolve(ip: str) -> str:
+            try:
+                return socket.gethostbyaddr(ip)[0].split(".")[0].upper()
+            except OSError:
+                return ""
+        with ThreadPoolExecutor(max_workers=32) as ex:
+            names = list(ex.map(resolve, [ip for _u, ip in unresolved]))
+        for (u, _ip), host in zip(unresolved, names):
+            if host and host not in pc_user:
+                pc_user[host] = u
     for r in results:
         h = (r.get("Hostname") or "").upper()
         if h and not (r.get("User") or "").strip() and h in pc_user:
@@ -713,7 +730,7 @@ def deep_scan_dc_first(hosts: list[str], probe, progress=None, chunk_size: int =
                 if on_light_done and not wmi_user:
                     on_light_done(done)
                 if progress and wmi_user:
-                    say(f"👥 Дозапрос у машин: {done} из {len(part)}")
+                    say(f"👥 Дозапрос у машин: {done} из {len(part)} · параллельно {settings.scan_pool_width}")
         else:
             out = probe(part, wmi_user)
             if on_light_done and not wmi_user:
@@ -728,7 +745,9 @@ def deep_scan_dc_first(hosts: list[str], probe, progress=None, chunk_size: int =
     try:
         pairs = dc_logon_events(settings.dc_host)        # (2) один запрос к КД
     except Exception as exc:  # noqa: BLE001
-        say(f"👥 Журнал КД недоступен ({str(exc)[:100]}) — «кто за ПК» спрошу у машин напрямую")
+        hint = " — укажите dc_host в config.ini → [AD]: с журналом машины почти не опрашиваются" \
+               if "dc_host не задан" in str(exc) else ""
+        say(f"⚠️ Журнал КД недоступен ({str(exc)[:100]}) — «кто за ПК» спрошу у машин напрямую{hint}")
     if pairs:
         results = merge_dc_logons(results, pairs, progress)
     gaps = [r.get("Hostname") for r in results
@@ -736,7 +755,7 @@ def deep_scan_dc_first(hosts: list[str], probe, progress=None, chunk_size: int =
     if not gaps:
         say("👥 Кто за ПК: журнал КД ответил за все включённые ПК — машины не опрашивались")
         return results
-    say(f"👥 Дозапрос у машин: {len(gaps)} ПК без юзера после журнала КД…")
+    say(f"👥 Дозапрос у машин: {len(gaps)} ПК без юзера после журнала КД · параллельно {settings.scan_pool_width}…")
     extra = run_all(gaps, True)                          # (3) WMI — только остаток
     by_name = {(r.get("Hostname") or "").upper(): r for r in extra}
     return [by_name.get((r.get("Hostname") or "").upper())
@@ -808,7 +827,7 @@ class PCScannerWorker(BaseWorker):
                                        f"список ПК брался через {via.upper()}")
                 self.finished_scan.emit(0)
                 return
-            self.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping)…")
+            self.progress.emit(f"⚡ Опрос {len(hosts)} ПК (DNS, ping, пул {settings.scan_pool_width})…")
             if self.deep:
                 # 3.9.8: журнал КД первым (один запрос), WMI у машин — только для остатка без юзера
                 results = deep_scan_dc_first(
@@ -844,7 +863,7 @@ class PCScannerWorker(BaseWorker):
             raise RuntimeError(f"ни один ПК домена не подходит под host_pattern "
                                f"«{settings.host_pattern}» (config.ini → [Scanner]); исключение: «{settings.host_exclude}»; "
                                f"список ПК брался через {via.upper()}")
-        w.progress.emit(tr("⚡ Опрос {0} ПК (DNS, ping)…").format(len(hosts)))
+        w.progress.emit(tr("⚡ Опрос {0} ПК (DNS, ping, пул {1})…").format(len(hosts), settings.scan_pool_width))
         if deep:   # 3.9.8: журнал КД первым, WMI — только включённым без юзера
             results = deep_scan_dc_first(
                 hosts, lambda h, wmi: w.probe_hosts(h, ping_ms=300, wmi_user=wmi),

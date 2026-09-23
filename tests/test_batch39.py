@@ -539,3 +539,20 @@ def test_deep_scan_dc_first_spares_pcs(monkeypatch):
     workers.deep_scan_dc_first(["PC-1", "PC-2"], probe)
     assert (("PC-1",), True) in calls                    # fallback: только включённые
     assert not any("PC-2" in h for h, w in calls if w)  # выключенные WMI не опрашиваются
+
+
+def test_merge_dc_logons_matches_by_ip_without_ptr(monkeypatch):
+    """3.9.10: события КД сопоставляются с ПК по IP из сканера (ActualIp) — обратный DNS
+    не нужен; без него раньше почти все ПК улетали в медленный дозапрос."""
+    import socket
+    from adk import workers
+
+    def boom(ip):
+        raise AssertionError("обратный DNS не должен зваться — всё matched по IP")
+
+    monkeypatch.setattr(socket, "gethostbyaddr", boom)
+    results = [{"Hostname": "PC-1", "ActualIp": "10.0.0.7", "Status": "ACTIVE", "User": "", "LastLogon": "Неизвестно"},
+               {"Hostname": "PC-2", "ActualIp": "10.0.0.8", "Status": "ACTIVE", "User": "", "LastLogon": "Неизвестно"}]
+    out = workers.merge_dc_logons(results, [("ivanov", "10.0.0.7"), ("petrov", "10.0.0.8")])
+    assert out[0]["User"] == "ivanov" and out[1]["User"] == "petrov"
+    assert out[0]["LastLogon"] == "по журналу контроллера домена"
