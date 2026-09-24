@@ -529,13 +529,13 @@ def test_deep_scan_dc_first_spares_pcs(monkeypatch):
         calls.append((tuple(hosts), wmi_user))
         return [dict(r) for r in light if r["Hostname"] in hosts]
 
-    monkeypatch.setattr(workers, "dc_logon_events", lambda dc: [("ivanov", "10.0.0.1")])
+    monkeypatch.setattr(workers, "dc_logon_events", lambda dc, progress=None: [("ivanov", "10.0.0.1")])
     monkeypatch.setattr(socket, "gethostbyaddr", lambda ip: ("pc-1.dom.local",))
     res = workers.deep_scan_dc_first(["PC-1", "PC-2"], probe)
     assert res[0]["User"] == "ivanov"                    # юзер из журнала КД
     assert calls == [(("PC-1", "PC-2"), False)]          # машины WMI не опрашивались
 
-    monkeypatch.setattr(workers, "dc_logon_events", lambda dc: (_ for _ in ()).throw(RuntimeError("нет прав")))
+    monkeypatch.setattr(workers, "dc_logon_events", lambda dc, progress=None: (_ for _ in ()).throw(RuntimeError("нет прав")))
     calls.clear()
     workers.deep_scan_dc_first(["PC-1", "PC-2"], probe)
     assert (("PC-1",), True) in calls                    # fallback: только включённые
@@ -618,3 +618,39 @@ def test_run_powershell_timeout_scales_with_list_size(monkeypatch):
     assert 1080 in seen                                # парк 1648: 26 волн — старый потолок 900 с был бы мал
     w._run_powershell([f"PC-{i}" for i in range(50000)], 100, True, pool=4)
     assert 7200 in seen                                # потолок 2 ч
+
+
+def test_dc_logon_events_all_dcs_and_time_window(monkeypatch):
+    """3.9.14: журнал читается со ВСЕХ контроллеров домена (SRV-записи DNS — домен из search_base),
+    с окном по времени dc_logon_hours; строка DCINFO вырезается из JSON и отдаётся в progress."""
+    from adk import psrun, workers
+    seen = {}
+    msgs = []
+
+    def fake_run(script, timeout=None, cancelled=None, on_tick=None, on_line=None):
+        seen["script"] = script
+        return _PsOk("DCINFO 2/3 events:50000; err:timeout\n"
+                     '[{"u":"Ivanov","ip":"10.1.1.5"},{"u":"Petrova","ip":"ws:PC-9"}]')
+    monkeypatch.setattr(psrun, "run", fake_run)
+    monkeypatch.setattr(workers.settings, "search_base", "DC=corp,DC=local")
+    monkeypatch.setattr(workers.settings, "dc_logon_hours", 72)
+    pairs = workers.dc_logon_events("dc01.corp.local", progress=msgs.append)
+    assert pairs == [("Ivanov", "10.1.1.5"), ("Petrova", "ws:PC-9")]   # DCINFO не попала в JSON
+    assert "_ldap._tcp.dc._msdcs.corp.local" in seen["script"]         # SRV-поиск всех КД
+    assert "if (72 -gt 0)" in seen["script"] and "AddHours(-72)" in seen["script"]
+    assert any("контроллеров ответило 2 из 3" in m for m in msgs)      # статистика — в статус
+
+    monkeypatch.setattr(workers.settings, "dc_logon_hours", 0)         # 0 — окно выключено
+    workers.dc_logon_events("dc01.corp.local")
+    assert "if (0 -gt 0)" in seen["script"]                           # окно отключено подстановкой
+
+
+def test_deep_scan_dc_first_hints_disabled_audit(monkeypatch):
+    """3.9.14: журнал КД доступен, но событий 0 — статус подсказывает выключенный аудит входов."""
+    from adk import workers
+    light = [{"Hostname": "PC-1", "ActualIp": "10.0.0.1", "Status": "ACTIVE", "User": "", "LastLogon": "x"}]
+    monkeypatch.setattr(workers, "dc_logon_events", lambda dc, progress=None: [])
+    msgs = []
+    workers.deep_scan_dc_first(["PC-1"], lambda h, w, offset=0, grand=0: [dict(r) for r in light],
+                               progress=msgs.append)
+    assert any("аудит" in m for m in msgs)

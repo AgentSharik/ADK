@@ -133,6 +133,9 @@ _DEFAULTS: dict[str, dict[str, str]] = {
         # 3.9.12: сколько свежих событий входа читать из журнала Security КД (4768 Kerberos +
         # 4776 NTLM). Больше — шире покрытие «кто за ПК» без опроса машин, но чтение дольше. 0 — не читать.
         "dc_logon_max_events": "50000",
+        # 3.9.14: окно времени для чтения журнала КД, часы (72 = «все входы за последние 3 суток»;
+        # 0 — без окна, только счётчик событий выше). Читаются ВСЕ контроллеры домена автоматически.
+        "dc_logon_hours": "72",
         "search_base": "DC=example,DC=local",
         "users_ou": "OU=Employees,DC=example,DC=local",
         "upn_suffix": "example.local",
@@ -431,6 +434,9 @@ dc_host = {ad_sec.get('dc_host', 'dc01.example.local')}
 # Сколько свежих событий входа читать из журнала Security КД (4768 + 4776). Больше — шире
 # покрытие «кто за ПК» без опроса машин. 50000 ≈ несколько дней большого домена. 0 — не читать.
 dc_logon_max_events = {ad_sec.get('dc_logon_max_events', '50000')}
+# Окно времени чтения журнала КД в часах (72 ≈ все входы за последние 3 суток). 0 — без окна.
+# События читаются со ВСЕХ контроллеров домена автоматически (настраиваемый dc_host — первым).
+dc_logon_hours = {ad_sec.get('dc_logon_hours', '72')}
 # Базовый корень поиска объектов каталога
 search_base = {ad_sec.get('search_base', 'DC=example,DC=local')}
 # Подразделение (OU) по умолчанию для создания новых пользователей
@@ -546,6 +552,7 @@ class Settings:
         self.domain_netbios: str = ad.get("domain_netbios")
         self.dc_host: str = ad.get("dc_host")
         self.dc_logon_max_events: int = int(ad.get("dc_logon_max_events") or 50000)
+        self.dc_logon_hours: int = int(ad.get("dc_logon_hours") or 72)
         self.search_base: str = normalize_search_base(ad.get("search_base"))
         self.users_ou: str = ad.get("users_ou")
         self.upn_suffix: str = ad.get("upn_suffix")

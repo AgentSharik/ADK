@@ -600,41 +600,80 @@ $ErrorActionPreference = 'Stop'
 try {
   # 3.9.12: 4768 (Kerberos TGT — есть IP машины) + 4776 (NTLM-проверка — есть имя рабочей станции):
   # в доменах со смешанной аутентификацией один 4768 оставлял часть машин «без юзера»
-  $ev = Get-WinEvent -FilterHashtable @{LogName='Security'; Id=@(4768,4776)} -ComputerName '__DC__' -MaxEvents __MAX__
+  # 3.9.14: событие входа пишет ТОТ контроллер, который его аутентифицировал — в домене с несколькими
+  # КД один контроллер видит лишь часть входов. Опрашиваем ВСЕ КД домена (SRV-записи DNS),
+  # настроенный dc_host — первым; неудача одного КД не роняет остальные.
+  # Окно по времени (__HOURS__>0, StartTime) вместо голого счётчика событий: покрытие «все входы
+  # за последние N часов» не зависит от того, насколько шумный домен.
+  $dcs = New-Object System.Collections.Generic.List[string]
+  $dcs.Add('__DC__')
+  try {
+    $srv = Resolve-DnsName -Type SRV '_ldap._tcp.dc._msdcs.__DOMAIN__' -ErrorAction SilentlyContinue
+    foreach ($r in $srv) { if ($r.NameTarget -and -not $dcs.Contains($r.NameTarget)) { $dcs.Add($r.NameTarget) } }
+  } catch {}
+  $fh = @{LogName='Security'; Id=@(4768,4776)}
+  if (__HOURS__ -gt 0) { $fh['StartTime'] = [datetime]::Now.AddHours(-__HOURS__) }
   $out = New-Object System.Collections.Generic.List[object]
-  foreach ($e in $ev) {
+  $okDc = 0; $totalEv = 0; $err0 = $null
+  foreach ($dc in $dcs) {
     try {
-      $x = [xml]$e.ToXml()
-      $d = @{}
-      foreach ($n in $x.Event.EventData.Data) { $d[$n.Name] = [string]$n.'#text' }
-      $u = $d['TargetUserName']
-      if (-not $u -or $u.EndsWith('$')) { continue }
-      if ($e.Id -eq 4776) {
-        if ($d['Status'] -notin @('0x0','0')) { continue }
-        $ws = [string]$d['Workstation']
-        if (-not $ws -or $ws -eq '-') { continue }
-        $out.Add(@{u=$u; ip=('ws:' + ($ws -split '[\\/]')[-1])})
-      } else {
-        if ($d['ResultCode'] -notin @('0x0','0')) { continue }
-        $ip = $d['IpAddress']
-        if (-not $ip -or $ip -in @('-','::1','127.0.0.1','0.0.0.0')) { continue }
-        $out.Add(@{u=$u; ip=$ip.Replace('::ffff:','')})
+      $ev = Get-WinEvent -FilterHashtable $fh -ComputerName $dc -MaxEvents __MAX__
+      $okDc++
+      foreach ($e in $ev) {
+        $totalEv++
+        try {
+          $x = [xml]$e.ToXml()
+          $d = @{}
+          foreach ($n in $x.Event.EventData.Data) { $d[$n.Name] = [string]$n.'#text' }
+          $u = $d['TargetUserName']
+          if (-not $u -or $u.EndsWith('$')) { continue }
+          if ($e.Id -eq 4776) {
+            if ($d['Status'] -notin @('0x0','0')) { continue }
+            $ws = [string]$d['Workstation']
+            if (-not $ws -or $ws -eq '-') { continue }
+            $out.Add(@{u=$u; ip=('ws:' + ($ws -split '[\\/]')[-1])})
+          } else {
+            if ($d['ResultCode'] -notin @('0x0','0')) { continue }
+            $ip = $d['IpAddress']
+            if (-not $ip -or $ip -in @('-','::1','127.0.0.1','0.0.0.0')) { continue }
+            $out.Add(@{u=$u; ip=$ip.Replace('::ffff:','')})
+          }
+        } catch {}
       }
-    } catch {}
+    } catch { if (-not $err0) { $err0 = '' + $_.Exception.Message } }
   }
+  if ($okDc -eq 0) { throw ('no DC responded: ' + ($dcs -join ', ')) }
+  $msg = 'DCINFO ' + $okDc + '/' + $dcs.Count + ' events:' + $totalEv
+  if ($err0) { $msg = $msg + '; err:' + ($err0 -replace '\s+', ' ') }
+  Write-Output $msg
   $out | ConvertTo-Json -Compress
 } catch { Write-Output ('DCLOGON_ERROR: ' + $_.Exception.Message); exit 1 }
 """
 
 
-def dc_logon_events(dc_host: str, max_events: int | None = None, timeout: int = 240) -> list[tuple[str, str]]:
-    """Пары (логин, ключ) из журнала Security контроллера домена — 4768 (Kerberos, IP машины)
+def _domain_for_srv() -> str:
+    """Домен FQDN для поиска контроллеров (SRV-записи DNS): из search_base, иначе upn_suffix."""
+    base = (settings.search_base or "").strip() or (settings.upn_suffix or "").strip()
+    parts = re.findall(r"(?i)dc=([a-z0-9_-]+)", base)
+    if parts:
+        return ".".join(parts)
+    return base if "." in base else ""
+
+
+def dc_logon_events(dc_host: str, max_events: int | None = None, timeout: int = 600,
+                    progress=None) -> list[tuple[str, str]]:
+    """Пары (логин, ключ) из журналов Security контроллеров домена — 4768 (Kerberos, IP машины)
     и 4776 (NTLM, имя рабочей станции с префиксом ``ws:`` — 3.9.12).
 
     Именно так определяла «кто за каким ПК» старая программа (win32evtlog → журнал КД) — путь,
     проверенный в тех же сетях. У нас — PowerShell Get-WinEvent, без pywin32. События идут от
     свежих к старым. ``max_events=None`` → настройка ``dc_logon_max_events`` (0 — журнал отключён).
-    Ошибка — исключение с понятной причиной.
+
+    3.9.14: опрашиваются ВСЕ контроллеры домена (SRV-записи ``_ldap._tcp.dc._msdcs.<домен>``;
+    настроенный dc_host — первым): каждый КД видит только «свои» входы. Неудача одного КД не
+    роняет остальные. Окно ``dc_logon_hours`` (по умолчанию 72 ч, 0 — без окна) — покрытие не
+    зависит от шумности домена. ``progress`` получает строку статистики «сколько КД ответило,
+    сколько событий». Ошибка — исключение с понятной причиной.
     """
     from . import psrun
     if not dc_host:
@@ -643,11 +682,29 @@ def dc_logon_events(dc_host: str, max_events: int | None = None, timeout: int = 
         max_events = int(getattr(settings, "dc_logon_max_events", 50000) or 0)
     if max_events <= 0:
         raise RuntimeError("чтение журнала КД отключено (dc_logon_max_events = 0 в config.ini → [AD])")
-    script = _DC_LOGON_PS.replace("__DC__", dc_host).replace("__MAX__", str(max_events))
-    res = psrun.run(script, timeout=timeout)
+    hours = int(getattr(settings, "dc_logon_hours", 72) or 0)
+    script = (_DC_LOGON_PS
+              .replace("__DC__", dc_host)
+              .replace("__DOMAIN__", _domain_for_srv())
+              .replace("__HOURS__", str(hours))
+              .replace("__MAX__", str(max_events)))
+    res = psrun.run(script, timeout=timeout)   # 3.9.14: 600 с — несколько КД × разбор XML событий
     if not res.ok or (res.stdout or "").startswith("DCLOGON_ERROR"):
         raise RuntimeError((res.error or res.stdout or "пустой ответ").strip()[:200])
-    txt = (res.stdout or "").strip()
+    lines = [l for l in (res.stdout or "").splitlines() if l.strip()]
+    for l in [x for x in lines if x.startswith("DCINFO ")]:       # статистика по контроллерам
+        m = re.match(r"DCINFO (\d+)/(\d+) events:(\d+)(?:; err:(.*))?$", l)
+        if m:
+            ok, total, ev, err = m.groups()
+            msg = f"👥 Журнал КД: контроллеров ответило {ok} из {total}, событий входа {ev}"
+            if err:
+                msg += f" — не все: {err[:80]}"
+            log.info("dc logon: %s", l)
+            if progress:
+                progress(msg)
+        else:
+            log.info("dc logon: %s", l)
+    txt = "\n".join(l for l in lines if not l.startswith("DCINFO ")).strip()
     if not txt:
         return []
     data = json.loads(txt)
@@ -779,13 +836,17 @@ def deep_scan_dc_first(hosts: list[str], probe, progress=None, chunk_size: int =
     say("👥 Журнал контроллера домена: один запрос вместо опроса машин…")
     pairs: list[tuple[str, str]] | None = None
     try:
-        pairs = dc_logon_events(settings.dc_host)        # (2) один запрос к КД
+        pairs = dc_logon_events(settings.dc_host, progress=say)   # (2) один запрос — все КД домена
     except Exception as exc:  # noqa: BLE001
         hint = " — укажите dc_host в config.ini → [AD]: с журналом машины почти не опрашиваются" \
                if "dc_host не задан" in str(exc) else ""
         say(f"⚠️ Журнал КД недоступен ({str(exc)[:100]}) — «кто за ПК» спрошу у машин напрямую{hint}")
     if pairs:
         results = merge_dc_logons(results, pairs, progress)
+    elif pairs is not None:
+        say("⚠️ Журнал КД вернул 0 событий входа — похоже, в домене выключен аудит (политики "
+            "«Аудит проверки учётных данных» / «Аудит службы проверки подлинности Kerberos», "
+            "успех). Без них «кто за ПК» даёт только опрос машин")
     gaps = [r.get("Hostname") for r in results
             if r.get("Status") == "ACTIVE" and not (r.get("User") or "").strip()]
     if not gaps:
