@@ -593,3 +593,28 @@ def test_merge_dc_logons_ntlm_workstation_name():
                {"Hostname": "PC-0002", "ActualIp": "10.1.1.6", "User": "", "LastLogon": "Неизвестно"}]
     out = workers.merge_dc_logons(results, [("Sidorov", "ws:PC-0002"), ("Ivanov", "ws:CORP\\PC-0001")])
     assert out[0]["User"] == "Ivanov" and out[1]["User"] == "Sidorov"
+
+
+def test_run_powershell_timeout_scales_with_list_size(monkeypatch):
+    """3.9.13: таймаут сканера — предохранитель от размера списка («волны» пула), а не фиксированные
+    900 с: непрерывный опрос всего парка одним запуском не упирается в потолок; зависший процесс убивается."""
+    from adk import psrun, workers
+    seen = {}
+
+    class _R:
+        ok, stdout, error = True, "[]", ""
+
+    def fake_run(script, timeout=None, cancelled=None, on_tick=None, on_line=None):
+        seen[timeout] = True
+        return _R()
+    monkeypatch.setattr(psrun, "run", fake_run)
+    monkeypatch.setattr(workers.settings, "scan_pool_width", 64)
+    w = workers.PCScannerWorker(lambda: None, deep=False)
+    w._run_powershell([f"PC-{i}" for i in range(300)], 100, False, pool=64)
+    assert 450 in seen                                 # 300/64 → 5 волн × 30 с + 300 (лёгкий проход)
+    w._run_powershell([f"PC-{i}" for i in range(300)], 100, True, pool=64)
+    assert 900 in seen                                 # дозапрос: 5 волн × 120 с + 300
+    w._run_powershell([f"PC-{i}" for i in range(1648)], 100, False, pool=64)
+    assert 1080 in seen                                # парк 1648: 26 волн — старый потолок 900 с был бы мал
+    w._run_powershell([f"PC-{i}" for i in range(50000)], 100, True, pool=4)
+    assert 7200 in seen                                # потолок 2 ч

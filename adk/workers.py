@@ -747,8 +747,10 @@ def deep_scan_dc_first(hosts: list[str], probe, progress=None, chunk_size: int =
     ПК пользователей при этом вообще не опрашиваются; (3) WMI-каскад — только для включённых
     ПК, оставшихся без юзера. Журнал КД недоступен/пуст — спрашиваются все включённые (как раньше).
 
-    ``probe(hosts, wmi_user) -> list[dict]`` — сканер; ``chunk_size > 0`` — порциями
-    (прогресс/отмена между порциями); ``on_light_done(done)`` — отчёт лёгкого прохода.
+    ``probe(hosts, wmi_user) -> list[dict]`` — сканер; ``on_light_done(done)`` — отчёт лёгкого прохода.
+    ``chunk_size > 0`` — порциями (3.9.13: полный опрос больше НЕ дробит — один непрерывный список,
+    чтобы пул не простаивал на стыках порций в ожидании таймаутов «молчунов»; параметр оставлен
+    для совместимости сигнатуры).
     """
     def say(msg):
         if progress:
@@ -1000,6 +1002,14 @@ class PCScannerWorker(BaseWorker):
         import tempfile
         from . import psrun
 
+        # 3.9.13: таймаут — предохранитель, масштабируется по числу «волн» пула (раньше — фиксированные
+        # 900 с: один непрерывный опрос всего парка мог в них не уложиться). 30 с на волну лёгкого прохода
+        # (худший случай — DNS-таймаут выключенной машины), 120 с на волну дозапроса (реестр таймаута не
+        # имеет). Потолок 2 ч; отмена кнопкой работает как раньше (проверка каждые 0,5 с).
+        pool_eff = int(pool if pool is not None else (settings.scan_pool_width or 200))
+        waves = max(1, -(-len(hosts) // max(pool_eff, 1)))
+        timeout = min(7200, 300 + waves * (120 if wmi_user else 30))
+
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as tmp:
             json.dump([{"Name": h} for h in hosts], tmp, ensure_ascii=False)
             input_path = tmp.name
@@ -1007,7 +1017,7 @@ class PCScannerWorker(BaseWorker):
                   .replace("__INPUT__", input_path)
                   .replace("__PREFIXES__", ", ".join(f"'{p}'" for p in settings.valid_subnets))
                   .replace("__PING_MS__", str(int(ping_ms)))
-                  .replace("__POOL__", str(int(pool if pool is not None else (settings.scan_pool_width or 200))))
+                  .replace("__POOL__", str(pool_eff))
                   .replace("__ASK_USER__", "$true" if wmi_user else "$false"))   # 3.9.6: PS-литералы — True валил весь скрипт
         def _on_line(line: str) -> None:
             if line.startswith("PRG "):
@@ -1018,7 +1028,7 @@ class PCScannerWorker(BaseWorker):
                     pass
 
         try:
-            res = psrun.run(script, timeout=900, cancelled=lambda: self.cancelled, on_line=_on_line)
+            res = psrun.run(script, timeout=timeout, cancelled=lambda: self.cancelled, on_line=_on_line)
         finally:
             try:
                 os.remove(input_path)

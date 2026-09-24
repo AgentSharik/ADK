@@ -229,8 +229,6 @@ class FullScanWorker(BaseWorker):
     step_text = pyqtSignal(str)
     finished_full = pyqtSignal(dict)
 
-    CHUNK = 200  # 3.9.7: порция = ширине пула сканера; на 1648 ПК было 33 перезапуска PowerShell по 50 — теперь 9
-
     def __init__(self, conn_factory, mode: str = "full", parent=None):
         super().__init__(parent)
         self.conn_factory = conn_factory
@@ -268,9 +266,11 @@ class FullScanWorker(BaseWorker):
 
             # 3.9.8: лёгкий проход → журнал КД (один запрос) → WMI только для ПК без юзера
             from .workers import deep_scan_dc_first
+            # 3.9.13: порции убраны — весь парк одним непрерывным списком: в конце каждой порции
+            # из 200 пул простаивал, дожидаясь таймаутов последних «молчунов» (выключенные ПК
+            # ждут DNS-таймаута), — счётчик полз на 190-200 из-за этих пауз между порциями.
             results = deep_scan_dc_first(
                 hosts, _probe, progress=lambda m: self.step_text.emit(m),
-                chunk_size=self.CHUNK,
                 on_light_done=lambda done: self.unit.emit("pcs", done, f"опрошено {done} из {len(hosts)}"))
             # 3.9.6: итог «кто за ПК» с источниками — видно в статусе, чтобы не гадать, работает ли связка
             uw = sum(1 for r in results if (r.get("UserSrc") or "") == "wmi")
