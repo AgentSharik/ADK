@@ -130,6 +130,9 @@ _DEFAULTS: dict[str, dict[str, str]] = {
     "AD": {
         "domain_netbios": "EXAMPLE",
         "dc_host": "dc01.example.local",
+        # 3.9.12: сколько свежих событий входа читать из журнала Security КД (4768 Kerberos +
+        # 4776 NTLM). Больше — шире покрытие «кто за ПК» без опроса машин, но чтение дольше. 0 — не читать.
+        "dc_logon_max_events": "50000",
         "search_base": "DC=example,DC=local",
         "users_ou": "OU=Employees,DC=example,DC=local",
         "upn_suffix": "example.local",
@@ -425,6 +428,9 @@ def write_default_config(path: str = INI_FILE) -> None:
 domain_netbios = {ad_sec.get('domain_netbios', 'EXAMPLE')}
 # FQDN контроллера домена или имя самого домена (для DNS round-robin)
 dc_host = {ad_sec.get('dc_host', 'dc01.example.local')}
+# Сколько свежих событий входа читать из журнала Security КД (4768 + 4776). Больше — шире
+# покрытие «кто за ПК» без опроса машин. 50000 ≈ несколько дней большого домена. 0 — не читать.
+dc_logon_max_events = {ad_sec.get('dc_logon_max_events', '50000')}
 # Базовый корень поиска объектов каталога
 search_base = {ad_sec.get('search_base', 'DC=example,DC=local')}
 # Подразделение (OU) по умолчанию для создания новых пользователей
@@ -539,6 +545,7 @@ class Settings:
         ad = cp["AD"]
         self.domain_netbios: str = ad.get("domain_netbios")
         self.dc_host: str = ad.get("dc_host")
+        self.dc_logon_max_events: int = int(ad.get("dc_logon_max_events") or 50000)
         self.search_base: str = normalize_search_base(ad.get("search_base"))
         self.users_ou: str = ad.get("users_ou")
         self.upn_suffix: str = ad.get("upn_suffix")

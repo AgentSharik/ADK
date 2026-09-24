@@ -598,18 +598,28 @@ def host_list_from_ad(conn_factory: ConnFactory, progress=None) -> tuple[list[st
 _DC_LOGON_PS = r"""
 $ErrorActionPreference = 'Stop'
 try {
-  $ev = Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4768} -ComputerName '__DC__' -MaxEvents __MAX__
+  # 3.9.12: 4768 (Kerberos TGT — есть IP машины) + 4776 (NTLM-проверка — есть имя рабочей станции):
+  # в доменах со смешанной аутентификацией один 4768 оставлял часть машин «без юзера»
+  $ev = Get-WinEvent -FilterHashtable @{LogName='Security'; Id=@(4768,4776)} -ComputerName '__DC__' -MaxEvents __MAX__
   $out = New-Object System.Collections.Generic.List[object]
   foreach ($e in $ev) {
     try {
       $x = [xml]$e.ToXml()
       $d = @{}
       foreach ($n in $x.Event.EventData.Data) { $d[$n.Name] = [string]$n.'#text' }
-      if ($d['ResultCode'] -notin @('0x0','0')) { continue }
-      $u = $d['TargetUserName']; $ip = $d['IpAddress']
+      $u = $d['TargetUserName']
       if (-not $u -or $u.EndsWith('$')) { continue }
-      if (-not $ip -or $ip -in @('-','::1','127.0.0.1','0.0.0.0')) { continue }
-      $out.Add(@{u=$u; ip=$ip.Replace('::ffff:','')})
+      if ($e.Id -eq 4776) {
+        if ($d['Status'] -notin @('0x0','0')) { continue }
+        $ws = [string]$d['Workstation']
+        if (-not $ws -or $ws -eq '-') { continue }
+        $out.Add(@{u=$u; ip=('ws:' + ($ws -split '[\\/]')[-1])})
+      } else {
+        if ($d['ResultCode'] -notin @('0x0','0')) { continue }
+        $ip = $d['IpAddress']
+        if (-not $ip -or $ip -in @('-','::1','127.0.0.1','0.0.0.0')) { continue }
+        $out.Add(@{u=$u; ip=$ip.Replace('::ffff:','')})
+      }
     } catch {}
   }
   $out | ConvertTo-Json -Compress
@@ -617,16 +627,22 @@ try {
 """
 
 
-def dc_logon_events(dc_host: str, max_events: int = 20000, timeout: int = 240) -> list[tuple[str, str]]:
-    """Пары (логин, ip) из журнала Security контроллера домена — события 4768, запрос билета Kerberos.
+def dc_logon_events(dc_host: str, max_events: int | None = None, timeout: int = 240) -> list[tuple[str, str]]:
+    """Пары (логин, ключ) из журнала Security контроллера домена — 4768 (Kerberos, IP машины)
+    и 4776 (NTLM, имя рабочей станции с префиксом ``ws:`` — 3.9.12).
 
     Именно так определяла «кто за каким ПК» старая программа (win32evtlog → журнал КД) — путь,
-    проверенный в тех же сетях, где инвентарных CSV может не быть. У нас — PowerShell Get-WinEvent,
-    без pywin32. События идут от свежих к старым. Ошибка — исключение с понятной причиной.
+    проверенный в тех же сетях. У нас — PowerShell Get-WinEvent, без pywin32. События идут от
+    свежих к старым. ``max_events=None`` → настройка ``dc_logon_max_events`` (0 — журнал отключён).
+    Ошибка — исключение с понятной причиной.
     """
     from . import psrun
     if not dc_host:
         raise RuntimeError("dc_host не задан (config.ini → [AD])")
+    if max_events is None:
+        max_events = int(getattr(settings, "dc_logon_max_events", 50000) or 0)
+    if max_events <= 0:
+        raise RuntimeError("чтение журнала КД отключено (dc_logon_max_events = 0 в config.ini → [AD])")
     script = _DC_LOGON_PS.replace("__DC__", dc_host).replace("__MAX__", str(max_events))
     res = psrun.run(script, timeout=timeout)
     if not res.ok or (res.stdout or "").startswith("DCLOGON_ERROR"):
@@ -670,14 +686,20 @@ def merge_dc_logons(results: list[dict], pairs: list[tuple[str, str]], progress=
         if ip and ip != "Не найден" and h:
             ip_pc.setdefault(ip, h)
 
+    hosts = {(r.get("Hostname") or "").strip().upper() for r in results}
     pc_user: dict[str, str] = {}
     unresolved: list[tuple[str, str]] = []
-    for u, ip in pairs:
-        pc = ip_pc.get(ip)
+    for u, key in pairs:
+        if key.startswith("ws:"):                       # 4776 NTLM: имя рабочей станции
+            ws = key[3:].strip().upper().rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
+            if ws in hosts and ws not in pc_user:
+                pc_user[ws] = u
+            continue
+        pc = ip_pc.get(key)
         if pc and pc not in pc_user:
             pc_user[pc] = u
         elif not pc:
-            unresolved.append((u, ip))
+            unresolved.append((u, key))
 
     if unresolved:
         def resolve(ip: str) -> str:

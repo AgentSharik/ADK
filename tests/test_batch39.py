@@ -274,6 +274,7 @@ def test_dc_logon_events_parses(monkeypatch):
     pairs = workers.dc_logon_events("dc01.corp.local")
     assert pairs == [("Ivanov", "10.1.1.5"), ("Petrova", "10.1.1.6")]
     assert "dc01.corp.local" in seen["script"]            # адрес КД подставлен в Get-WinEvent
+    assert "Id=@(4768,4776)" in seen["script"]            # 3.9.12: и Kerberos, и NTLM
 
 
 def test_dc_logon_events_single_object_and_empty(monkeypatch):
@@ -582,3 +583,13 @@ def test_run_powershell_live_progress(monkeypatch):
     w._run_powershell(["PC-1"], 100, False, label="⚡ Опрошено", offset=200, grand=400)
     assert seen["on_line"] is not None
     assert "⚡ Опрошено 205 из 400" in emitted
+
+
+def test_merge_dc_logons_ntlm_workstation_name():
+    """3.9.12: события 4776 (NTLM) несут имя рабочей станции (ws:...) — сопоставляются
+    прямо по имени ПК, без IP и обратного DNS."""
+    from adk import workers
+    results = [{"Hostname": "PC-0001", "ActualIp": "10.1.1.5", "User": "", "LastLogon": "Неизвестно"},
+               {"Hostname": "PC-0002", "ActualIp": "10.1.1.6", "User": "", "LastLogon": "Неизвестно"}]
+    out = workers.merge_dc_logons(results, [("Sidorov", "ws:PC-0002"), ("Ivanov", "ws:CORP\\PC-0001")])
+    assert out[0]["User"] == "Ivanov" and out[1]["User"] == "Sidorov"
