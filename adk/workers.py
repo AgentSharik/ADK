@@ -484,14 +484,19 @@ foreach ($item in $data) {
     # DCOM — CIM-сессией с -OperationTimeoutSec 2 (у Get-WmiObject таймаута нет и он висел
     # на «полуживых» машинах); сессия переиспользуется и для владельца explorer.exe (RDP-сессии,
     # когда UserName пуст). Реестр (445) — когда WinRM и DCOM закрыты.
+    # 3.9.15: сессия создаётся через New-CimSessionOption -Protocol Dcom — параметр -Protocol
+    # у New-CimSession существует только в PowerShell 7, на 5.1 ветка DCOM молча падала.
     if ($askUser -and $status -eq 'ACTIVE') {
       try {
         $u = $null
-        $port = { param($p) $c = $null
+        $port = { param($p) $c = $null; $open = $false
                   try { $c = New-Object System.Net.Sockets.TcpClient
-                        return $c.ConnectAsync($pc, $p).Wait(400) }
-                  catch { return $false }
-                  finally { if ($c) { $c.Close() } } }
+                        # 3.9.15: отказ (RST) завершает задачу быстро и Wait() даёт true —
+                        # проверяем ещё и Connected, чтобы не считать закрытый порт открытым
+                        $open = $c.ConnectAsync($pc, $p).Wait(400) -and $c.Connected }
+                  catch { $open = $false }
+                  finally { if ($c) { $c.Close() } }
+                  return $open }
         $winrm = & $port 5985
         if ($winrm) {
           try { $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $pc -OperationTimeoutSec 2 -ErrorAction Stop
@@ -500,7 +505,9 @@ foreach ($item in $data) {
         if (-not $u -and (& $port 135)) {
           $sess = $null
           try {
-            $sess = New-CimSession -ComputerName $pc -Protocol Dcom
+            # 3.9.15: -Protocol у New-CimSession есть только в PowerShell 7 — на Windows
+            # PowerShell 5.1 ветка DCOM молча падала (параметр не найден). 5.1-совместимо — SessionOption.
+            $sess = New-CimSession -ComputerName $pc -SessionOption (New-CimSessionOption -Protocol Dcom)
             $cs = Get-CimInstance -ClassName Win32_ComputerSystem -CimSession $sess -OperationTimeoutSec 2 -ErrorAction Stop
             if ($cs -and $cs.UserName) { $u = $cs.UserName }
             if (-not $u) {

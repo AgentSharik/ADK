@@ -385,7 +385,7 @@ def test_ps_scanner_port_precheck_and_bounded_dcom():
     from adk.workers import _PS_SCANNER
     assert "ConnectAsync($pc, $p).Wait(400)" in _PS_SCANNER
     assert "& $port 5985" in _PS_SCANNER and "& $port 135" in _PS_SCANNER and "& $port 445" in _PS_SCANNER
-    assert "New-CimSession -ComputerName $pc -Protocol Dcom" in _PS_SCANNER
+    assert "New-CimSession -ComputerName $pc -SessionOption (New-CimSessionOption -Protocol Dcom)" in _PS_SCANNER  # 3.9.15: 5.1-совместимо
     assert "Get-CimInstance -ClassName Win32_ComputerSystem -CimSession $sess -OperationTimeoutSec 2" in _PS_SCANNER
     assert "Get-WmiObject -Class" not in _PS_SCANNER            # безтаймаутный путь убран
     assert "Remove-CimSession $sess" in _PS_SCANNER             # сессия закрывается
@@ -654,3 +654,14 @@ def test_deep_scan_dc_first_hints_disabled_audit(monkeypatch):
     workers.deep_scan_dc_first(["PC-1"], lambda h, w, offset=0, grand=0: [dict(r) for r in light],
                                progress=msgs.append)
     assert any("аудит" in m for m in msgs)
+
+
+def test_ps_scanner_powershell51_compatible():
+    """3.9.15: New-CimSession -Protocol существует только в PowerShell 7 — на Windows PowerShell 5.1
+    (им работает exe) DCOM-ветка дозапроса молча падала с 3.9.9, машины с открытым 135 и закрытым
+    5985 не возвращали юзера. 5.1-совместимый способ — New-CimSessionOption -Protocol Dcom.
+    Заодно: предпровер портов не считает отказ (RST) открытым портом."""
+    from adk import workers
+    assert "New-CimSessionOption -Protocol Dcom" in workers._PS_SCANNER   # 5.1-совместимо
+    assert "New-CimSession -Protocol" not in workers._PS_SCANNER          # PS7-only вариант
+    assert "-and $c.Connected" in workers._PS_SCANNER                     # RST ≠ открыт
